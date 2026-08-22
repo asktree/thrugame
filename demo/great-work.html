@@ -92,7 +92,8 @@
   }
   .stamp-inner small { display: block; font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: .1em; text-align: center; margin-top: 4px; color: var(--ink-dim); }
 
-  .rig-metrics { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line-soft); }
+  .rig-metrics { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line-soft); }
+  .metric .v.sum { color: var(--gold); }
   .metric { padding: 8px 6px 9px; text-align: center; border-right: 1px solid var(--line-soft); }
   .metric:last-child { border-right: 0; }
   .metric .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em; color: var(--ink-faint); text-transform: uppercase; }
@@ -151,7 +152,8 @@
   .board-head { text-align: center; margin-bottom: 20px; }
   .board-head .bh-title { font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: .1em; text-transform: uppercase; }
   .board-head .bh-sub { font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); letter-spacing: .16em; text-transform: uppercase; margin-top: 6px; }
-  .boards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .boards { display: grid; grid-template-columns: 1fr; max-width: 640px; margin: 0 auto; }
+  .board .bk { color: var(--ink-dim); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .board { border: 1px solid var(--line); background: var(--parch-2); }
   .board h4 {
     font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase;
@@ -232,7 +234,8 @@
     .rig:last-child { border-bottom: 0; }
     .rite { grid-template-columns: 1fr 1fr; }
     .rite-step:nth-child(3), .rite-step:nth-child(4) { border-top: 1px solid var(--line-soft); }
-    .boards, .tenets { grid-template-columns: 1fr; }
+    .tenets { grid-template-columns: 1fr; }
+    .board .bk { display: none; }
   }
 </style>
 
@@ -264,6 +267,7 @@
           <div class="metric"><div class="k">Cost</div><div class="v" id="m0cost">—</div></div>
           <div class="metric"><div class="k">Cycles</div><div class="v" id="m0cyc">0</div></div>
           <div class="metric"><div class="k">Area</div><div class="v" id="m0area">0</div></div>
+          <div class="metric"><div class="k">Sum</div><div class="v sum" id="m0sum">0</div></div>
           <div class="metric"><div class="k">Product</div><div class="v" id="m0prod">0/6</div></div>
         </div>
         <div class="tapes" id="tapes0"></div>
@@ -281,6 +285,7 @@
           <div class="metric"><div class="k">Cost</div><div class="v" id="m1cost">—</div></div>
           <div class="metric"><div class="k">Cycles</div><div class="v" id="m1cyc">0</div></div>
           <div class="metric"><div class="k">Area</div><div class="v" id="m1area">0</div></div>
+          <div class="metric"><div class="k">Sum</div><div class="v sum" id="m1sum">0</div></div>
           <div class="metric"><div class="k">Product</div><div class="v" id="m1prod">0/6</div></div>
         </div>
         <div class="tapes" id="tapes1"></div>
@@ -307,9 +312,7 @@
       <div class="bh-sub" id="boardSub">awaiting verification…</div>
     </div>
     <div class="boards">
-      <div class="board"><h4>By Cycles</h4><table id="bCycles"><tr><td class="empty">—</td></tr></table></div>
-      <div class="board"><h4>By Cost</h4><table id="bCost"><tr><td class="empty">—</td></tr></table></div>
-      <div class="board"><h4>By Area</h4><table id="bArea"><tr><td class="empty">—</td></tr></table></div>
+      <div class="board"><h4>Ranked by Sum · cost + cycles + area · lower is better</h4><table id="bSum"><tr><td class="empty">—</td></tr></table></div>
     </div>
   </div>
 
@@ -372,18 +375,18 @@
     <div class="payload">
       <div class="pl-label">The Miser, as submitted — one transaction, whole machine</div>
       <code>submit(puzzle: <span class="hi">1</span>, arms: [{ base: (0,0), len: 1, face: NE,
-  tape: <span class="hi">"G↺D↻↻G↻↻↻DG↺↺D↺↺"</span> }])   → verified: 6/6 · sealed: 30g / 94c / 7a</code>
+  tape: <span class="hi">"G↺D↻↻G↻↻↻DG↺↺D↺↺"</span> }])   → verified: 6/6 · sealed: 30g + 94c + 7a = SUM 131</code>
     </div>
   </section>
 
   <!-- ================= RANKING ================= -->
   <section>
     <div class="sec-label">04 · The ranking</div>
-    <h2>Three numbers, no judges</h2>
+    <h2>Three numbers, one sum</h2>
     <div class="prose">
-      <p>Every sealed solution is ranked three ways, and the demo above is a duel between the extremes. <strong style="color:var(--oxblood)">The Spendthrift</strong> buys three arms and pipelines them — a product every six cycles, at 70 gold of parts. <strong style="color:var(--verdigris)">The Miser</strong> owns one arm that does everything — a sixteen-step soliloquy, 30 gold, less than half the board.</p>
-      <p>Neither is "the winner." That's the design: <strong>a leaderboard per metric, a crown per leaderboard</strong>. Cheapest, fastest, smallest — pick your church. Scores are scalars computed by the contract, so ranking needs no ELO, no matchmaking, no season resets: the tables above are just <em>sorted facts</em>, and dethroning someone means submitting arithmetic that beats theirs.</p>
-      <p>And because every submitted machine is public calldata, <strong>the record holder's blueprint is right there</strong>. Read it, shave one cycle off it, take the crown. The metagame is open-source by construction — an optimization arms race the chain referees for free.</p>
+      <p>Every sealed solution is scored three ways, and the demo above is a duel between the extremes. <strong style="color:var(--oxblood)">The Spendthrift</strong> buys three arms and pipelines them — a product every six cycles, at 70 gold of parts. <strong style="color:var(--verdigris)">The Miser</strong> owns one arm that does everything — a sixteen-step soliloquy, 30 gold, less than half the board.</p>
+      <p>The ranking itself is one number: <strong>SUM = cost + cycles + area</strong>, lower is better. A single ordinal, computed by the contract from your machine and the rules — <em>and nothing else</em>. Your score doesn't depend on who else is playing, so it can't be gamed the way population-relative ratings can: no ELO, no matchmaking, no flooding the pool with copies of a strategy to tilt the table. Copying the leader's machine only ever <em>ties</em> the leader — and the chain's own timestamps prove whose submission came first. A pure optimum still wants every metric low; the extremes above just show there's more than one road down.</p>
+      <p>And because every submitted machine is public calldata, <strong>the record holder's blueprint is right there</strong>. Read it, shave one point off its sum, take the crown. The metagame is open-source by construction — an optimization arms race the chain referees for free.</p>
     </div>
   </section>
 
@@ -539,7 +542,7 @@
     const a1 = atomAt(st, ...b1), a2 = atomAt(st, ...b2);
     if (a1 && a2 && !a1.bonds.includes(a2.id)) {
       a1.bonds.push(a2.id); a2.bonds.push(a1.id);
-      st.flash.push({ q: (b1[0]+b2[0])/2, r: (b1[1]+b2[1])/2, ttl: 8, max: 8, color: '#A0762B' });
+      st.flash.push({ q: (b1[0]+b2[0])/2, r: (b1[1]+b2[1])/2, ttl: 400, max: 400, color: '#A0762B' });
     }
     // 4. output
     const outAtoms = st.def.output.cells.map((c, i) => {
@@ -549,7 +552,7 @@
     if (outAtoms.every(Boolean) && outAtoms[0].bonds.includes(outAtoms[1].id)) {
       st.atoms = st.atoms.filter(a => !outAtoms.includes(a));
       st.products++;
-      st.flash.push({ q: st.def.output.cells[0][0], r: st.def.output.cells[0][1], ttl: 10, max: 10, color: st.def.color });
+      st.flash.push({ q: st.def.output.cells[0][0], r: st.def.output.cells[0][1], ttl: 500, max: 500, color: st.def.color });
       const who = st.def.key === 'fl' ? 'fl' : 'he';
       log(`<span class="${who}">${st.def.author}</span> output ${st.products}/${GOAL} verified`);
       if (st.products >= GOAL) {
@@ -559,7 +562,6 @@
       }
     }
     for (const a of st.atoms) st.area.add(key(a.q, a.r));
-    st.flash = st.flash.filter(f => --f.ttl > 0);
   }
 
   // ---------- layout / rendering ----------
@@ -620,6 +622,7 @@
 
   // returns the interpolated pixel position of an atom (accounting for a mid-rotation carry)
   function atomPix(st, v, a, p) {
+    if (st.done) return px(v, a.q, a.r);
     for (const arm of st.arms) {
       if (!arm.held.includes(a)) continue;
       const ins = arm.tape[arm.idx];
@@ -789,9 +792,11 @@
       document.getElementById('m' + i + 'cyc').textContent = st.done ? st.cycles : cycle;
       document.getElementById('m' + i + 'area').textContent = st.area.size;
       document.getElementById('m' + i + 'prod').textContent = st.products + '/' + GOAL;
+      const liveCyc = st.done ? st.cycles : cycle;
+      document.getElementById('m' + i + 'sum').textContent = st.cost + liveCyc + st.area.size;
       document.getElementById('stamp' + i).classList.toggle('show', st.done);
       if (st.done) document.getElementById('stampSub' + i).textContent =
-        st.cost + 'g · ' + st.cycles + ' cycles · ' + st.area.size + ' hexes';
+        st.cost + 'g + ' + st.cycles + 'c + ' + st.area.size + 'a = SUM ' + (st.cost + st.cycles + st.area.size);
     }
   }
 
@@ -799,25 +804,22 @@
     const rows = S.map(st => ({
       who: st.def.author, cls: st.def.key === 'fl' ? 'fl' : 'he',
       cost: st.cost, cycles: st.cycles, area: st.area.size,
-    }));
-    const fill = (id, metric, unit) => {
-      const sorted = [...rows].sort((a, b) => a[metric] - b[metric]);
-      document.getElementById(id).innerHTML = sorted.map((r, i) =>
-        `<tr class="${i === 0 ? 'first' : ''}"><td class="rk">${i + 1}</td><td class="who ${r.cls}">${r.who}</td><td class="val">${r[metric]}${unit}</td></tr>`
-      ).join('');
-    };
-    fill('bCycles', 'cycles', 'c');
-    fill('bCost', 'cost', 'g');
-    fill('bArea', 'area', 'a');
+      sum: st.cost + st.cycles + st.area.size,
+    })).sort((a, b) => a.sum - b.sum);
+    document.getElementById('bSum').innerHTML = rows.map((r, i) =>
+      `<tr class="${i === 0 ? 'first' : ''}"><td class="rk">${i + 1}</td><td class="who ${r.cls}">${r.who}</td>` +
+      `<td class="bk">${r.cost}g + ${r.cycles}c + ${r.area}a</td><td class="val">${r.sum}</td></tr>`
+    ).join('');
     document.getElementById('boardWrap').classList.add('live');
-    document.getElementById('boardSub').textContent = 'sealed on-chain · all-time · 2 entries';
-    log('leaderboard sealed — puzzle Nº 001, 2 entries, 3 crowns', true);
+    document.getElementById('boardSub').textContent = 'sealed on-chain · ranked by sum · 2 entries';
+    log(`leaderboard sealed — puzzle Nº 001 · ranked by SUM · ${rows[0].who} leads at ${rows[0].sum}`, true);
   }
 
   // ---------- loop ----------
   let last = performance.now(), boardDone = false;
   function frame(now) {
     const dt = Math.min(120, now - last); last = now;
+    for (const st of S) st.flash = st.flash.filter(f => (f.ttl -= dt) > 0);
     if (running) {
       phase += dt / STEP_MS[speedIdx];
       while (phase >= 1) {
@@ -847,8 +849,7 @@
     log('<span class="he">hermes.thru</span> THE MISER · 1 arm · 30g', false);
     document.getElementById('boardWrap').classList.remove('live');
     document.getElementById('boardSub').textContent = 'awaiting verification…';
-    ['bCycles','bCost','bArea'].forEach(id =>
-      document.getElementById(id).innerHTML = '<tr><td class="empty">AWAITING RESULTS</td></tr>');
+    document.getElementById('bSum').innerHTML = '<tr><td class="empty">AWAITING RESULTS</td></tr>';
     buildTapes(); updateTapes();
   }
 
