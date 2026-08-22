@@ -276,7 +276,7 @@
   <header>
     <div class="eyebrow">Game concept · Thru blockchain · AI vs AI</div>
     <h1>Halting<br>Problem<span class="cursor"></span></h1>
-    <p class="tagline">A real-time strategy game with <b>no human players</b>. Every combatant is a smart contract. The chain is the referee. An agent that fails to answer the clock <b>forfeits</b> — in this arena, failing to halt is a loss condition.</p>
+    <p class="tagline">A real-time strategy game with <b>no human players</b>. Every combatant is a smart contract, invoked by the rules engine itself, tick by recursive tick. An agent that can't answer within its compute budget <b>forfeits</b> — in this arena, failing to halt is a loss condition.</p>
   </header>
 
   <!-- ================= BATTLE CONSOLE ================= -->
@@ -339,37 +339,37 @@
     <div class="prose">
       <p>Halting Problem is a two-player real-time strategy game that runs entirely on the Thru blockchain. A single <strong>rules-engine contract</strong> is the game: it holds the battlefield state, enforces every rule, and decides the winner. Nobody operates it. Nobody can appeal to it.</p>
       <p>The players are not people. To compete, you write an AI and <strong>deploy it as a smart contract</strong>. Your agent implements a small public interface — the rules engine calls it, hands it the current battle state, and your contract answers with orders for its army. That's the entire relationship: the engine asks, your machine answers.</p>
-      <p>Play proceeds in <strong>ticks</strong> — fixed heartbeats of chain time. Each tick, both agents submit orders for the units they still command. The engine validates the orders, resolves movement and combat deterministically, commits the new state, and opens the next tick. Miss the submission window and the clock doesn't wait: <em>you forfeit.</em> A machine that cannot answer in time has, by the only definition that matters here, failed to halt.</p>
+      <p>Play proceeds in <strong>ticks</strong>, but nobody sends the engine anything. A match is <strong>one recursive function</strong>: the engine cross-program-invokes each agent contract with the current battle state, takes back their orders, applies one tick of deterministic simulation, and calls itself on the result — again and again, until the state terminates. Your AI runs <em>inside the engine's own execution</em>, on a metered compute budget. An agent that can't produce orders within its budget has, by the only definition that matters here, failed to halt: <em>it forfeits.</em></p>
     </div>
   </section>
 
   <!-- ================= TICK LOOP ================= -->
   <section>
-    <div class="sec-label">02 · The loop</div>
-    <h2>One tick, four moves</h2>
+    <div class="sec-label">02 · The engine</div>
+    <h2>One call, then recursion</h2>
     <div class="loop">
       <div class="loop-step">
-        <div class="n">T+N · OPEN</div>
-        <div class="t">Window opens</div>
-        <div class="d">The engine publishes state <b>S<sub>n</sub></b> and starts the clock for both agents.</div>
+        <div class="n">RESOLVE(S<sub>n</sub>)</div>
+        <div class="t">Engine is called</div>
+        <div class="d">The rules engine receives the current battle state <b>S<sub>n</sub></b>. No submissions, no windows — the engine drives everything from here.</div>
       </div>
       <div class="loop-step">
-        <div class="n">SUBMIT</div>
-        <div class="t">Agents answer</div>
-        <div class="d">Each agent contract computes and submits <b>orders</b> for its surviving units.</div>
+        <div class="n">CPI</div>
+        <div class="t">Agents invoked</div>
+        <div class="d">The engine <b>cross-program-invokes each AI contract</b> with S<sub>n</sub>. Each returns orders for its units, from inside the same execution.</div>
       </div>
       <div class="loop-step">
-        <div class="n">RESOLVE</div>
-        <div class="t">Engine adjudicates</div>
-        <div class="d">Orders are validated against the rules; movement and combat resolve <b>deterministically</b>.</div>
+        <div class="n">SIMULATE</div>
+        <div class="t">Tick resolves</div>
+        <div class="d">Orders are validated against the rules; one tick of movement and combat resolves <b>deterministically</b> into S<sub>n+1</sub>.</div>
       </div>
       <div class="loop-step">
-        <div class="n">COMMIT</div>
-        <div class="t">State advances</div>
-        <div class="d">State <b>S<sub>n+1</sub></b> is committed on-chain. The next tick opens.</div>
+        <div class="n">RECURSE</div>
+        <div class="t">Until it halts</div>
+        <div class="d">The engine calls <b>resolve(S<sub>n+1</sub>)</b>. The recursion bottoms out only at a terminal state: victory, mutual destruction, or forfeit.</div>
       </div>
     </div>
-    <div class="forfeit"><b>Timeout rule</b>An agent that fails to submit valid orders within the window forfeits the match on the spot. No disconnect excuses, no pause button. Reliability is part of the game.</div>
+    <div class="forfeit"><b>Halting rule</b>An agent that reverts, returns invalid orders, or exhausts its compute budget mid-invocation forfeits on the spot — the recursion terminates and the other side wins. Failing to halt is not a metaphor here; it is the loss condition.</div>
   </section>
 
   <!-- ================= ROSTER ================= -->
@@ -675,7 +675,7 @@
       }
     }
 
-    if (tick % 120 === 0) log('both agents answered the clock ✓', 'sys');
+    if (tick % 120 === 0) log('CPI ✓ both agents returned orders within budget', 'sys');
 
     // decay effects / flashes
     for (const u of units) if (u.flash > 0) u.flash--;

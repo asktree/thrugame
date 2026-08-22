@@ -1,0 +1,877 @@
+<title>Great Work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap">
+<style>
+  :root {
+    --parch: #F1E9D6;
+    --parch-2: #EAE0C9;
+    --parch-3: #E2D6B8;
+    --ink: #2A2318;
+    --ink-dim: #6B5F49;
+    --ink-faint: #9C8F74;
+    --line: #CFC2A4;
+    --line-soft: #DDD2B6;
+    --brass: #A0762B;
+    --gold: #8A6A1E;
+    --oxblood: #8C3B2E;
+    --verdigris: #33705E;
+    --display: 'Cinzel', 'Times New Roman', serif;
+    --body: 'EB Garamond', Georgia, serif;
+    --mono: 'Courier Prime', 'Courier New', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--parch);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(160,118,43,.25); }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+  .prose { max-width: 64ch; }
+  .prose p + p { margin-top: 1em; }
+  .prose strong { font-weight: 600; }
+  .prose em { font-style: italic; }
+
+  /* ---------- hero ---------- */
+  header { padding: 58px 0 20px; text-align: center; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .24em;
+    text-transform: uppercase; color: var(--ink-dim);
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+  }
+  .eyebrow::before, .eyebrow::after { content: ""; width: 40px; height: 1px; background: var(--brass); }
+  h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(46px, 8vw, 92px);
+    line-height: 1.04; letter-spacing: .06em;
+    color: var(--ink); margin: 20px 0 6px;
+  }
+  .fleuron { color: var(--brass); font-size: clamp(16px, 2.4vw, 22px); letter-spacing: .5em; margin-bottom: 14px; }
+  .tagline { font-size: 20px; color: var(--ink-dim); max-width: 56ch; margin: 10px auto 0; font-style: italic; text-wrap: balance; }
+  .tagline b { color: var(--ink); font-weight: 600; font-style: normal; }
+
+  /* ---------- puzzle banner ---------- */
+  .puzzle-banner {
+    margin-top: 40px; border: 1px solid var(--line); border-bottom: 0;
+    background: var(--parch-2);
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 12px 18px; flex-wrap: wrap;
+  }
+  .puzzle-name { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+  .puzzle-name .no { color: var(--brass); }
+  .puzzle-spec { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); letter-spacing: .06em; }
+
+  /* ---------- duel ---------- */
+  .duel { border: 1px solid var(--line); background: var(--parch-2); }
+  .duel-grid { display: grid; grid-template-columns: 1fr 1fr; }
+  .rig { border-right: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; }
+  .rig:last-child { border-right: 0; }
+  .rig-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 12px 16px 10px; border-bottom: 1px solid var(--line-soft); }
+  .rig-title { font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: .08em; }
+  .rig-author { font-family: var(--mono); font-size: 12px; letter-spacing: .04em; }
+  .rig.flamel .rig-title, .rig.flamel .rig-author { color: var(--oxblood); }
+  .rig.hermes .rig-title, .rig.hermes .rig-author { color: var(--verdigris); }
+
+  .stage { position: relative; background: var(--parch-2); }
+  canvas.field { display: block; width: 100%; height: auto; }
+  .stamp {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .5s;
+  }
+  .stamp.show { opacity: 1; }
+  .stamp-inner {
+    border: 2.5px solid var(--gold); color: var(--gold); background: rgba(241,233,214,.82);
+    font-family: var(--display); font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    font-size: 19px; padding: 10px 22px; transform: rotate(-7deg);
+    box-shadow: 0 0 0 3px rgba(241,233,214,.82);
+  }
+  .stamp-inner small { display: block; font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: .1em; text-align: center; margin-top: 4px; color: var(--ink-dim); }
+
+  .rig-metrics { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line-soft); }
+  .metric { padding: 8px 6px 9px; text-align: center; border-right: 1px solid var(--line-soft); }
+  .metric:last-child { border-right: 0; }
+  .metric .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em; color: var(--ink-faint); text-transform: uppercase; }
+  .metric .v { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--ink); margin-top: 1px; font-variant-numeric: tabular-nums; }
+
+  .tapes { border-top: 1px solid var(--line-soft); padding: 8px 14px 10px; background: var(--parch-3); }
+  .tape-row { display: flex; align-items: center; gap: 10px; padding: 2px 0; min-width: 0; }
+  .tape-label { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; color: var(--ink-dim); flex: none; width: 52px; }
+  .tape-cells { display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+  .tape-cells::-webkit-scrollbar { display: none; }
+  .tape-cells span {
+    font-family: var(--mono); font-size: 12px; line-height: 1;
+    padding: 3px 5px; border: 1px solid var(--line); color: var(--ink-dim); background: var(--parch-2);
+    flex: none;
+  }
+  .tape-cells span.on { background: var(--ink); color: var(--parch); border-color: var(--ink); }
+
+  .duel-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 16px; border-top: 1px solid var(--line); background: var(--parch-2);
+  }
+  button.ctl {
+    font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink); background: var(--parch); border: 1px solid var(--ink-dim);
+    padding: 8px 16px; cursor: pointer; transition: background .15s, color .15s;
+  }
+  button.ctl:hover { background: var(--ink); color: var(--parch); }
+  button.ctl:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  .speed { display: flex; border: 1px solid var(--ink-dim); }
+  .speed button.ctl { border: 0; padding: 8px 12px; }
+  .speed button.ctl + button.ctl { border-left: 1px solid var(--ink-dim); }
+  .speed button.ctl.on { background: var(--ink); color: var(--parch); }
+  .cyclebox { margin-left: auto; font-family: var(--mono); font-size: 12px; letter-spacing: .14em; color: var(--ink-dim); text-transform: uppercase; }
+  .cyclebox b { color: var(--ink); font-size: 15px; font-variant-numeric: tabular-nums; }
+
+  .feed {
+    border: 1px solid var(--line); border-top: 0; background: var(--parch-3);
+    max-height: 132px; overflow-y: auto; padding: 8px 16px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.7;
+  }
+  .feed div { color: var(--ink-dim); }
+  .feed .cy { color: var(--ink-faint); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .feed .fl { color: var(--oxblood); font-weight: 700; }
+  .feed .he { color: var(--verdigris); font-weight: 700; }
+  .feed .sys { color: var(--ink); }
+
+  .console-note {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-faint);
+    letter-spacing: .02em; margin-top: 12px; line-height: 1.7; text-align: center;
+  }
+  .console-note em { font-style: normal; color: var(--ink-dim); }
+
+  /* ---------- leaderboard ---------- */
+  .board-reveal { margin-top: 46px; opacity: .35; transition: opacity .8s; }
+  .board-reveal.live { opacity: 1; }
+  .board-head { text-align: center; margin-bottom: 20px; }
+  .board-head .bh-title { font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: .1em; text-transform: uppercase; }
+  .board-head .bh-sub { font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); letter-spacing: .16em; text-transform: uppercase; margin-top: 6px; }
+  .boards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .board { border: 1px solid var(--line); background: var(--parch-2); }
+  .board h4 {
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--ink-dim); text-align: center; padding: 9px 8px; border-bottom: 1px solid var(--line-soft);
+  }
+  .board table { width: 100%; border-collapse: collapse; }
+  .board td { font-family: var(--mono); font-size: 12.5px; padding: 8px 12px; border-top: 1px solid var(--line-soft); }
+  .board tr:first-child td { border-top: 0; }
+  .board .rk { width: 30px; color: var(--ink-faint); }
+  .board .who { letter-spacing: .02em; }
+  .board .who.fl { color: var(--oxblood); font-weight: 700; }
+  .board .who.he { color: var(--verdigris); font-weight: 700; }
+  .board .val { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .board tr.first td { background: rgba(160,118,43,.13); }
+  .board tr.first .rk { color: var(--gold); font-weight: 700; }
+  .board td.empty { color: var(--ink-faint); text-align: center; padding: 14px; font-size: 11.5px; letter-spacing: .1em; }
+
+  /* ---------- sections ---------- */
+  section { padding: 72px 0 6px; }
+  .sec-label {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .26em; text-transform: uppercase;
+    color: var(--ink-faint); display: flex; align-items: center; gap: 14px; margin-bottom: 12px;
+  }
+  .sec-label::after { content: ""; height: 1px; flex: 1; background: var(--line-soft); }
+  h2 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(25px, 3.4vw, 36px); letter-spacing: .04em; color: var(--ink);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+
+  /* loop diagram */
+  .rite { display: grid; grid-template-columns: repeat(4, 1fr); margin: 28px 0 8px; border: 1px solid var(--line); background: var(--parch-2); }
+  .rite-step { padding: 18px 16px 20px; border-left: 1px solid var(--line-soft); position: relative; }
+  .rite-step:first-child { border-left: 0; }
+  .rite-step .n { font-family: var(--mono); font-size: 10.5px; color: var(--brass); letter-spacing: .2em; }
+  .rite-step .t { font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); margin: 8px 0 6px; }
+  .rite-step .d { font-size: 14.5px; color: var(--ink-dim); line-height: 1.55; }
+  .rite-step .d b { color: var(--ink); font-weight: 600; }
+
+  /* ISA table */
+  .isa { border: 1px solid var(--line); background: var(--parch-2); margin-top: 26px; overflow-x: auto; }
+  .isa table { width: 100%; border-collapse: collapse; min-width: 520px; }
+  .isa th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--ink-dim); text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line);
+    background: var(--parch-3); font-weight: 700;
+  }
+  .isa td { padding: 10px 16px; border-bottom: 1px solid var(--line-soft); font-size: 14.5px; color: var(--ink-dim); }
+  .isa tr:last-child td { border-bottom: 0; }
+  .isa td.op { font-family: var(--mono); font-weight: 700; color: var(--ink); font-size: 14px; white-space: nowrap; }
+  .isa td.gl { font-family: var(--mono); color: var(--brass); font-weight: 700; width: 46px; text-align: center; }
+
+  .payload {
+    margin-top: 24px; border: 1px solid var(--line); background: var(--parch-3);
+    padding: 14px 18px; overflow-x: auto;
+  }
+  .payload .pl-label { font-family: var(--mono); font-size: 10px; letter-spacing: .22em; color: var(--ink-faint); text-transform: uppercase; margin-bottom: 8px; }
+  .payload code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); white-space: pre; }
+  .payload code .hi { color: var(--verdigris); font-weight: 700; }
+
+  /* tenets */
+  .tenets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 26px; }
+  .tenet { border: 1px solid var(--line); background: var(--parch-2); padding: 18px 18px 16px; }
+  .tenet .t-num { font-family: var(--mono); font-size: 10.5px; color: var(--brass); letter-spacing: .2em; }
+  .tenet h3 { font-family: var(--display); font-weight: 700; font-size: 16px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink); margin: 8px 0 8px; }
+  .tenet p { font-size: 14.5px; color: var(--ink-dim); line-height: 1.6; }
+  .tenet p b { color: var(--ink); font-weight: 600; }
+
+  footer {
+    margin-top: 88px; border-top: 1px solid var(--line); padding: 24px 0 46px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); letter-spacing: .06em;
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+
+  @media (max-width: 880px) {
+    .duel-grid { grid-template-columns: 1fr; }
+    .rig { border-right: 0; border-bottom: 1px solid var(--line); }
+    .rig:last-child { border-bottom: 0; }
+    .rite { grid-template-columns: 1fr 1fr; }
+    .rite-step:nth-child(3), .rite-step:nth-child(4) { border-top: 1px solid var(--line-soft); }
+    .boards, .tenets { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Game concept · Thru blockchain · after Opus Magnum</div>
+    <h1>Great Work</h1>
+    <div class="fleuron">☉ ☿ ♄</div>
+    <p class="tagline">An open engineering puzzle where every solution is a machine, every machine is a <b>transaction</b>, and every record is <b>permanent</b>. Build the cheapest, fastest, smallest transmutation engine — and prove it on-chain.</p>
+  </header>
+
+  <!-- ================= DUEL ================= -->
+  <div class="puzzle-banner">
+    <span class="puzzle-name"><span class="no">Puzzle Nº 001</span> · Lead Amalgam</span>
+    <span class="puzzle-spec">inputs: Pb, Hg &nbsp;→&nbsp; product: Pb–Hg ×6 &nbsp;·&nbsp; two verified solutions, replaying now</span>
+  </div>
+  <div class="duel">
+    <div class="duel-grid">
+      <div class="rig flamel">
+        <div class="rig-head">
+          <span class="rig-title">The Spendthrift</span>
+          <span class="rig-author">flamel.thru</span>
+        </div>
+        <div class="stage">
+          <canvas class="field" id="cv0" width="520" height="440" aria-label="Animated machine: three arms bonding lead and quicksilver"></canvas>
+          <div class="stamp" id="stamp0"><div class="stamp-inner">Verified · 6 of 6<small id="stampSub0"></small></div></div>
+        </div>
+        <div class="rig-metrics">
+          <div class="metric"><div class="k">Cost</div><div class="v" id="m0cost">—</div></div>
+          <div class="metric"><div class="k">Cycles</div><div class="v" id="m0cyc">0</div></div>
+          <div class="metric"><div class="k">Area</div><div class="v" id="m0area">0</div></div>
+          <div class="metric"><div class="k">Product</div><div class="v" id="m0prod">0/6</div></div>
+        </div>
+        <div class="tapes" id="tapes0"></div>
+      </div>
+      <div class="rig hermes">
+        <div class="rig-head">
+          <span class="rig-title">The Miser</span>
+          <span class="rig-author">hermes.thru</span>
+        </div>
+        <div class="stage">
+          <canvas class="field" id="cv1" width="520" height="440" aria-label="Animated machine: a single arm bonding lead and quicksilver"></canvas>
+          <div class="stamp" id="stamp1"><div class="stamp-inner">Verified · 6 of 6<small id="stampSub1"></small></div></div>
+        </div>
+        <div class="rig-metrics">
+          <div class="metric"><div class="k">Cost</div><div class="v" id="m1cost">—</div></div>
+          <div class="metric"><div class="k">Cycles</div><div class="v" id="m1cyc">0</div></div>
+          <div class="metric"><div class="k">Area</div><div class="v" id="m1area">0</div></div>
+          <div class="metric"><div class="k">Product</div><div class="v" id="m1prod">0/6</div></div>
+        </div>
+        <div class="tapes" id="tapes1"></div>
+      </div>
+    </div>
+    <div class="duel-bar">
+      <button class="ctl" id="btnRun">Pause</button>
+      <button class="ctl" id="btnReset">Reset</button>
+      <div class="speed" role="group" aria-label="Simulation speed">
+        <button class="ctl" data-speed="1">1×</button>
+        <button class="ctl on" data-speed="2">2×</button>
+        <button class="ctl" data-speed="4">4×</button>
+      </div>
+      <span class="cyclebox">Cycle <b id="cycval">0000</b></span>
+    </div>
+  </div>
+  <div class="feed" id="feed"></div>
+  <p class="console-note">Browser re-run of two verified solutions — <em>pure deterministic simulation, no randomness anywhere</em>. On-chain, this exact replay is the verification: the contract steps the machine and either the product appears or it doesn't.</p>
+
+  <!-- ================= LEADERBOARD ================= -->
+  <div class="board-reveal" id="boardWrap">
+    <div class="board-head">
+      <div class="bh-title">Leaderboard · Puzzle Nº 001</div>
+      <div class="bh-sub" id="boardSub">awaiting verification…</div>
+    </div>
+    <div class="boards">
+      <div class="board"><h4>By Cycles</h4><table id="bCycles"><tr><td class="empty">—</td></tr></table></div>
+      <div class="board"><h4>By Cost</h4><table id="bCost"><tr><td class="empty">—</td></tr></table></div>
+      <div class="board"><h4>By Area</h4><table id="bArea"><tr><td class="empty">—</td></tr></table></div>
+    </div>
+  </div>
+
+  <!-- ================= PREMISE ================= -->
+  <section>
+    <div class="sec-label">01 · The premise</div>
+    <h2>Proof of work, taken literally</h2>
+    <div class="prose">
+      <p>Great Work is an open-ended engineering puzzle in the lineage of Zachtronics' <em>Opus Magnum</em>, rebuilt for a blockchain. A puzzle is a transmutation: reagents in, product out. A solution is a <strong>machine</strong> — arms placed on a hex grid, each running a short looping instruction tape, ferrying atoms across glyphs that bond them into the requested compound.</p>
+      <p>The difference is who checks your work. There is no server and no screenshot to take on faith: the puzzle lives in a <strong>rules-engine contract on Thru</strong>, and a solution is submitted as plain transaction data. The contract runs the machine, step by deterministic step. Either the product appears — six times, to prove the loop is a loop — or the submission is rejected. <strong>Verification is simulation</strong>, and simulation is exactly what a smart contract does perfectly.</p>
+      <p>There are no ticks to answer, no opponent to outlive, no clock to forfeit to. You compete against everyone, asynchronously, forever — on three numbers.</p>
+    </div>
+  </section>
+
+  <!-- ================= LOOP ================= -->
+  <section>
+    <div class="sec-label">02 · The rite</div>
+    <h2>Submit, simulate, seal</h2>
+    <div class="rite">
+      <div class="rite-step">
+        <div class="n">I · POSE</div>
+        <div class="t">Puzzle posted</div>
+        <div class="d">A transmutation is published on-chain: <b>reagents, product, part prices</b>. Anyone may attempt it, from that block until the end of the chain.</div>
+      </div>
+      <div class="rite-step">
+        <div class="n">II · SUBMIT</div>
+        <div class="t">Machine sent</div>
+        <div class="d">A solution is a few dozen bytes: <b>arm positions and instruction tapes</b>. Submitting it is one transaction.</div>
+      </div>
+      <div class="rite-step">
+        <div class="n">III · VERIFY</div>
+        <div class="t">Contract runs it</div>
+        <div class="d">The rules engine simulates the machine — <b>integer hex arithmetic, fully deterministic</b> — until six products emerge or the attempt fails.</div>
+      </div>
+      <div class="rite-step">
+        <div class="n">IV · SEAL</div>
+        <div class="t">Metrics recorded</div>
+        <div class="d"><b>Cost, cycles, area</b> are computed by the contract itself and written to the permanent record. No one can inflate them. No one can erase them.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MACHINE LANGUAGE ================= -->
+  <section>
+    <div class="sec-label">03 · The machine language</div>
+    <h2>Five words are enough</h2>
+    <div class="prose">
+      <p>The demo machines above speak the smallest dialect worth having — one part (the arm), two glyphs (bond, output), five instructions. Small enough that a solution serializes to a tweet-sized payload; expressive enough that the two machines above solve the same puzzle in <strong>completely different ways</strong>.</p>
+    </div>
+    <div class="isa">
+      <table>
+        <tr><th>Glyph</th><th>Instruction</th><th>Effect</th></tr>
+        <tr><td class="gl">G</td><td class="op">GRAB</td><td>Close the claw. If an atom lies at the hand, the arm now carries it — and everything bonded to it.</td></tr>
+        <tr><td class="gl">D</td><td class="op">RELEASE</td><td>Open the claw. Whatever was carried stays where it is.</td></tr>
+        <tr><td class="gl">↻</td><td class="op">TURN CW</td><td>Rotate the arm 60° clockwise about its base, carrying its cargo in a rigid arc.</td></tr>
+        <tr><td class="gl">↺</td><td class="op">TURN CCW</td><td>Rotate the arm 60° counter-clockwise.</td></tr>
+        <tr><td class="gl">·</td><td class="op">WAIT</td><td>Hold position for one cycle. Timing is a resource too.</td></tr>
+      </table>
+    </div>
+    <div class="payload">
+      <div class="pl-label">The Miser, as submitted — one transaction, whole machine</div>
+      <code>submit(puzzle: <span class="hi">1</span>, arms: [{ base: (0,0), len: 1, face: NE,
+  tape: <span class="hi">"G↺D↻↻G↻↻↻DG↺↺D↺↺"</span> }])   → verified: 6/6 · sealed: 30g / 94c / 7a</code>
+    </div>
+  </section>
+
+  <!-- ================= RANKING ================= -->
+  <section>
+    <div class="sec-label">04 · The ranking</div>
+    <h2>Three numbers, no judges</h2>
+    <div class="prose">
+      <p>Every sealed solution is ranked three ways, and the demo above is a duel between the extremes. <strong style="color:var(--oxblood)">The Spendthrift</strong> buys three arms and pipelines them — a product every six cycles, at 70 gold of parts. <strong style="color:var(--verdigris)">The Miser</strong> owns one arm that does everything — a sixteen-step soliloquy, 30 gold, less than half the board.</p>
+      <p>Neither is "the winner." That's the design: <strong>a leaderboard per metric, a crown per leaderboard</strong>. Cheapest, fastest, smallest — pick your church. Scores are scalars computed by the contract, so ranking needs no ELO, no matchmaking, no season resets: the tables above are just <em>sorted facts</em>, and dethroning someone means submitting arithmetic that beats theirs.</p>
+      <p>And because every submitted machine is public calldata, <strong>the record holder's blueprint is right there</strong>. Read it, shave one cycle off it, take the crown. The metagame is open-source by construction — an optimization arms race the chain referees for free.</p>
+    </div>
+  </section>
+
+  <!-- ================= WHY CHAIN ================= -->
+  <section>
+    <div class="sec-label">05 · Why a blockchain</div>
+    <h2>The notary of records</h2>
+    <div class="tenets">
+      <div class="tenet">
+        <div class="t-num">TRUSTLESS</div>
+        <h3>Scores nobody grades</h3>
+        <p>Leaderboards die of moderation: hacked clients, doctored GIFs, tired admins. Here the referee is <b>the same contract that runs the machine</b> — a record is valid because the chain executed it, not because someone believed it.</p>
+      </div>
+      <div class="tenet">
+        <div class="t-num">PERMANENT</div>
+        <h3>Records that outlive servers</h3>
+        <p>A world record is <b>a fact with a block number</b>. When it falls, the chain remembers who held it, for how long, and by what machine — a complete fossil record of the metagame, replayable forever.</p>
+      </div>
+      <div class="tenet">
+        <div class="t-num">MACHINE-PLAYABLE</div>
+        <h3>A game AIs can grind</h3>
+        <p>Closed rules, exact scoring, an enormous search space: this is <b>an ideal arena for machine players</b>. AIs can search, submit, and iterate without ceremony — every attempt lands on-chain, and every improvement is one transaction away.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>GREAT WORK · concept demo · an homage to Zachtronics' Opus Magnum</span>
+    <span>Agrippa Kellum · for Unto Labs · August 2026</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- hex math (axial, pointy-top) ----------
+  const DIRS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]]; // E SE SW W NW NE
+  const SQ3 = Math.sqrt(3);
+  const cwRot  = (q, r) => [-r, q + r];
+  const ccwRot = (q, r) => [q + r, -q];
+  const key = (q, r) => q + ',' + r;
+
+  // ---------- machine definitions (hand-authored solutions) ----------
+  const ELEMS = {
+    Pb: { fill: '#4A4640', edge: '#2A2318', label: '#F1E9D6', name: 'Pb' },
+    Hg: { fill: '#BDB9AF', edge: '#2A2318', label: '#2A2318', name: 'Hg' },
+  };
+  const MACHINES = [
+    {
+      key: 'fl', title: 'The Spendthrift', author: 'flamel.thru', color: '#8C3B2E',
+      arms: [
+        { base: [-1, 0], angle: 4, tape: ['G','+','+','D','-','-'] },
+        { base: [ 2, 0], angle: 5, tape: ['G','-','-','D','+','+'] },
+        { base: [-1, 1], angle: 0, tape: ['+','D','-','-','G','+'] },
+      ],
+      inputs: [ { cell: [-1,-1], elem: 'Pb' }, { cell: [3,-1], elem: 'Hg' } ],
+      bonder: [ [0,0], [1,0] ],
+      output: { cells: [[-1,2],[-2,3]], elems: ['Pb','Hg'] },
+    },
+    {
+      key: 'he', title: 'The Miser', author: 'hermes.thru', color: '#33705E',
+      arms: [
+        { base: [0,0], angle: 5, tape: ['G','-','D','+','+','G','+','+','+','D','G','-','-','D','-','-'] },
+      ],
+      inputs: [ { cell: [1,-1], elem: 'Pb' }, { cell: [1,0], elem: 'Hg' } ],
+      bonder: [ [-1,0], [0,-1] ],
+      output: { cells: [[0,1],[-1,1]], elems: ['Hg','Pb'] },
+    },
+  ];
+  const GOAL = 6;
+  const COST_ARM = 20, COST_BONDER = 10;
+
+  // ---------- simulation state ----------
+  const feedEl = document.getElementById('feed');
+  let cycle = 0, running, speedIdx = 2, phase = 0;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const STEP_MS = { 1: 380, 2: 190, 4: 95 };
+
+  function log(html, sys) {
+    const d = document.createElement('div');
+    d.innerHTML = `<span class="cy">c${String(cycle).padStart(4,'0')}</span><span class="${sys ? 'sys' : ''}">${html}</span>`;
+    feedEl.appendChild(d);
+    while (feedEl.children.length > 60) feedEl.removeChild(feedEl.firstChild);
+    feedEl.scrollTop = feedEl.scrollHeight;
+  }
+
+  function makeState(def) {
+    return {
+      def,
+      atoms: [],           // {id,q,r,elem,bonds:[ids],held:bool}
+      arms: def.arms.map(a => ({ base: a.base, angle: a.angle, tape: a.tape, held: [], idx: 0 })),
+      nextId: 1,
+      products: 0,
+      done: false,
+      cycles: 0,
+      area: new Set([
+        ...def.inputs.map(i => key(...i.cell)),
+        ...def.bonder.map(c => key(...c)),
+        ...def.output.cells.map(c => key(...c)),
+        ...def.arms.map(a => key(...a.base)),
+      ]),
+      cost: def.arms.length * COST_ARM + COST_BONDER,
+      flash: [],           // visual pulses {q,r,ttl,max,color}
+    };
+  }
+  let S = [];
+
+  const atomAt = (st, q, r) => st.atoms.find(a => a.q === q && a.r === r);
+
+  function molecule(st, atom) {
+    const seen = new Set([atom.id]), stack = [atom];
+    while (stack.length) {
+      const a = stack.pop();
+      for (const bid of a.bonds) {
+        if (!seen.has(bid)) { seen.add(bid); stack.push(st.atoms.find(x => x.id === bid)); }
+      }
+    }
+    return st.atoms.filter(a => seen.has(a.id));
+  }
+
+  function commitStep(st) {
+    if (st.done) return;
+    // 1. spawn
+    for (const inp of st.def.inputs) {
+      if (!atomAt(st, ...inp.cell)) {
+        st.atoms.push({ id: st.nextId++, q: inp.cell[0], r: inp.cell[1], elem: inp.elem, bonds: [], held: false });
+      }
+    }
+    // 2. instructions
+    for (const arm of st.arms) {
+      const ins = arm.tape[arm.idx];
+      if (ins === '+' || ins === '-') {
+        const rot = ins === '+' ? cwRot : ccwRot;
+        arm.angle = (arm.angle + (ins === '+' ? 1 : 5)) % 6;
+        for (const a of arm.held) {
+          const [q, r] = rot(a.q - arm.base[0], a.r - arm.base[1]);
+          a.q = arm.base[0] + q; a.r = arm.base[1] + r;
+          st.area.add(key(a.q, a.r));
+        }
+      } else if (ins === 'G' && arm.held.length === 0) {
+        const hand = [arm.base[0] + DIRS[arm.angle][0], arm.base[1] + DIRS[arm.angle][1]];
+        const a = atomAt(st, ...hand);
+        if (a) { arm.held = molecule(st, a); arm.held.forEach(x => x.held = true); }
+      } else if (ins === 'D') {
+        arm.held.forEach(x => x.held = false);
+        arm.held = [];
+      }
+      arm.idx = (arm.idx + 1) % arm.tape.length;
+    }
+    // 3. bond
+    const [b1, b2] = st.def.bonder;
+    const a1 = atomAt(st, ...b1), a2 = atomAt(st, ...b2);
+    if (a1 && a2 && !a1.bonds.includes(a2.id)) {
+      a1.bonds.push(a2.id); a2.bonds.push(a1.id);
+      st.flash.push({ q: (b1[0]+b2[0])/2, r: (b1[1]+b2[1])/2, ttl: 8, max: 8, color: '#A0762B' });
+    }
+    // 4. output
+    const outAtoms = st.def.output.cells.map((c, i) => {
+      const a = atomAt(st, ...c);
+      return (a && a.elem === st.def.output.elems[i] && !a.held) ? a : null;
+    });
+    if (outAtoms.every(Boolean) && outAtoms[0].bonds.includes(outAtoms[1].id)) {
+      st.atoms = st.atoms.filter(a => !outAtoms.includes(a));
+      st.products++;
+      st.flash.push({ q: st.def.output.cells[0][0], r: st.def.output.cells[0][1], ttl: 10, max: 10, color: st.def.color });
+      const who = st.def.key === 'fl' ? 'fl' : 'he';
+      log(`<span class="${who}">${st.def.author}</span> output ${st.products}/${GOAL} verified`);
+      if (st.products >= GOAL) {
+        st.done = true;
+        st.cycles = cycle;
+        log(`<span class="${who}">${st.def.author}</span> COMPLETE — ${GOAL} products in ${cycle} cycles · metrics sealed`, true);
+      }
+    }
+    for (const a of st.atoms) st.area.add(key(a.q, a.r));
+    st.flash = st.flash.filter(f => --f.ttl > 0);
+  }
+
+  // ---------- layout / rendering ----------
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const CW = 520, CH = 440;
+
+  function fitView(def) {
+    const cells = [
+      ...def.inputs.map(i => i.cell), ...def.bonder, ...def.output.cells,
+    ];
+    for (const a of def.arms) {
+      cells.push(a.base);
+      for (const d of DIRS) cells.push([a.base[0] + d[0], a.base[1] + d[1]]);
+    }
+    const px = cells.map(([q, r]) => [SQ3 * (q + r / 2), 1.5 * r]);
+    const xs = px.map(p => p[0]), ys = px.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const s = Math.min(36, (CW - 110) / Math.max(1e-6, maxX - minX), (CH - 110) / Math.max(1e-6, maxY - minY));
+    return {
+      s,
+      ox: CW / 2 - s * (minX + maxX) / 2,
+      oy: CH / 2 - s * (minY + maxY) / 2,
+    };
+  }
+  const px = (v, q, r) => [v.ox + v.s * SQ3 * (q + r / 2), v.oy + v.s * 1.5 * r];
+
+  const views = MACHINES.map(fitView);
+  const canvases = [document.getElementById('cv0'), document.getElementById('cv1')];
+  const ctxs = canvases.map(c => {
+    c.width = CW * dpr; c.height = CH * dpr;
+    c.style.aspectRatio = `${CW} / ${CH}`;
+    return c.getContext('2d');
+  });
+
+  const ease = t => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+
+  function hexPath(ctx, x, y, s) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 3 * i + Math.PI / 6;
+      const hx = x + s * Math.cos(a), hy = y + s * Math.sin(a);
+      i === 0 ? ctx.moveTo(hx, hy) : ctx.lineTo(hx, hy);
+    }
+    ctx.closePath();
+  }
+
+  function drawAtom(ctx, x, y, elem, s) {
+    const E = ELEMS[elem];
+    ctx.beginPath(); ctx.arc(x, y, s * 0.52, 0, Math.PI * 2);
+    ctx.fillStyle = E.fill; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = E.edge; ctx.stroke();
+    ctx.fillStyle = E.label;
+    ctx.font = `600 ${Math.round(s * 0.42)}px 'EB Garamond', Georgia, serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(E.name, x, y + 0.5);
+  }
+
+  // returns the interpolated pixel position of an atom (accounting for a mid-rotation carry)
+  function atomPix(st, v, a, p) {
+    for (const arm of st.arms) {
+      if (!arm.held.includes(a)) continue;
+      const ins = arm.tape[arm.idx];
+      if (ins === '+' || ins === '-') {
+        const [bx, by] = px(v, ...arm.base);
+        const [ax, ay] = px(v, a.q, a.r);
+        const da = (ins === '+' ? 1 : -1) * Math.PI / 3 * ease(p);
+        const dx = ax - bx, dy = ay - by;
+        return [bx + dx * Math.cos(da) - dy * Math.sin(da), by + dx * Math.sin(da) + dy * Math.cos(da)];
+      }
+    }
+    return px(v, a.q, a.r);
+  }
+
+  function render(i, p) {
+    const st = S[i], v = views[i], ctx = ctxs[i], def = st.def;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#EAE0C9';
+    ctx.fillRect(0, 0, CW, CH);
+
+    // faint hex field
+    ctx.strokeStyle = 'rgba(160,140,95,0.18)';
+    ctx.lineWidth = 1;
+    for (let q = -8; q <= 8; q++) for (let r = -8; r <= 8; r++) {
+      const [x, y] = px(v, q, r);
+      if (x < -v.s || x > CW + v.s || y < -v.s || y > CH + v.s) continue;
+      hexPath(ctx, x, y, v.s * 0.96); ctx.stroke();
+    }
+
+    // glyphs: bonder
+    const [bA, bB] = def.bonder;
+    for (const c of def.bonder) {
+      const [x, y] = px(v, ...c);
+      hexPath(ctx, x, y, v.s * 0.96);
+      ctx.fillStyle = 'rgba(160,118,43,0.16)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(160,118,43,0.7)'; ctx.lineWidth = 1.4; ctx.stroke();
+    }
+    {
+      const [x1, y1] = px(v, ...bA), [x2, y2] = px(v, ...bB);
+      ctx.strokeStyle = 'rgba(160,118,43,0.85)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.fillStyle = 'rgba(160,118,43,1)';
+      ctx.beginPath(); ctx.arc((x1+x2)/2, (y1+y2)/2, 3.4, 0, Math.PI*2); ctx.fill();
+    }
+    // glyphs: inputs
+    ctx.font = `700 10px 'Courier Prime', monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const inp of def.inputs) {
+      const [x, y] = px(v, ...inp.cell);
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(x, y, v.s * 0.62, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(42,35,24,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(42,35,24,0.55)';
+      ctx.fillText('IN·' + inp.elem, x, y + v.s * 0.95);
+    }
+    // glyphs: output
+    for (let k = 0; k < def.output.cells.length; k++) {
+      const [x, y] = px(v, ...def.output.cells[k]);
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(x, y, v.s * 0.55, 0, Math.PI * 2);
+      ctx.strokeStyle = def.color; ctx.lineWidth = 1.3; ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    {
+      const [x, y] = px(v, ...def.output.cells[0]);
+      ctx.fillStyle = def.color;
+      ctx.fillText('OUT', x, y - v.s * 0.95);
+    }
+
+    // bonds
+    ctx.lineWidth = v.s * 0.2;
+    ctx.strokeStyle = '#2A2318';
+    const drawn = new Set();
+    for (const a of st.atoms) {
+      for (const bid of a.bonds) {
+        const pairKey = Math.min(a.id, bid) + '-' + Math.max(a.id, bid);
+        if (drawn.has(pairKey)) continue;
+        drawn.add(pairKey);
+        const b = st.atoms.find(x => x.id === bid);
+        if (!b) continue;
+        const [x1, y1] = atomPix(st, v, a, p), [x2, y2] = atomPix(st, v, b, p);
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+    }
+
+    // atoms
+    for (const a of st.atoms) {
+      const [x, y] = atomPix(st, v, a, p);
+      drawAtom(ctx, x, y, a.elem, v.s);
+    }
+
+    // arms
+    for (const arm of st.arms) {
+      const [bx, by] = px(v, ...arm.base);
+      const ins = st.done ? null : arm.tape[arm.idx];
+      let ang = Math.atan2(1.5 * DIRS[arm.angle][1], SQ3 * (DIRS[arm.angle][0] + DIRS[arm.angle][1] / 2));
+      if (ins === '+' || ins === '-') ang += (ins === '+' ? 1 : -1) * Math.PI / 3 * ease(p);
+      const hx = bx + Math.cos(ang) * v.s * SQ3, hy = by + Math.sin(ang) * v.s * SQ3;
+      // shaft
+      ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = v.s * 0.16; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(hx, hy); ctx.stroke();
+      // base plate
+      ctx.beginPath(); ctx.arc(bx, by, v.s * 0.34, 0, Math.PI * 2);
+      ctx.fillStyle = '#C9B57E'; ctx.fill();
+      ctx.lineWidth = 1.6; ctx.strokeStyle = '#8A6A1E'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx, by, v.s * 0.1, 0, Math.PI * 2);
+      ctx.fillStyle = '#2A2318'; ctx.fill();
+      // claw
+      const open = arm.held.length === 0 ? 0.5 : 0.16;
+      for (const side of [-1, 1]) {
+        const ca = ang + side * (Math.PI / 2) * open;
+        ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = v.s * 0.11;
+        ctx.beginPath();
+        ctx.moveTo(hx - Math.cos(ang) * v.s * 0.2, hy - Math.sin(ang) * v.s * 0.2);
+        ctx.lineTo(hx + Math.cos(ca) * v.s * 0.42, hy + Math.sin(ca) * v.s * 0.42);
+        ctx.stroke();
+      }
+    }
+
+    // flashes
+    for (const f of st.flash) {
+      const t = f.ttl / f.max;
+      const [x, y] = px(v, f.q, f.r);
+      ctx.strokeStyle = f.color; ctx.globalAlpha = t;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, (1 - t) * v.s * 1.6 + v.s * 0.4, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---------- tapes UI ----------
+  const GLYPH = { 'G': 'G', 'D': 'D', '+': '↻', '-': '↺', 'W': '·' };
+  const NUM = ['Ⅰ', 'Ⅱ', 'Ⅲ'];
+  function buildTapes() {
+    for (let i = 0; i < 2; i++) {
+      const host = document.getElementById('tapes' + i);
+      host.innerHTML = '';
+      S[i].arms.forEach((arm, ai) => {
+        const row = document.createElement('div'); row.className = 'tape-row';
+        const lab = document.createElement('span'); lab.className = 'tape-label';
+        lab.textContent = 'ARM ' + NUM[ai];
+        const cells = document.createElement('div'); cells.className = 'tape-cells';
+        arm.tape.forEach(t => {
+          const sp = document.createElement('span'); sp.textContent = GLYPH[t]; cells.appendChild(sp);
+        });
+        row.appendChild(lab); row.appendChild(cells); host.appendChild(row);
+      });
+    }
+  }
+  function updateTapes() {
+    for (let i = 0; i < 2; i++) {
+      const host = document.getElementById('tapes' + i);
+      S[i].arms.forEach((arm, ai) => {
+        const cells = host.children[ai].querySelector('.tape-cells').children;
+        for (let k = 0; k < cells.length; k++) cells[k].classList.toggle('on', !S[i].done && k === arm.idx);
+      });
+    }
+  }
+
+  // ---------- HUD + leaderboard ----------
+  function hud() {
+    document.getElementById('cycval').textContent = String(cycle).padStart(4, '0');
+    for (let i = 0; i < 2; i++) {
+      const st = S[i];
+      document.getElementById('m' + i + 'cost').textContent = st.cost + 'g';
+      document.getElementById('m' + i + 'cyc').textContent = st.done ? st.cycles : cycle;
+      document.getElementById('m' + i + 'area').textContent = st.area.size;
+      document.getElementById('m' + i + 'prod').textContent = st.products + '/' + GOAL;
+      document.getElementById('stamp' + i).classList.toggle('show', st.done);
+      if (st.done) document.getElementById('stampSub' + i).textContent =
+        st.cost + 'g · ' + st.cycles + ' cycles · ' + st.area.size + ' hexes';
+    }
+  }
+
+  function leaderboard() {
+    const rows = S.map(st => ({
+      who: st.def.author, cls: st.def.key === 'fl' ? 'fl' : 'he',
+      cost: st.cost, cycles: st.cycles, area: st.area.size,
+    }));
+    const fill = (id, metric, unit) => {
+      const sorted = [...rows].sort((a, b) => a[metric] - b[metric]);
+      document.getElementById(id).innerHTML = sorted.map((r, i) =>
+        `<tr class="${i === 0 ? 'first' : ''}"><td class="rk">${i + 1}</td><td class="who ${r.cls}">${r.who}</td><td class="val">${r[metric]}${unit}</td></tr>`
+      ).join('');
+    };
+    fill('bCycles', 'cycles', 'c');
+    fill('bCost', 'cost', 'g');
+    fill('bArea', 'area', 'a');
+    document.getElementById('boardWrap').classList.add('live');
+    document.getElementById('boardSub').textContent = 'sealed on-chain · all-time · 2 entries';
+    log('leaderboard sealed — puzzle Nº 001, 2 entries, 3 crowns', true);
+  }
+
+  // ---------- loop ----------
+  let last = performance.now(), boardDone = false;
+  function frame(now) {
+    const dt = Math.min(120, now - last); last = now;
+    if (running) {
+      phase += dt / STEP_MS[speedIdx];
+      while (phase >= 1) {
+        phase -= 1;
+        cycle++;
+        S.forEach(commitStep);
+        updateTapes();
+        if (S.every(st => st.done)) {
+          running = false; phase = 0;
+          document.getElementById('btnRun').textContent = 'Replay';
+          if (!boardDone) { boardDone = true; leaderboard(); }
+        }
+      }
+    }
+    render(0, phase);
+    render(1, phase);
+    hud();
+    requestAnimationFrame(frame);
+  }
+
+  function reset() {
+    S = MACHINES.map(makeState);
+    cycle = 0; phase = 0; boardDone = false;
+    feedEl.innerHTML = '';
+    log('puzzle Nº 001 · LEAD AMALGAM — replaying 2 sealed solutions', true);
+    log('<span class="fl">flamel.thru</span> THE SPENDTHRIFT · 3 arms · 70g', false);
+    log('<span class="he">hermes.thru</span> THE MISER · 1 arm · 30g', false);
+    document.getElementById('boardWrap').classList.remove('live');
+    document.getElementById('boardSub').textContent = 'awaiting verification…';
+    ['bCycles','bCost','bArea'].forEach(id =>
+      document.getElementById(id).innerHTML = '<tr><td class="empty">AWAITING RESULTS</td></tr>');
+    buildTapes(); updateTapes();
+  }
+
+  const btnRun = document.getElementById('btnRun');
+  function setRunning(r) {
+    running = r;
+    btnRun.textContent = r ? 'Pause' : 'Run';
+  }
+  btnRun.addEventListener('click', () => {
+    if (S.every(st => st.done)) { reset(); setRunning(true); return; }
+    setRunning(!running);
+  });
+  document.getElementById('btnReset').addEventListener('click', () => { reset(); setRunning(true); });
+  document.querySelectorAll('.speed button').forEach(b => {
+    b.addEventListener('click', () => {
+      speedIdx = +b.dataset.speed;
+      document.querySelectorAll('.speed button').forEach(x => x.classList.toggle('on', x === b));
+    });
+  });
+
+  reset();
+  setRunning(!reduceMotion);
+  if (reduceMotion) log('reduced motion detected — press RUN to replay the solutions', true);
+  requestAnimationFrame(frame);
+})();
+</script>
