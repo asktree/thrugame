@@ -62,9 +62,36 @@
     display: flex; align-items: center; justify-content: space-between; gap: 14px;
     padding: 12px 18px; flex-wrap: wrap;
   }
-  .puzzle-name { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
-  .puzzle-name .no { color: var(--brass); }
+  .ptabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ptab {
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-dim); background: var(--parch); border: 1px solid var(--ink-dim);
+    padding: 7px 12px; cursor: pointer; transition: background .15s, color .15s;
+  }
+  .ptab:hover { color: var(--ink); }
+  .ptab:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  .ptab.on { background: var(--ink); color: var(--parch); border-color: var(--ink); }
   .puzzle-spec { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); letter-spacing: .06em; }
+
+  /* ---------- problem panel ---------- */
+  .problem {
+    border: 1px solid var(--line); border-bottom: 0; background: var(--parch-3);
+    display: flex; align-items: center; gap: 26px; padding: 13px 18px; flex-wrap: wrap;
+  }
+  .prob-col { display: flex; flex-direction: column; gap: 7px; }
+  .prob-col.grow { flex: 1 1 260px; min-width: 220px; }
+  .prob-k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .2em; color: var(--ink-faint); text-transform: uppercase; }
+  .prob-atoms { display: flex; align-items: center; }
+  .pa {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 27px; height: 27px; border-radius: 50%; border: 1.5px solid var(--ink);
+    font-family: var(--mono); font-size: 10px; font-weight: 700; flex: none;
+  }
+  .pb { display: inline-block; width: 12px; height: 4px; background: var(--ink); flex: none; }
+  .pgap { display: inline-block; width: 10px; flex: none; }
+  .prob-arrow { font-family: var(--mono); font-size: 18px; color: var(--brass); }
+  .prob-tools { font-family: var(--mono); font-size: 11.5px; color: var(--ink); letter-spacing: .04em; }
+  .prob-note { font-size: 13px; color: var(--ink-dim); font-style: italic; line-height: 1.45; }
 
   /* ---------- duel ---------- */
   .duel { border: 1px solid var(--line); background: var(--parch-2); }
@@ -249,8 +276,28 @@
 
   <!-- ================= DUEL ================= -->
   <div class="puzzle-banner">
-    <span class="puzzle-name"><span class="no">Puzzle Nº 001</span> · Lead Amalgam</span>
-    <span class="puzzle-spec">inputs: Pb, Hg &nbsp;→&nbsp; product: Pb–Hg ×6 &nbsp;·&nbsp; two verified solutions, replaying now</span>
+    <div class="ptabs" role="tablist" aria-label="Puzzle select">
+      <button class="ptab on" data-p="0">Nº 001 · Lead Amalgam</button>
+      <button class="ptab" data-p="1">Nº 002 · Tria Prima</button>
+      <button class="ptab" data-p="2">Nº 003 · Airship Fuel</button>
+    </div>
+    <span class="puzzle-spec" id="pspec">inputs: Pb, Hg → product: Pb–Hg ×6</span>
+  </div>
+  <div class="problem">
+    <div class="prob-col">
+      <div class="prob-k">Reagents · unlimited</div>
+      <div class="prob-atoms" id="probIn"></div>
+    </div>
+    <div class="prob-arrow">→</div>
+    <div class="prob-col">
+      <div class="prob-k">Required product · ×6</div>
+      <div class="prob-atoms" id="probOut"></div>
+    </div>
+    <div class="prob-col grow">
+      <div class="prob-k">Toolkit</div>
+      <div class="prob-tools">ARM 20g &nbsp;·&nbsp; BOND GLYPH 10g &nbsp;·&nbsp; reagent &amp; product glyphs free &nbsp;·&nbsp; <span style="white-space:nowrap">tape: G ↻ ↺ ↷ ↶ D</span></div>
+      <div class="prob-note">The puzzle fixes the reagents and the product. The builder lays out the board, prices the parts, and writes the tapes.</div>
+    </div>
   </div>
   <div class="duel">
     <div class="duel-grid">
@@ -308,7 +355,7 @@
   <!-- ================= LEADERBOARD ================= -->
   <div class="board-reveal" id="boardWrap">
     <div class="board-head">
-      <div class="bh-title">Leaderboard · Puzzle Nº 001</div>
+      <div class="bh-title" id="bhTitle">Leaderboard · Puzzle Nº 001</div>
       <div class="bh-sub" id="boardSub">awaiting verification…</div>
     </div>
     <div class="boards">
@@ -358,9 +405,9 @@
   <!-- ================= MACHINE LANGUAGE ================= -->
   <section>
     <div class="sec-label">03 · The machine language</div>
-    <h2>Five words are enough</h2>
+    <h2>Seven words are enough</h2>
     <div class="prose">
-      <p>The demo machines above speak the smallest dialect worth having — one part (the arm), two glyphs (bond, output), five instructions. Small enough that a solution serializes to a tweet-sized payload; expressive enough that the two machines above solve the same puzzle in <strong>completely different ways</strong>.</p>
+      <p>The demo machines above speak the smallest dialect worth having — one part (the arm), two glyphs (bond, output), seven instructions. Small enough that a solution serializes to a tweet-sized payload; expressive enough that every pair of machines above solves the same puzzle in <strong>completely different ways</strong>.</p>
     </div>
     <div class="isa">
       <table>
@@ -369,6 +416,8 @@
         <tr><td class="gl">D</td><td class="op">RELEASE</td><td>Open the claw. Whatever was carried stays where it is.</td></tr>
         <tr><td class="gl">↻</td><td class="op">TURN CW</td><td>Rotate the arm 60° clockwise about its base, carrying its cargo in a rigid arc.</td></tr>
         <tr><td class="gl">↺</td><td class="op">TURN CCW</td><td>Rotate the arm 60° counter-clockwise.</td></tr>
+        <tr><td class="gl">↷</td><td class="op">PIVOT CW</td><td>Spin the held molecule 60° clockwise about the claw itself — the arm stays put, the cargo swings. Watch the Spendthrift's Airship Fuel wheel use it to fling the finished chain onto the product glyph.</td></tr>
+        <tr><td class="gl">↶</td><td class="op">PIVOT CCW</td><td>Spin the held molecule counter-clockwise about the claw.</td></tr>
         <tr><td class="gl">·</td><td class="op">WAIT</td><td>Hold position for one cycle. Timing is a resource too.</td></tr>
       </table>
     </div>
@@ -434,27 +483,85 @@
   const ELEMS = {
     Pb: { fill: '#4A4640', edge: '#2A2318', label: '#F1E9D6', name: 'Pb' },
     Hg: { fill: '#BDB9AF', edge: '#2A2318', label: '#2A2318', name: 'Hg' },
+    Sa: { fill: '#F6F1E2', edge: '#2A2318', label: '#2A2318', name: 'Sa' },
+    S:  { fill: '#D9A93A', edge: '#2A2318', label: '#2A2318', name: 'S' },
   };
-  const MACHINES = [
+  const FL = { key: 'fl', title: 'The Spendthrift', author: 'flamel.thru', color: '#8C3B2E' };
+  const HE = { key: 'he', title: 'The Miser', author: 'hermes.thru', color: '#33705E' };
+  const PUZZLES = [
     {
-      key: 'fl', title: 'The Spendthrift', author: 'flamel.thru', color: '#8C3B2E',
-      arms: [
-        { base: [-1, 0], angle: 4, tape: ['G','+','+','D','-','-'] },
-        { base: [ 2, 0], angle: 5, tape: ['G','-','-','D','+','+'] },
-        { base: [-1, 1], angle: 0, tape: ['+','D','-','-','G','+'] },
+      no: '001', name: 'Lead Amalgam', chain: ['Pb','Hg'],
+      spec: 'inputs: Pb, Hg → product: Pb–Hg ×6',
+      machines: [
+        { ...FL,
+          arms: [
+            { base: [-1, 0], angle: 4, tape: ['G','+','+','D','-','-'] },
+            { base: [ 2, 0], angle: 5, tape: ['G','-','-','D','+','+'] },
+            { base: [-1, 1], angle: 0, tape: ['+','D','-','-','G','+'] },
+          ],
+          inputs: [ { cell: [-1,-1], elem: 'Pb' }, { cell: [3,-1], elem: 'Hg' } ],
+          bonders: [ [[0,0],[1,0]] ],
+          output: { cells: [[-1,2],[-2,3]], elems: ['Pb','Hg'], bonds: [[0,1]] },
+        },
+        { ...HE,
+          arms: [
+            { base: [0,0], angle: 5, tape: ['G','-','D','+','+','G','+','+','+','D','G','-','-','D','-','-'] },
+          ],
+          inputs: [ { cell: [1,-1], elem: 'Pb' }, { cell: [1,0], elem: 'Hg' } ],
+          bonders: [ [[-1,0],[0,-1]] ],
+          output: { cells: [[0,1],[-1,1]], elems: ['Hg','Pb'], bonds: [[0,1]] },
+        },
       ],
-      inputs: [ { cell: [-1,-1], elem: 'Pb' }, { cell: [3,-1], elem: 'Hg' } ],
-      bonder: [ [0,0], [1,0] ],
-      output: { cells: [[-1,2],[-2,3]], elems: ['Pb','Hg'] },
     },
     {
-      key: 'he', title: 'The Miser', author: 'hermes.thru', color: '#33705E',
-      arms: [
-        { base: [0,0], angle: 5, tape: ['G','-','D','+','+','G','+','+','+','D','G','-','-','D','-','-'] },
+      no: '002', name: 'Tria Prima', chain: ['Sa','Hg','S'],
+      spec: 'inputs: Sa, Hg, S → product: Sa–Hg–S ×6',
+      machines: [
+        { ...FL,
+          arms: [
+            { base: [0,0],   angle: 3, tape: ['G','+','+','+','+','+','D','+'] },
+            { base: [0,-2],  angle: 0, tape: ['W','G','+','D','-','W','W','W'] },
+            { base: [-1,-1], angle: 3, tape: ['G','+','+','+','D','-','-','-'] },
+          ],
+          inputs: [ { cell: [-1,0], elem: 'Sa' }, { cell: [1,-2], elem: 'Hg' }, { cell: [-2,-1], elem: 'S' } ],
+          bonders: [ [[0,-1],[1,-1]] ],
+          output: { cells: [[-1,1],[0,1],[1,0]], elems: ['Sa','Hg','S'], bonds: [[0,1],[1,2]] },
+        },
+        { ...HE,
+          arms: [
+            { base: [0,0],  angle: 3, tape: ['G','+','+','+','W','W','W','+','+','D','+'] },
+            { base: [0,-2], angle: 0, tape: ['W','G','+','D','+','G','-','D','-','W','W'] },
+          ],
+          inputs: [ { cell: [-1,0], elem: 'Sa' }, { cell: [1,-2], elem: 'Hg' }, { cell: [-1,-1], elem: 'S' } ],
+          bonders: [ [[0,-1],[1,-1]] ],
+          output: { cells: [[-1,1],[0,1],[1,0]], elems: ['Sa','Hg','S'], bonds: [[0,1],[1,2]] },
+        },
       ],
-      inputs: [ { cell: [1,-1], elem: 'Pb' }, { cell: [1,0], elem: 'Hg' } ],
-      bonder: [ [-1,0], [0,-1] ],
-      output: { cells: [[0,1],[-1,1]], elems: ['Hg','Pb'] },
+    },
+    {
+      no: '003', name: 'Airship Fuel', chain: ['Hg','S','S','S'],
+      spec: 'inputs: Hg, S → product: Hg–S–S–S ×6',
+      machines: [
+        { ...FL,
+          arms: [
+            { base: [0,0],   angle: 3, tape: ['G','+','+','+','+','W','W','P','D','+','+'] },
+            { base: [0,-2],  angle: 0, tape: ['W','G','+','D','-','G','+','D','-','W','W'] },
+            { base: [-1,-1], angle: 3, tape: ['G','+','+','+','D','-','-','-','W','W','W'] },
+          ],
+          inputs: [ { cell: [-1,0], elem: 'Hg' }, { cell: [1,-2], elem: 'S' }, { cell: [-2,-1], elem: 'S' } ],
+          bonders: [ [[0,-1],[1,-1]] ],
+          output: { cells: [[0,1],[1,1],[2,0],[2,-1]], elems: ['Hg','S','S','S'], bonds: [[0,1],[1,2],[2,3]] },
+        },
+        { ...HE,
+          arms: [
+            { base: [0,0],  angle: 3, tape: ['G','+','+','+','W','W','W','+','W','W','W','+','D','+'] },
+            { base: [0,-2], angle: 0, tape: ['W','G','+','D','-','G','+','D','-','G','+','D','-','W'] },
+          ],
+          inputs: [ { cell: [-1,0], elem: 'Hg' }, { cell: [1,-2], elem: 'S' } ],
+          bonders: [ [[0,-1],[1,-1]] ],
+          output: { cells: [[-1,1],[0,1],[1,0],[1,-1]], elems: ['Hg','S','S','S'], bonds: [[0,1],[1,2],[2,3]] },
+        },
+      ],
     },
   ];
   const GOAL = 6;
@@ -477,20 +584,22 @@
   function makeState(def) {
     return {
       def,
-      atoms: [],           // {id,q,r,elem,bonds:[ids],held:bool}
-      arms: def.arms.map(a => ({ base: a.base, angle: a.angle, tape: a.tape, held: [], idx: 0 })),
+      atoms: [],           // {id,q,r,elem,bonds:[ids]}
+      arms: def.arms.map(a => ({ base: a.base, angle: a.angle, tape: a.tape, anchor: null, idx: 0 })),
       nextId: 1,
       products: 0,
       done: false,
       cycles: 0,
       area: new Set([
         ...def.inputs.map(i => key(...i.cell)),
-        ...def.bonder.map(c => key(...c)),
+        ...def.bonders.flat().map(c => key(...c)),
         ...def.output.cells.map(c => key(...c)),
         ...def.arms.map(a => key(...a.base)),
       ]),
-      cost: def.arms.length * COST_ARM + COST_BONDER,
+      cost: def.arms.length * COST_ARM + def.bonders.length * COST_BONDER,
       flash: [],           // visual pulses {q,r,ttl,max,color}
+      _held: new Set(),
+      collisions: [],      // debug: two atoms on one cell at commit
     };
   }
   let S = [];
@@ -502,7 +611,8 @@
     while (stack.length) {
       const a = stack.pop();
       for (const bid of a.bonds) {
-        if (!seen.has(bid)) { seen.add(bid); stack.push(st.atoms.find(x => x.id === bid)); }
+        const b = st.atoms.find(x => x.id === bid);
+        if (b && !seen.has(bid)) { seen.add(bid); stack.push(b); }
       }
     }
     return st.atoms.filter(a => seen.has(a.id));
@@ -513,43 +623,63 @@
     // 1. spawn
     for (const inp of st.def.inputs) {
       if (!atomAt(st, ...inp.cell)) {
-        st.atoms.push({ id: st.nextId++, q: inp.cell[0], r: inp.cell[1], elem: inp.elem, bonds: [], held: false });
+        st.atoms.push({ id: st.nextId++, q: inp.cell[0], r: inp.cell[1], elem: inp.elem, bonds: [] });
       }
     }
-    // 2. instructions
+    // 2. instructions (in arm order; a grip is an anchor — whatever bonds to the
+    // anchored atom later comes along with it)
     for (const arm of st.arms) {
       const ins = arm.tape[arm.idx];
       if (ins === '+' || ins === '-') {
         const rot = ins === '+' ? cwRot : ccwRot;
         arm.angle = (arm.angle + (ins === '+' ? 1 : 5)) % 6;
-        for (const a of arm.held) {
+        if (arm.anchor) for (const a of molecule(st, arm.anchor)) {
           const [q, r] = rot(a.q - arm.base[0], a.r - arm.base[1]);
           a.q = arm.base[0] + q; a.r = arm.base[1] + r;
           st.area.add(key(a.q, a.r));
         }
-      } else if (ins === 'G' && arm.held.length === 0) {
-        const hand = [arm.base[0] + DIRS[arm.angle][0], arm.base[1] + DIRS[arm.angle][1]];
-        const a = atomAt(st, ...hand);
-        if (a) { arm.held = molecule(st, a); arm.held.forEach(x => x.held = true); }
+      } else if (ins === 'P' || ins === 'Q') {
+        // pivot: spin the held molecule about the claw itself; the arm stays put
+        if (arm.anchor) {
+          const rot = ins === 'P' ? cwRot : ccwRot;
+          const hx = arm.base[0] + DIRS[arm.angle][0], hy = arm.base[1] + DIRS[arm.angle][1];
+          for (const a of molecule(st, arm.anchor)) {
+            const [q, r] = rot(a.q - hx, a.r - hy);
+            a.q = hx + q; a.r = hy + r;
+            st.area.add(key(a.q, a.r));
+          }
+        }
+      } else if (ins === 'G') {
+        if (!arm.anchor) {
+          const hand = [arm.base[0] + DIRS[arm.angle][0], arm.base[1] + DIRS[arm.angle][1]];
+          const a = atomAt(st, ...hand);
+          if (a) arm.anchor = a;
+        }
       } else if (ins === 'D') {
-        arm.held.forEach(x => x.held = false);
-        arm.held = [];
+        arm.anchor = null;
       }
       arm.idx = (arm.idx + 1) % arm.tape.length;
     }
-    // 3. bond
-    const [b1, b2] = st.def.bonder;
-    const a1 = atomAt(st, ...b1), a2 = atomAt(st, ...b2);
-    if (a1 && a2 && !a1.bonds.includes(a2.id)) {
-      a1.bonds.push(a2.id); a2.bonds.push(a1.id);
-      st.flash.push({ q: (b1[0]+b2[0])/2, r: (b1[1]+b2[1])/2, ttl: 400, max: 400, color: '#A0762B' });
+    // 3. bonds — every bonder joins whatever pair sits on it
+    for (const [b1, b2] of st.def.bonders) {
+      const a1 = atomAt(st, ...b1), a2 = atomAt(st, ...b2);
+      if (a1 && a2 && !a1.bonds.includes(a2.id)) {
+        a1.bonds.push(a2.id); a2.bonds.push(a1.id);
+        st.flash.push({ q: (b1[0]+b2[0])/2, r: (b1[1]+b2[1])/2, ttl: 400, max: 400, color: '#A0762B' });
+      }
     }
-    // 4. output
-    const outAtoms = st.def.output.cells.map((c, i) => {
+    // held set, post-bond
+    st._held = new Set();
+    for (const arm of st.arms) if (arm.anchor) for (const a of molecule(st, arm.anchor)) st._held.add(a.id);
+    // 4. output — exact molecule match, all atoms free
+    const out = st.def.output;
+    const outAtoms = out.cells.map((c, i) => {
       const a = atomAt(st, ...c);
-      return (a && a.elem === st.def.output.elems[i] && !a.held) ? a : null;
+      return (a && a.elem === out.elems[i] && !st._held.has(a.id)) ? a : null;
     });
-    if (outAtoms.every(Boolean) && outAtoms[0].bonds.includes(outAtoms[1].id)) {
+    if (outAtoms.every(Boolean)
+        && out.bonds.every(([i, j]) => outAtoms[i].bonds.includes(outAtoms[j].id))
+        && molecule(st, outAtoms[0]).length === out.cells.length) {
       st.atoms = st.atoms.filter(a => !outAtoms.includes(a));
       st.products++;
       st.flash.push({ q: st.def.output.cells[0][0], r: st.def.output.cells[0][1], ttl: 500, max: 500, color: st.def.color });
@@ -561,7 +691,14 @@
         log(`<span class="${who}">${st.def.author}</span> COMPLETE — ${GOAL} products in ${cycle} cycles · metrics sealed`, true);
       }
     }
-    for (const a of st.atoms) st.area.add(key(a.q, a.r));
+    // area + debug collision scan
+    const seen = new Map();
+    for (const a of st.atoms) {
+      const k = key(a.q, a.r);
+      st.area.add(k);
+      if (seen.has(k)) st.collisions.push({ cycle, cell: k, a: seen.get(k).elem, b: a.elem });
+      seen.set(k, a);
+    }
   }
 
   // ---------- layout / rendering ----------
@@ -570,7 +707,7 @@
 
   function fitView(def) {
     const cells = [
-      ...def.inputs.map(i => i.cell), ...def.bonder, ...def.output.cells,
+      ...def.inputs.map(i => i.cell), ...def.bonders.flat(), ...def.output.cells,
     ];
     for (const a of def.arms) {
       cells.push(a.base);
@@ -589,7 +726,7 @@
   }
   const px = (v, q, r) => [v.ox + v.s * SQ3 * (q + r / 2), v.oy + v.s * 1.5 * r];
 
-  const views = MACHINES.map(fitView);
+  let views = [];
   const canvases = [document.getElementById('cv0'), document.getElementById('cv1')];
   const ctxs = canvases.map(c => {
     c.width = CW * dpr; c.height = CH * dpr;
@@ -624,15 +761,17 @@
   function atomPix(st, v, a, p) {
     if (st.done) return px(v, a.q, a.r);
     for (const arm of st.arms) {
-      if (!arm.held.includes(a)) continue;
+      if (!arm.anchor) continue;
       const ins = arm.tape[arm.idx];
-      if (ins === '+' || ins === '-') {
-        const [bx, by] = px(v, ...arm.base);
-        const [ax, ay] = px(v, a.q, a.r);
-        const da = (ins === '+' ? 1 : -1) * Math.PI / 3 * ease(p);
-        const dx = ax - bx, dy = ay - by;
-        return [bx + dx * Math.cos(da) - dy * Math.sin(da), by + dx * Math.sin(da) + dy * Math.cos(da)];
-      }
+      const spin = (ins === '+' || ins === '-') ? 'base' : (ins === 'P' || ins === 'Q') ? 'hand' : null;
+      if (!spin || !molecule(st, arm.anchor).includes(a)) continue;
+      let cx, cy;
+      if (spin === 'base') { [cx, cy] = px(v, ...arm.base); }
+      else { [cx, cy] = px(v, arm.base[0] + DIRS[arm.angle][0], arm.base[1] + DIRS[arm.angle][1]); }
+      const [ax, ay] = px(v, a.q, a.r);
+      const da = (ins === '+' || ins === 'P' ? 1 : -1) * Math.PI / 3 * ease(p);
+      const dx = ax - cx, dy = ay - cy;
+      return [cx + dx * Math.cos(da) - dy * Math.sin(da), cy + dx * Math.sin(da) + dy * Math.cos(da)];
     }
     return px(v, a.q, a.r);
   }
@@ -652,15 +791,14 @@
       hexPath(ctx, x, y, v.s * 0.96); ctx.stroke();
     }
 
-    // glyphs: bonder
-    const [bA, bB] = def.bonder;
-    for (const c of def.bonder) {
-      const [x, y] = px(v, ...c);
-      hexPath(ctx, x, y, v.s * 0.96);
-      ctx.fillStyle = 'rgba(160,118,43,0.16)'; ctx.fill();
-      ctx.strokeStyle = 'rgba(160,118,43,0.7)'; ctx.lineWidth = 1.4; ctx.stroke();
-    }
-    {
+    // glyphs: bonders
+    for (const [bA, bB] of def.bonders) {
+      for (const c of [bA, bB]) {
+        const [x, y] = px(v, ...c);
+        hexPath(ctx, x, y, v.s * 0.96);
+        ctx.fillStyle = 'rgba(160,118,43,0.16)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(160,118,43,0.7)'; ctx.lineWidth = 1.4; ctx.stroke();
+      }
       const [x1, y1] = px(v, ...bA), [x2, y2] = px(v, ...bB);
       ctx.strokeStyle = 'rgba(160,118,43,0.85)'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
@@ -732,7 +870,7 @@
       ctx.beginPath(); ctx.arc(bx, by, v.s * 0.1, 0, Math.PI * 2);
       ctx.fillStyle = '#2A2318'; ctx.fill();
       // claw
-      const open = arm.held.length === 0 ? 0.5 : 0.16;
+      const open = arm.anchor ? 0.16 : 0.5;
       for (const side of [-1, 1]) {
         const ca = ang + side * (Math.PI / 2) * open;
         ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = v.s * 0.11;
@@ -755,8 +893,8 @@
   }
 
   // ---------- tapes UI ----------
-  const GLYPH = { 'G': 'G', 'D': 'D', '+': '↻', '-': '↺', 'W': '·' };
-  const NUM = ['Ⅰ', 'Ⅱ', 'Ⅲ'];
+  const GLYPH = { 'G': 'G', 'D': 'D', '+': '↻', '-': '↺', 'P': '↷', 'Q': '↶', 'W': '·' };
+  const NUM = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ'];
   function buildTapes() {
     for (let i = 0; i < 2; i++) {
       const host = document.getElementById('tapes' + i);
@@ -812,7 +950,7 @@
     ).join('');
     document.getElementById('boardWrap').classList.add('live');
     document.getElementById('boardSub').textContent = 'sealed on-chain · ranked by sum · 2 entries';
-    log(`leaderboard sealed — puzzle Nº 001 · ranked by SUM · ${rows[0].who} leads at ${rows[0].sum}`, true);
+    log(`leaderboard sealed — puzzle Nº ${PZ().no} · ranked by SUM · ${rows[0].who} leads at ${rows[0].sum}`, true);
   }
 
   // ---------- loop ----------
@@ -840,18 +978,71 @@
     requestAnimationFrame(frame);
   }
 
+  let PZi = 0;
+  const PZ = () => PUZZLES[PZi];
+
+  function chip(elem, sz) {
+    const E = ELEMS[elem];
+    return `<span class="pa" style="background:${E.fill};color:${E.label}">${E.name}</span>`;
+  }
+  function renderProblem() {
+    const p = PZ();
+    const uniq = [...new Set(p.machines[0].inputs.map(i => i.elem))];
+    document.getElementById('probIn').innerHTML = uniq.map(e => chip(e)).join('<span class="pgap"></span>');
+    document.getElementById('probOut').innerHTML = p.chain.map(e => chip(e)).join('<span class="pb"></span>');
+    document.getElementById('pspec').textContent = p.spec;
+  }
+
   function reset() {
-    S = MACHINES.map(makeState);
+    const p = PZ();
+    S = p.machines.map(makeState);
+    views = p.machines.map(fitView);
     cycle = 0; phase = 0; boardDone = false;
     feedEl.innerHTML = '';
-    log('puzzle Nº 001 · LEAD AMALGAM — replaying 2 sealed solutions', true);
-    log('<span class="fl">flamel.thru</span> THE SPENDTHRIFT · 3 arms · 70g', false);
-    log('<span class="he">hermes.thru</span> THE MISER · 1 arm · 30g', false);
+    log(`puzzle Nº ${p.no} · ${p.name.toUpperCase()} — replaying 2 sealed solutions`, true);
+    S.forEach(st => {
+      const who = st.def.key === 'fl' ? 'fl' : 'he';
+      log(`<span class="${who}">${st.def.author}</span> ${st.def.title.toUpperCase()} · ${st.def.arms.length} arm${st.def.arms.length > 1 ? 's' : ''} · ${st.cost}g`);
+    });
+    document.getElementById('bhTitle').textContent = `Leaderboard · Puzzle Nº ${p.no}`;
     document.getElementById('boardWrap').classList.remove('live');
     document.getElementById('boardSub').textContent = 'awaiting verification…';
     document.getElementById('bSum').innerHTML = '<tr><td class="empty">AWAITING RESULTS</td></tr>';
+    renderProblem();
     buildTapes(); updateTapes();
   }
+
+  document.querySelectorAll('.ptab').forEach(b => {
+    b.addEventListener('click', () => {
+      PZi = +b.dataset.p;
+      document.querySelectorAll('.ptab').forEach(x => x.classList.toggle('on', x === b));
+      reset(); setRunning(true);
+    });
+  });
+
+  // debug/verification harness: synchronous stepping, no animation
+  window.__gw = {
+    select(i) { PZi = i; document.querySelectorAll('.ptab').forEach(x => x.classList.toggle('on', +x.dataset.p === i)); reset(); running = false; },
+    run(n) {
+      running = false;
+      for (let k = 0; k < n && !S.every(st => st.done); k++) {
+        cycle++;
+        S.forEach(commitStep);
+      }
+      if (S.every(st => st.done) && !boardDone) { boardDone = true; leaderboard(); }
+      updateTapes();
+      return this.state();
+    },
+    state() {
+      return {
+        puzzle: PZ().no, cycle,
+        machines: S.map(st => ({
+          who: st.def.author, products: st.products, done: st.done, cycles: st.cycles,
+          cost: st.cost, area: st.area.size, collisions: st.collisions,
+        })),
+      };
+    },
+  };
 
   const btnRun = document.getElementById('btnRun');
   function setRunning(r) {
