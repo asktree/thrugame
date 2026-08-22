@@ -1,8 +1,8 @@
-# GREAT WORK — Game Specification
+# GREAT WORK! — Game Specification
 
-**Version 0.1 (draft) · game rules only — implementation details live elsewhere**
+**Version 0.2 (draft) · game rules only — implementation details live elsewhere**
 
-Great Work is an open optimization puzzle. A puzzle asks for a product molecule to be
+Great Work! is an open optimization puzzle. (The name is meant to be read as a compliment.) A puzzle asks for a product molecule to be
 manufactured from reagents; a solution is a **machine** — parts placed on a hex grid,
 each running a short looping instruction tape. The rules engine simulates the machine
 deterministically. A submission either produces six products without faulting — and has
@@ -31,9 +31,9 @@ centers. All rotation is in steps of 60°.
 | Part | Price | Notes |
 |---|---|---|
 | Arm, single gripper | 20g | one gripper at the tip |
-| Arm, dual gripper | 25g | two grippers, 180° apart |
-| Arm, tri gripper | 30g | three grippers, 120° apart |
-| Arm, hex gripper | 35g | six grippers, 60° apart |
+| Arm, dual gripper | 24g | two grippers, 180° apart |
+| Arm, tri gripper | 26g | three grippers, 120° apart |
+| Arm, hex gripper | 30g | six grippers, 60° apart |
 | Elbow attachment | +5g | mounts an arm on another arm (§5) |
 | Bond glyph | 10g | two fixed adjacent cells; bonds whatever pair rests on them |
 | Reagent glyph (input) | free | spawns its element whenever its cell is empty |
@@ -72,6 +72,8 @@ on the board or — via an elbow — at an integer position (1..len) along a par
 When any joint turns, everything downstream — child arms, grippers, held cargo — moves
 rigidly with it.
 
+Tracks are deliberately omitted: base-grabbing covers relocation.
+
 Two roads to articulation, deliberately priced apart:
 
 - **Elbow** (+5g): permanent weld; the joint doesn't collide; no gripper is spent.
@@ -81,7 +83,12 @@ Two roads to articulation, deliberately priced apart:
 
 ## 6. Instructions
 
-One tape per arm. Tapes loop forever; different arms may have different tape lengths.
+One tape per arm. Tapes loop forever; different arms may have different tape lengths,
+and **tapes are never padded to a common period** — synchronization is the builder's
+problem (a UI may offer affordances, but the rules don't help). A tape may begin with
+**delay blocks**: they run only on the tape's first pass, holding the arm for one tick
+each, and are excluded from the loop thereafter — so delays phase-shift an arm without
+changing its period.
 Every instruction is **coordinate-free** — its meaning is unchanged if the arm has been
 carried, turned, or re-planted.
 
@@ -92,6 +99,7 @@ carried, turned, or re-planted.
 | `↻` `↺` | TURN | the arm rotates 60° about its base, sweeping everything downstream |
 | `↷` `↶` | PIVOT | each held cargo rotates 60° about the gripper holding it; the arm itself does not move |
 | `·` | WAIT | hold for one tick |
+| `»` | DELAY | start-of-tape only; holds one tick on the first pass, then vanishes from the loop |
 
 ## 7. The tick
 
@@ -179,7 +187,6 @@ any cap overrides, and optionally a **prize escrow**:
 
 - **Pistons** (runtime-variable arm length) — likely 40g if adopted; interacts with the
   sweep rule but not with the tree model.
-- **Tracks** (translating bases) — largely subsumed by base-grabbing; may be redundant.
 - Additional glyph types: debonding, multi-bond/triplex, transmutation.
 - Multi-product puzzles and molecule outputs larger than one glyph pose.
 - Exact sample-instant arithmetic (fixed-point trig table) — specified in the engine

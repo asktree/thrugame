@@ -28,6 +28,7 @@ jobs:
           mkdir _site
           cp demo/great-work.html _site/index.html
           cp demo/halting-problem.html _site/halting-problem.html
+          cp demo/lab.html _site/lab.html
       - uses: actions/configure-pages@v5
         with:
           enablement: true

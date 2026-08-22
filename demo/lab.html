@@ -1,0 +1,966 @@
+<title>Great Work! Machine Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap">
+<style>
+  :root {
+    --parch: #F1E9D6; --parch-2: #EAE0C9; --parch-3: #E2D6B8;
+    --ink: #2A2318; --ink-dim: #6B5F49; --ink-faint: #9C8F74;
+    --line: #CFC2A4; --line-soft: #DDD2B6;
+    --brass: #A0762B; --gold: #8A6A1E; --oxblood: #8C3B2E; --verdigris: #33705E;
+    --display: 'Cinzel', 'Times New Roman', serif;
+    --body: 'EB Garamond', Georgia, serif;
+    --mono: 'Courier Prime', 'Courier New', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: #F1E9D6; }
+  body { background: var(--parch); color: var(--ink); font-family: var(--body); font-size: 16px; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 26px 20px 60px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: .06em; }
+  h1 small { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .22em; text-transform: uppercase; margin-left: 12px; }
+  .backlink { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; color: var(--ink-dim); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .backlink:hover { color: var(--ink); }
+
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 0; }
+  .tab {
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-dim); background: var(--parch); border: 1px solid var(--ink-dim);
+    padding: 7px 12px; cursor: pointer;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.on { background: var(--ink); color: var(--parch); border-color: var(--ink); }
+
+  .blurb { border: 1px solid var(--line); border-bottom: 0; background: var(--parch-3); padding: 10px 16px; font-size: 14.5px; font-style: italic; color: var(--ink-dim); margin-top: 8px; }
+
+  .stagebox { border: 1px solid var(--line); background: var(--parch-2); position: relative; }
+  canvas#field { display: block; width: 100%; height: auto; }
+  .stamp {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .4s;
+  }
+  .stamp.show { opacity: 1; }
+  .stamp-inner {
+    border: 2.5px solid var(--gold); color: var(--gold); background: rgba(241,233,214,.85);
+    font-family: var(--display); font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    font-size: 18px; padding: 10px 22px; transform: rotate(-7deg); text-align: center;
+  }
+  .stamp-inner.bad { border-color: var(--oxblood); color: var(--oxblood); }
+  .stamp-inner small { display: block; font-family: var(--mono); font-weight: 400; font-size: 10.5px; letter-spacing: .08em; margin-top: 4px; color: var(--ink-dim); text-transform: none; }
+
+  .bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--line); border-top: 0; background: var(--parch-2); }
+  button.ctl {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink); background: var(--parch); border: 1px solid var(--ink-dim);
+    padding: 7px 14px; cursor: pointer;
+  }
+  button.ctl:hover { background: var(--ink); color: var(--parch); }
+  button.ctl:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  .speed { display: flex; border: 1px solid var(--ink-dim); }
+  .speed .ctl { border: 0; padding: 7px 11px; }
+  .speed .ctl + .ctl { border-left: 1px solid var(--ink-dim); }
+  .speed .ctl.on { background: var(--ink); color: var(--parch); }
+  .hud { margin-left: auto; display: flex; gap: 14px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); letter-spacing: .06em; }
+  .hud b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .hud .sum b { color: var(--gold); }
+
+  .tapes { border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 8px 14px 10px; }
+  .tape-row { display: flex; align-items: center; gap: 10px; padding: 2px 0; }
+  .tape-label { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); width: 60px; flex: none; }
+  .tape-cells { display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+  .tape-cells::-webkit-scrollbar { display: none; }
+  .tape-cells span {
+    font-family: var(--mono); font-size: 12px; line-height: 1; padding: 3px 5px;
+    border: 1px solid var(--line); color: var(--ink-dim); background: var(--parch-2); flex: none;
+  }
+  .tape-cells span.delay { opacity: .45; border-style: dashed; }
+  .tape-cells span.spent { opacity: .25; }
+  .tape-cells span.on { background: var(--ink); color: var(--parch); border-color: var(--ink); opacity: 1; }
+
+  .events { border: 1px solid var(--line); border-top: 0; background: var(--parch-2); padding: 8px 16px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); min-height: 40px; max-height: 96px; overflow-y: auto; line-height: 1.7; }
+  .events .t { color: var(--ink-faint); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .events .bad { color: var(--oxblood); font-weight: 700; }
+  .events .good { color: var(--verdigris); font-weight: 700; }
+
+  footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Great Work!<small>Machine Lab · reference engine</small></h1>
+    <a class="backlink" href="./">← the proposal</a>
+  </header>
+
+  <div class="tabs" id="tabs"></div>
+  <div class="blurb" id="blurb"></div>
+  <div class="stagebox">
+    <canvas id="field" width="980" height="560"></canvas>
+    <div class="stamp" id="stamp"><div class="stamp-inner" id="stampInner"></div></div>
+  </div>
+  <div class="bar">
+    <button class="ctl" id="btnPlay">Pause</button>
+    <button class="ctl" id="btnStep">Step</button>
+    <button class="ctl" id="btnReset">Reset</button>
+    <div class="speed" role="group" aria-label="speed">
+      <button class="ctl on" data-ms="700">1×</button>
+      <button class="ctl" data-ms="350">2×</button>
+      <button class="ctl" data-ms="140">4×</button>
+    </div>
+    <div class="hud">
+      <span>CYCLE <b id="hTick">0</b></span>
+      <span>COST <b id="hCost">—</b></span>
+      <span>AREA <b id="hArea">0</b></span>
+      <span class="sum">SUM <b id="hSum">—</b></span>
+      <span>PRODUCT <b id="hProd">0/6</b></span>
+    </div>
+  </div>
+  <div class="tapes" id="tapes"></div>
+  <div class="events" id="events"></div>
+
+  <footer>
+    <span>GREAT WORK! · reference engine v0.2 · every motion you see is the sweep the verifier checks</span>
+    <span>Agrippa Kellum · for Unto Labs</span>
+  </footer>
+</div>
+
+<script>
+/*
+ * GREAT WORK! — reference engine (v0.2 spec)
+ *
+ * Pure simulation, no DOM. Runs in Node (module.exports) and the browser
+ * (window.GW). Commit-state arithmetic is exact integer hex math; the sweep
+ * rule (§9) samples fractional kinematics in pixel space.
+ */
+(function (root) {
+  'use strict';
+
+  // ---------- hex math ----------
+  const DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]; // E SE SW W NW NE
+  const SQ3 = Math.sqrt(3);
+  const mod6 = (n) => ((n % 6) + 6) % 6;
+  const cellKey = (c) => c[0] + ',' + c[1];
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+  const scale = (v, k) => [v[0] * k, v[1] * k];
+  const eq = (a, b) => a[0] === b[0] && a[1] === b[1];
+  // rotate an axial vector k steps clockwise (exact)
+  function rotK(v, k) {
+    let [q, r] = v;
+    k = mod6(k);
+    for (let i = 0; i < k; i++) { const t = q; q = -r; r = t + r; }
+    return [q, r];
+  }
+  const toPx = (c) => [SQ3 * (c[0] + c[1] / 2), 1.5 * c[1]];
+  const dirRad = (d) => Math.atan2(1.5 * DIRS[mod6(d)][1], SQ3 * (DIRS[mod6(d)][0] + DIRS[mod6(d)][1] / 2));
+  // continuous unit step in pixel space for a fractional direction (radians)
+  const radVec = (a) => [Math.cos(a), Math.sin(a)];
+  // NOTE: dir 0 (E) has pixel angle 0; each +1 dir step = +60° in screen space.
+  const DIR0 = dirRad(0);
+  const dirRadF = (dF) => DIR0 + dF * Math.PI / 3;
+  function axialRound(x, y) {
+    // invert toPx then cube-round
+    const r = y / 1.5, q = x / SQ3 - r / 2;
+    let rq = Math.round(q), rr = Math.round(r), rs = Math.round(-q - r);
+    const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - (-q - r));
+    if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs;
+    return [rq, rr];
+  }
+
+  // ---------- constants ----------
+  const OFFSETS = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
+  const PRICE = { 1: 20, 2: 24, 3: 26, 6: 30 };
+  const ELBOW_PRICE = 5, BONDER_PRICE = 10;
+  const RADIUS = 0.35, K_SAMPLES = 12;
+  const OPS = 'GD+-PQW';
+  const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 6 };
+
+  // ---------- simulation ----------
+  function createSim(puzzle, machine) {
+    const caps = Object.assign({}, DEFAULT_CAPS, puzzle.caps || {});
+    const S = {
+      puzzle, caps,
+      tick: 0,
+      atoms: [],            // {id, cell, elem, bonds:Set<id>}
+      nextAtom: 1,
+      arms: [],             // runtime arm records
+      products: 0,
+      fault: null,          // {kind, tick, detail}
+      area: new Set(),
+      cost: 0,
+      cycles: null,
+      events: [],
+      motion: null,         // cached last-tick motion for rendering
+    };
+
+    // -- build arms --
+    const byId = {};
+    for (const a of machine.arms) {
+      const arm = {
+        id: a.id, grippers: a.grippers || 1, len: a.len || 1,
+        mount: a.mount,                       // {ground:[q,r]} | {elbow:{parent,at}}
+        angle: a.angle || 0,                  // relative angle, 0..5
+        tape: { delay: (a.tape && a.tape.delay) || 0, ops: (a.tape && a.tape.ops) || ['W'] },
+        baseRot: 0,                           // frame rotation for ground arms
+        carriers: [],                         // [{arm, grip}] while carried (ground arms only)
+        carryRel: 0,
+        holds: [],                            // per gripper: null | {kind:'atom',id} | {kind:'tower',id}
+      };
+      arm.holds = OFFSETS[arm.grippers].map(() => null);
+      byId[arm.id] = arm;
+      S.arms.push(arm);
+      S.cost += PRICE[arm.grippers] + (a.mount.elbow ? ELBOW_PRICE : 0);
+    }
+    S.cost += (puzzle.bonders || []).length * BONDER_PRICE;
+
+    // -- validation --
+    function reject(msg) { throw new Error('invalid machine: ' + msg); }
+    if (S.arms.length > caps.parts) reject('too many parts');
+    const baseCells = new Set();
+    for (const arm of S.arms) {
+      if (!OFFSETS[arm.grippers]) reject('bad gripper count ' + arm.grippers);
+      if (arm.len < 1 || arm.len > 3) reject('bad arm length');
+      if (arm.tape.ops.length + arm.tape.delay > caps.tapeLen) reject('tape too long');
+      for (const op of arm.tape.ops) if (!OPS.includes(op)) reject('bad op ' + op);
+      if (arm.mount.elbow) {
+        const p = byId[arm.mount.elbow.parent];
+        if (!p) reject('elbow parent missing');
+        if (arm.mount.elbow.at < 1 || arm.mount.elbow.at > p.len) reject('elbow position off shaft');
+        let d = 0, cur = arm;
+        while (cur.mount.elbow) { cur = byId[cur.mount.elbow.parent]; if (++d > caps.elbowDepth) reject('elbow too deep'); }
+      } else {
+        const k = cellKey(arm.mount.ground);
+        if (baseCells.has(k)) reject('two bases on one cell');
+        baseCells.add(k);
+        arm.basePos = arm.mount.ground.slice();
+      }
+    }
+
+    // initial atoms (tests/puzzles may pre-place)
+    for (const a of (puzzle.atoms || [])) {
+      S.atoms.push({ id: S.nextAtom++, cell: a.cell.slice(), elem: a.elem, bonds: new Set() });
+    }
+
+    for (const g of (puzzle.inputs || [])) S.area.add(cellKey(g.cell));
+    for (const b of (puzzle.bonders || [])) { S.area.add(cellKey(b[0])); S.area.add(cellKey(b[1])); }
+    for (const c of ((puzzle.output && puzzle.output.cells) || [])) S.area.add(cellKey(c));
+
+    const atomAt = (cell) => S.atoms.find(a => eq(a.cell, cell));
+    const groundArmAt = (cell) => S.arms.find(a => !a.mount.elbow && eq(pose(a).pos, cell));
+
+    function molecule(anchor) {
+      const seen = new Set([anchor.id]), out = [anchor], stack = [anchor];
+      while (stack.length) {
+        const a = stack.pop();
+        for (const id of a.bonds) {
+          if (seen.has(id)) continue;
+          const b = S.atoms.find(x => x.id === id);
+          if (b) { seen.add(id); out.push(b); stack.push(b); }
+        }
+      }
+      return out;
+    }
+
+    // -- exact kinematics (integers) --
+    // pose: {pos:[q,r], rot} — rot is the arm's frame rotation; global dir = rot+angle
+    function pose(arm, guard) {
+      guard = guard || new Set();
+      if (guard.has(arm.id)) { S.fault = S.fault || { kind: 'grab-cycle', tick: S.tick }; return { pos: [0, 0], rot: 0 }; }
+      guard.add(arm.id);
+      if (arm.mount.elbow) {
+        const p = byId[arm.mount.elbow.parent];
+        const pp = pose(p, guard);
+        const pd = mod6(pp.rot + p.angle);
+        return { pos: add(pp.pos, scale(DIRS[pd], arm.mount.elbow.at)), rot: pd };
+      }
+      if (arm.carriers.length) {
+        const { arm: h, grip } = arm.carriers[0];
+        const hp = pose(h, guard);
+        const hd = mod6(hp.rot + h.angle + OFFSETS[h.grippers][grip]);
+        const hand = add(hp.pos, scale(DIRS[hd], h.len));
+        return { pos: hand, rot: mod6(hd + arm.carryRel) };
+      }
+      return { pos: arm.basePos, rot: arm.baseRot };
+    }
+    const handCell = (arm, grip) => {
+      const p = pose(arm);
+      const hd = mod6(p.rot + arm.angle + OFFSETS[arm.grippers][grip]);
+      return add(p.pos, scale(DIRS[hd], arm.len));
+    };
+    const handDir = (arm, grip) => mod6(pose(arm).rot + arm.angle + OFFSETS[arm.grippers][grip]);
+
+    // supports(a): every arm whose motion carries a (elbow parents + carriers)
+    function supportChain(arm) {
+      const out = new Set(); const stack = [arm];
+      while (stack.length) {
+        const x = stack.pop();
+        if (out.has(x.id)) continue;
+        out.add(x.id);
+        if (x.mount.elbow) stack.push(byId[x.mount.elbow.parent]);
+        for (const c of x.carriers) stack.push(c.arm);
+      }
+      return out;
+    }
+
+    // -- fractional kinematics (pixels), valid during a cached motion --
+    // M = S.motion: {angle0:{id:θ}, delta:{id:±1|0}, pivot:{id:±1|0}, carryRel0:{id}, snapshot atoms}
+    function poseF(arm, f, M) {
+      if (arm.mount.elbow) {
+        const p = byId[arm.mount.elbow.parent];
+        const pp = poseF(p, f, M);
+        const pdF = pp.rotF + (M.angle0[p.id] + M.delta[p.id] * f);
+        const dir = dirRadF(pdF);
+        return { x: pp.x + arm.mount.elbow.at * SQ3 * Math.cos(dir), y: pp.y + arm.mount.elbow.at * SQ3 * Math.sin(dir), rotF: pdF };
+      }
+      if (M.carriers0[arm.id] && M.carriers0[arm.id].length) {
+        const { arm: hid, grip } = M.carriers0[arm.id][0];
+        const h = byId[hid];
+        const hp = poseF(h, f, M);
+        const hdF = hp.rotF + (M.angle0[h.id] + M.delta[h.id] * f) + OFFSETS[h.grippers][grip];
+        const dir = dirRadF(hdF);
+        return {
+          x: hp.x + h.len * SQ3 * Math.cos(dir), y: hp.y + h.len * SQ3 * Math.sin(dir),
+          rotF: hdF + (M.carryRel0[arm.id] + (M.pivot[hid] || 0) * f),
+        };
+      }
+      const px = toPx(M.basePos0[arm.id]);
+      return { x: px[0], y: px[1], rotF: M.baseRot0[arm.id] };
+    }
+    function handF(arm, grip, f, M) {
+      const p = poseF(arm, f, M);
+      const hdF = p.rotF + (M.angle0[arm.id] + M.delta[arm.id] * f) + OFFSETS[arm.grippers][grip];
+      const dir = dirRadF(hdF);
+      return { x: p.x + arm.len * SQ3 * Math.cos(dir), y: p.y + arm.len * SQ3 * Math.sin(dir), dF: hdF };
+    }
+
+    // -- tape --
+    function opAt(arm, tick) { // tick is 1-based
+      if (tick <= arm.tape.delay) return 'W';
+      return arm.tape.ops[(tick - arm.tape.delay - 1) % arm.tape.ops.length];
+    }
+
+    // ---------- step ----------
+    function step() {
+      if (S.fault || S.cycles !== null) return S;
+      S.tick++;
+      const ev = (e) => S.events.push(Object.assign({ tick: S.tick }, e));
+
+      // 1. spawn
+      for (const g of (puzzle.inputs || [])) {
+        if (!atomAt(g.cell)) S.atoms.push({ id: S.nextAtom++, cell: g.cell.slice(), elem: g.elem, bonds: new Set() });
+      }
+      if (S.atoms.length > caps.atoms) { S.fault = { kind: 'exhaustion', tick: S.tick, detail: 'atom cap' }; return S; }
+
+      const ops = {}; for (const arm of S.arms) ops[arm.id] = opAt(arm, S.tick);
+
+      // 2a. releases
+      for (const arm of S.arms) {
+        if (ops[arm.id] !== 'D') continue;
+        arm.holds.forEach((h, gi) => {
+          if (h && h.kind === 'tower') {
+            const t = byId[h.id];
+            const p = pose(t); // pose BEFORE detaching, while still carried
+            t.carriers = t.carriers.filter(c => !(c.arm === arm && c.grip === gi));
+            if (t.carriers.length === 0) { // re-anchor exactly where it stands
+              t.basePos = p.pos.slice(); t.baseRot = p.rot; t.mount = { ground: t.basePos.slice() };
+            }
+          }
+          arm.holds[gi] = null;
+        });
+      }
+      // 2b. grabs (simultaneous, evaluated against post-release state)
+      for (const arm of S.arms) {
+        if (ops[arm.id] !== 'G') continue;
+        OFFSETS[arm.grippers].forEach((_, gi) => {
+          if (arm.holds[gi]) return;
+          const cell = handCell(arm, gi);
+          const atom = atomAt(cell);
+          if (atom) { arm.holds[gi] = { kind: 'atom', id: atom.id }; return; }
+          const tower = groundArmAt(cell);
+          if (tower && tower !== arm) {
+            if (supportChain(arm).has(tower.id)) { S.fault = { kind: 'grab-cycle', tick: S.tick }; return; }
+            const preRot = pose(tower).rot; // pose before this carrier attaches
+            arm.holds[gi] = { kind: 'tower', id: tower.id };
+            tower.carriers.push({ arm, grip: gi });
+            if (tower.carriers.length === 1) tower.carryRel = mod6(preRot - handDir(arm, gi));
+          }
+        });
+      }
+      if (S.fault) return S;
+
+      // 3. motion — capture start, apply deltas, verify constraints, commit
+      const M = {
+        angle0: {}, delta: {}, pivot: {}, carryRel0: {}, basePos0: {}, baseRot0: {}, carriers0: {},
+        atoms: [], // snapshot for rendering/sweep: {id, elem, px0, holder:{armId,grip,s}|null, cell0}
+      };
+      for (const arm of S.arms) {
+        M.angle0[arm.id] = arm.angle;
+        const op = ops[arm.id];
+        M.delta[arm.id] = op === '+' ? 1 : op === '-' ? -1 : 0;
+        M.pivot[arm.id] = op === 'P' ? 1 : op === 'Q' ? -1 : 0;
+        M.carryRel0[arm.id] = arm.carryRel;
+        M.carriers0[arm.id] = arm.carriers.map(c => ({ arm: c.arm.id, grip: c.grip }));
+        if (!arm.mount.elbow && arm.carriers.length === 0) { M.basePos0[arm.id] = arm.basePos.slice(); M.baseRot0[arm.id] = arm.baseRot; }
+      }
+      // hand states before...
+      const handBefore = {};
+      for (const arm of S.arms) OFFSETS[arm.grippers].forEach((_, gi) => {
+        handBefore[arm.id + ':' + gi] = { cell: handCell(arm, gi), dir: handDir(arm, gi) };
+      });
+      // ...apply joint deltas + pivots-on-towers...
+      for (const arm of S.arms) {
+        arm.angle = mod6(arm.angle + M.delta[arm.id]);
+        if (M.pivot[arm.id]) arm.holds.forEach(h => {
+          if (h && h.kind === 'tower') byId[h.id].carryRel = mod6(byId[h.id].carryRel + M.pivot[arm.id]);
+        });
+      }
+      // ...hand states after
+      const handAfter = {};
+      for (const arm of S.arms) OFFSETS[arm.grippers].forEach((_, gi) => {
+        handAfter[arm.id + ':' + gi] = { cell: handCell(arm, gi), dir: handDir(arm, gi) };
+      });
+
+      // molecule transforms with agreement checking
+      const molXf = new Map(); // rootAtomId -> {k, b:[q,r], holder:{armId,grip,s}, atoms:[]}
+      const molOf = new Map(); // atomId -> rootAtomId
+      for (const arm of S.arms) arm.holds.forEach((h, gi) => {
+        if (!h || h.kind !== 'atom') return;
+        const anchor = S.atoms.find(a => a.id === h.id);
+        if (!anchor) { arm.holds[gi] = null; return; }
+        const mol = molecule(anchor);
+        const rootId = Math.min(...mol.map(a => a.id));
+        const b0 = handBefore[arm.id + ':' + gi], b1 = handAfter[arm.id + ':' + gi];
+        const s = M.pivot[arm.id] || 0;
+        const k = mod6(b1.dir - b0.dir + s);
+        // M(p) = R^k (p - h0) + h1  →  affine b = h1 - R^k h0
+        const b = [b1.cell[0] - rotK(b0.cell, k)[0], b1.cell[1] - rotK(b0.cell, k)[1]];
+        const prev = molXf.get(rootId);
+        if (prev && (prev.k !== k || !eq(prev.b, b))) {
+          S.fault = { kind: 'overconstraint', tick: S.tick, detail: 'molecule ' + rootId };
+        } else if (!prev) {
+          molXf.set(rootId, { k, b, holder: { armId: arm.id, grip: gi, s }, atoms: mol });
+          for (const a of mol) molOf.set(a.id, rootId);
+        }
+      });
+      if (S.fault) return S;
+      // held-by-static + moved-by-other is covered: static holder contributes k=0,b=0
+      // multi-carrier tower agreement: poses from each carrier must match
+      for (const arm of S.arms) {
+        if (arm.carriers.length < 2) continue;
+        const p0 = pose(arm);
+        for (let i = 1; i < arm.carriers.length; i++) {
+          const alt = { pos: null, rot: null };
+          const { arm: h, grip } = arm.carriers[i];
+          const hp = pose(h);
+          const hd = mod6(hp.rot + h.angle + OFFSETS[h.grippers][grip]);
+          alt.pos = add(hp.pos, scale(DIRS[hd], h.len)); alt.rot = mod6(hd + arm.carryRel);
+          if (!eq(alt.pos, p0.pos) || alt.rot !== p0.rot) {
+            S.fault = { kind: 'overconstraint', tick: S.tick, detail: 'tower ' + arm.id };
+          }
+        }
+      }
+      if (S.fault) return S;
+
+      // snapshot atoms + commit molecule motion (exact)
+      for (const a of S.atoms) {
+        const rootId = molOf.get(a.id);
+        const xf = rootId !== undefined ? molXf.get(rootId) : null;
+        M.atoms.push({ id: a.id, elem: a.elem, cell0: a.cell.slice(), holder: xf ? xf.holder : null });
+      }
+      for (const [, xf] of molXf) for (const a of xf.atoms) {
+        a.cell = add(rotK(a.cell, xf.k), xf.b);
+      }
+
+      // 3b. sweep — K sample instants, full pair check + area accumulation
+      S.motion = M;
+      const collidables = (f) => {
+        const out = [];
+        for (const m of M.atoms) {
+          if (m.holder) {
+            const arm = byId[m.holder.armId];
+            const hF = handF(arm, m.holder.grip, f, M);
+            const h0F = handF(arm, m.holder.grip, 0, M);
+            const p0 = toPx(m.cell0), h0 = [h0F.x, h0F.y];
+            const dA = (hF.dF - h0F.dF + m.holder.s * f) * Math.PI / 3;
+            const rx = p0[0] - h0[0], ry = p0[1] - h0[1];
+            out.push({ kind: 'atom', id: m.id, elem: m.elem,
+              x: hF.x + rx * Math.cos(dA) - ry * Math.sin(dA),
+              y: hF.y + rx * Math.sin(dA) + ry * Math.cos(dA) });
+          } else {
+            const p = toPx(m.cell0);
+            out.push({ kind: 'atom', id: m.id, elem: m.elem, x: p[0], y: p[1] });
+          }
+        }
+        for (const arm of S.arms) {
+          if (arm.mount.elbow) continue; // elbows don't collide
+          const p = poseF(arm, f, M);
+          out.push({ kind: 'base', id: arm.id, x: p.x, y: p.y });
+        }
+        return out;
+      };
+      const D2 = (2 * RADIUS * SQ3) * (2 * RADIUS * SQ3) - 1e-9; // radius is in pitch units; pixels are pitch·√3
+      for (let k = 1; k <= K_SAMPLES && !S.fault; k++) {
+        const f = k / K_SAMPLES;
+        const objs = collidables(f);
+        for (const o of objs) S.area.add(cellKey(axialRound(o.x, o.y)));
+        for (const arm of S.arms) OFFSETS[arm.grippers].forEach((_, gi) => {
+          const h = handF(arm, gi, f, M); S.area.add(cellKey(axialRound(h.x, h.y)));
+        });
+        for (let i = 0; i < objs.length; i++) for (let j = i + 1; j < objs.length; j++) {
+          const dx = objs[i].x - objs[j].x, dy = objs[i].y - objs[j].y;
+          if (dx * dx + dy * dy < D2) {
+            S.fault = { kind: 'collision', tick: S.tick, detail: `${objs[i].kind} ${objs[i].id} × ${objs[j].kind} ${objs[j].id} @ f=${k}/${K_SAMPLES}` };
+            break;
+          }
+        }
+      }
+      if (S.fault) return S;
+
+      // 4. bonds
+      for (const [c1, c2] of (puzzle.bonders || [])) {
+        const a1 = atomAt(c1), a2 = atomAt(c2);
+        if (a1 && a2 && !a1.bonds.has(a2.id)) { a1.bonds.add(a2.id); a2.bonds.add(a1.id); ev({ type: 'bond', a: a1.id, b: a2.id }); }
+      }
+
+      // 5. output
+      const out = puzzle.output;
+      if (out) {
+        const heldIds = new Set();
+        for (const arm of S.arms) for (const h of arm.holds) if (h && h.kind === 'atom') for (const a of molecule(S.atoms.find(x => x.id === h.id) || { id: -1, bonds: new Set() })) heldIds.add(a.id);
+        const got = out.cells.map((c, i) => {
+          const a = atomAt(c);
+          return a && a.elem === out.elems[i] && !heldIds.has(a.id) ? a : null;
+        });
+        if (got.every(Boolean)
+          && out.bonds.every(([i, j]) => got[i].bonds.has(got[j].id))
+          && molecule(got[0]).length === out.cells.length) {
+          S.atoms = S.atoms.filter(a => !got.includes(a));
+          S.products++;
+          ev({ type: 'product', n: S.products });
+          if (S.products >= caps.goal) { S.cycles = S.tick; ev({ type: 'complete', cycles: S.cycles }); }
+        }
+      }
+
+      if (S.cycles === null && S.tick >= caps.cycles) S.fault = { kind: 'exhaustion', tick: S.tick, detail: 'cycle cap' };
+      return S;
+    }
+
+    // ---------- render geometry ----------
+    function renderState(f) {
+      const M = S.motion;
+      const arms = S.arms.map(arm => {
+        let base, rotF, angF;
+        if (M) { const p = poseF(arm, f, M); base = [p.x, p.y]; rotF = p.rotF; angF = M.angle0[arm.id] + M.delta[arm.id] * f; }
+        else { const p = pose(arm); const px = toPx(p.pos); base = px; rotF = p.rot; angF = arm.angle; }
+        const hands = OFFSETS[arm.grippers].map((off, gi) => {
+          const dF = rotF + angF + off;
+          const a = dirRadF(dF);
+          return { x: base[0] + arm.len * SQ3 * Math.cos(a), y: base[1] + arm.len * SQ3 * Math.sin(a), holding: !!arm.holds[gi], ang: a };
+        });
+        return { id: arm.id, base, hands, len: arm.len, elbow: !!arm.mount.elbow, carried: arm.carriers.length > 0 };
+      });
+      let atoms;
+      if (M && f < 1) {
+        atoms = M.atoms.map(m => {
+          if (!m.holder) { const p = toPx(m.cell0); return { id: m.id, elem: m.elem, x: p[0], y: p[1] }; }
+          const arm = byId[m.holder.armId];
+          const hF = handF(arm, m.holder.grip, f, M), h0F = handF(arm, m.holder.grip, 0, M);
+          const p0 = toPx(m.cell0);
+          const dA = (hF.dF - h0F.dF + m.holder.s * f) * Math.PI / 3;
+          const rx = p0[0] - h0F.x, ry = p0[1] - h0F.y;
+          return { id: m.id, elem: m.elem, x: hF.x + rx * Math.cos(dA) - ry * Math.sin(dA), y: hF.y + rx * Math.sin(dA) + ry * Math.cos(dA) };
+        });
+      } else {
+        atoms = S.atoms.map(a => { const p = toPx(a.cell); return { id: a.id, elem: a.elem, x: p[0], y: p[1] }; });
+      }
+      const bondPairs = [];
+      const seen = new Set();
+      const src = (M && f < 1)
+        ? M.atoms.map(m => S.atoms.find(a => a.id === m.id)).filter(Boolean)
+        : S.atoms;
+      for (const a of src) for (const id of a.bonds) {
+        const kk = Math.min(a.id, id) + '-' + Math.max(a.id, id);
+        if (!seen.has(kk)) { seen.add(kk); bondPairs.push([a.id, id]); }
+      }
+      return { arms, atoms, bonds: bondPairs, tick: S.tick, products: S.products, fault: S.fault };
+    }
+
+    return {
+      step,
+      renderState,
+      get state() { return S; },
+      metrics() {
+        return { cost: S.cost, cycles: S.cycles, area: S.area.size,
+          sum: S.cycles !== null ? S.cost + S.cycles + S.area.size : null };
+      },
+      run(n) { for (let i = 0; i < n && !S.fault && S.cycles === null; i++) step(); return this; },
+    };
+  }
+
+  const GW = { createSim, DIRS, rotK, toPx, PRICE, RADIUS, K_SAMPLES, DEFAULT_CAPS };
+  if (typeof module !== 'undefined' && module.exports) module.exports = GW;
+  else root.GW = GW;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+/* GREAT WORK! — example puzzles & machines (shared by tests and the lab) */
+(function (root) {
+  'use strict';
+
+  const EXAMPLES = [
+    {
+      key: 'courier',
+      name: 'The Courier',
+      blurb: 'One arm, no elbows: grab, bond, deliver, repeat. The floor every builder starts from.',
+      expect: { cycles: 94 },
+      puzzle: {
+        inputs: [{ cell: [1, -1], elem: 'Pb' }, { cell: [1, 0], elem: 'Hg' }],
+        bonders: [[[-1, 0], [0, -1]]],
+        output: { cells: [[0, 1], [-1, 1]], elems: ['Hg', 'Pb'], bonds: [[0, 1]] },
+      },
+      machine: {
+        arms: [
+          { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 5,
+            tape: { ops: ['G', '-', 'D', '+', '+', 'G', '+', '+', '+', 'D', 'G', '-', '-', 'D', '-', '-'] } },
+        ],
+      },
+    },
+    {
+      key: 'ferris',
+      name: 'The Ferris',
+      blurb: 'An elbow arm rides its parent between two worlds: Pb-side and Hg-side share one child tape. The bonder doubles as the product glyph, so the compound vanishes the instant it forms.',
+      expect: { cycles: 47 },
+      puzzle: {
+        inputs: [{ cell: [2, -1], elem: 'Pb' }, { cell: [0, 2], elem: 'Hg' }],
+        bonders: [[[2, 0], [1, 1]]],
+        output: { cells: [[2, 0], [1, 1]], elems: ['Pb', 'Hg'], bonds: [[0, 1]] },
+      },
+      machine: {
+        arms: [
+          { id: 'P', grippers: 1, len: 2, mount: { ground: [0, 0] }, angle: 0,
+            tape: { ops: ['W', 'W', 'W', '+', 'W', 'W', 'W', '-'] } },
+          { id: 'C', grippers: 1, len: 1, mount: { elbow: { parent: 'P', at: 1 } }, angle: 5,
+            tape: { ops: ['G', '+', 'D', 'W', 'G', '-', 'D', 'W'] } },
+        ],
+      },
+    },
+    {
+      key: 'crane',
+      name: 'The Crane',
+      blurb: 'A worker arm runs one six-step loop forever. The crane relocates it — mid-loop, tapes still ticking — so the same coordinate-free tape ferries lead in one place and quicksilver in another.',
+      expect: { cycles: 93 },
+      puzzle: {
+        inputs: [{ cell: [3, -1], elem: 'Pb' }, { cell: [3, 2], elem: 'Hg' }],
+        bonders: [[[1, 1], [1, 2]]],
+        output: { cells: [[1, 1], [1, 2]], elems: ['Pb', 'Hg'], bonds: [[0, 1]] },
+      },
+      machine: {
+        arms: [
+          { id: 'W', grippers: 1, len: 1, mount: { ground: [2, 0] }, angle: 5,
+            tape: { ops: ['G', '+', '+', '+', 'D', '-', '-', '-'] } },
+          { id: 'C', grippers: 1, len: 2, mount: { ground: [0, 2] }, angle: 5,
+            tape: { delay: 5, ops: ['G', '+', 'D', 'W', 'W', 'W', 'W', 'W', 'G', '-', 'D', 'W', 'W', 'W', 'W', 'W'] } },
+        ],
+      },
+    },
+    {
+      key: 'tugofwar',
+      name: 'The Tug of War',
+      blurb: 'Two arms hold one molecule; one of them turns. Every object follows at most one rigid motion — this machine is rejected at tick 3, and that rejection is the whole show.',
+      expect: { fault: 'overconstraint' },
+      puzzle: {
+        atoms: [{ cell: [1, 0], elem: 'Pb' }, { cell: [2, -1], elem: 'Hg' }],
+        bonders: [[[1, 0], [2, -1]]],
+      },
+      machine: {
+        arms: [
+          { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0,
+            tape: { ops: ['W', 'G', '+', 'W'] } },
+          { id: 'B', grippers: 1, len: 1, mount: { ground: [3, -1] }, angle: 3,
+            tape: { ops: ['W', 'G', 'W', 'W'] } },
+        ],
+      },
+    },
+  ];
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = EXAMPLES;
+  else root.GW_EXAMPLES = EXAMPLES;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+(() => {
+  'use strict';
+  const EXAMPLES = window.GW_EXAMPLES;
+  const ELEMS = {
+    Pb: { fill: '#4A4640', label: '#F1E9D6' },
+    Hg: { fill: '#BDB9AF', label: '#2A2318' },
+    Sa: { fill: '#F6F1E2', label: '#2A2318' },
+    S:  { fill: '#D9A93A', label: '#2A2318' },
+  };
+  const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·' };
+  const CW = 980, CH = 560;
+  const canvas = document.getElementById('field');
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = CW * dpr; canvas.height = CH * dpr;
+  canvas.style.aspectRatio = `${CW} / ${CH}`;
+
+  let exIdx = 0, sim, view, phase = 1, running = true, stepMs = 700, done = false;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- view fitting: run a throwaway sim to completion, fit to its full footprint ----
+  function fitView(ex) {
+    const probe = GW.createSim(ex.puzzle, ex.machine).run(500);
+    const cells = [...probe.state.area].map(k => k.split(',').map(Number));
+    for (const a of ex.machine.arms) if (a.mount.ground) cells.push(a.mount.ground);
+    const pts = cells.map(GW.toPx);
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs) - 2.6, maxX = Math.max(...xs) + 2.6;
+    const minY = Math.min(...ys) - 2.6, maxY = Math.max(...ys) + 2.6;
+    const s = Math.min(46, CW / (maxX - minX), CH / (maxY - minY));
+    return { s, ox: CW / 2 - s * (minX + maxX) / 2, oy: CH / 2 - s * (minY + maxY) / 2 };
+  }
+  const P = (x, y) => [view.ox + view.s * x, view.oy + view.s * y];
+  const Pc = (cell) => { const p = GW.toPx(cell); return P(p[0], p[1]); };
+  const PITCH = Math.sqrt(3);
+
+  function hexPath(x, y, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 3 * i + Math.PI / 6;
+      i === 0 ? ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a)) : ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
+    }
+    ctx.closePath();
+  }
+
+  function draw(f) {
+    const rs = sim.renderState(f);
+    const ex = EXAMPLES[exIdx];
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#EAE0C9'; ctx.fillRect(0, 0, CW, CH);
+
+    // hex field
+    ctx.strokeStyle = 'rgba(160,140,95,0.18)'; ctx.lineWidth = 1;
+    for (let q = -12; q <= 12; q++) for (let r = -12; r <= 12; r++) {
+      const [x, y] = Pc([q, r]);
+      if (x < -40 || x > CW + 40 || y < -40 || y > CH + 40) continue;
+      hexPath(x, y, view.s * PITCH / 2 * 1.11); ctx.stroke();
+    }
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // glyphs
+    for (const [c1, c2] of (ex.puzzle.bonders || [])) {
+      for (const c of [c1, c2]) {
+        const [x, y] = Pc(c);
+        hexPath(x, y, view.s * PITCH / 2 * 1.08);
+        ctx.fillStyle = 'rgba(160,118,43,0.16)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(160,118,43,0.7)'; ctx.lineWidth = 1.4; ctx.stroke();
+      }
+      const [x1, y1] = Pc(c1), [x2, y2] = Pc(c2);
+      ctx.strokeStyle = 'rgba(160,118,43,0.85)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.font = `700 10px 'Courier Prime', monospace`;
+    for (const g of (ex.puzzle.inputs || [])) {
+      const [x, y] = Pc(g.cell);
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(x, y, view.s * 0.62, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(42,35,24,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(42,35,24,0.55)';
+      ctx.fillText('IN·' + g.elem, x, y + view.s * 0.95);
+    }
+    const out = ex.puzzle.output;
+    if (out) {
+      ctx.setLineDash([4, 4]);
+      for (const [i, j] of out.bonds) {
+        const [x1, y1] = Pc(out.cells[i]), [x2, y2] = Pc(out.cells[j]);
+        ctx.strokeStyle = '#33705E'; ctx.globalAlpha = 0.5; ctx.lineWidth = view.s * 0.14;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      out.cells.forEach((c, i) => {
+        const [x, y] = Pc(c);
+        ctx.beginPath(); ctx.arc(x, y, view.s * 0.55, 0, Math.PI * 2);
+        ctx.strokeStyle = '#33705E'; ctx.lineWidth = 1.3; ctx.stroke();
+        ctx.globalAlpha = 0.55; ctx.fillStyle = '#33705E';
+        ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
+        ctx.fillText(out.elems[i], x, y);
+        ctx.globalAlpha = 1; ctx.font = `700 10px 'Courier Prime', monospace`;
+      });
+      ctx.setLineDash([]);
+      const [x, y] = Pc(out.cells[0]);
+      ctx.fillStyle = '#33705E'; ctx.fillText('OUT', x, y - view.s * 1.0);
+    }
+
+    // bonds
+    const atomPx = {};
+    for (const a of rs.atoms) atomPx[a.id] = P(a.x, a.y);
+    ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2;
+    for (const [i, j] of rs.bonds) {
+      if (!atomPx[i] || !atomPx[j]) continue;
+      ctx.beginPath(); ctx.moveTo(...atomPx[i]); ctx.lineTo(...atomPx[j]); ctx.stroke();
+    }
+
+    // arms (under atoms so cargo reads clearly)
+    for (const arm of rs.arms) {
+      const [bx, by] = P(arm.base[0], arm.base[1]);
+      for (const h of arm.hands) {
+        const [hx, hy] = P(h.x, h.y);
+        ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(hx, hy); ctx.stroke();
+        const open = h.holding ? 0.16 : 0.5;
+        for (const side of [-1, 1]) {
+          const ca = h.ang + side * (Math.PI / 2) * open;
+          ctx.lineWidth = view.s * 0.11;
+          ctx.beginPath();
+          ctx.moveTo(hx - Math.cos(h.ang) * view.s * 0.2, hy - Math.sin(h.ang) * view.s * 0.2);
+          ctx.lineTo(hx + Math.cos(ca) * view.s * 0.42, hy + Math.sin(ca) * view.s * 0.42);
+          ctx.stroke();
+        }
+      }
+      // base: ground bases are solid, collidable plates; elbows are pins
+      if (arm.elbow) {
+        ctx.beginPath(); ctx.arc(bx, by, view.s * 0.16, 0, Math.PI * 2);
+        ctx.fillStyle = '#C9B57E'; ctx.fill();
+        ctx.lineWidth = 1.4; ctx.strokeStyle = '#8A6A1E'; ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(bx, by, view.s * 0.35 * PITCH, 0, Math.PI * 2);
+        ctx.fillStyle = arm.carried ? '#D9C58C' : '#C9B57E'; ctx.fill();
+        ctx.lineWidth = 1.8; ctx.strokeStyle = arm.carried ? '#8C3B2E' : '#8A6A1E'; ctx.stroke();
+        ctx.beginPath(); ctx.arc(bx, by, view.s * 0.1, 0, Math.PI * 2);
+        ctx.fillStyle = '#2A2318'; ctx.fill();
+      }
+    }
+
+    // atoms
+    for (const a of rs.atoms) {
+      const [x, y] = atomPx[a.id];
+      const E = ELEMS[a.elem] || { fill: '#999', label: '#000' };
+      ctx.beginPath(); ctx.arc(x, y, view.s * 0.35 * PITCH, 0, Math.PI * 2);
+      ctx.fillStyle = E.fill; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = '#2A2318'; ctx.stroke();
+      ctx.fillStyle = E.label;
+      ctx.font = `600 ${Math.round(view.s * 0.5)}px 'EB Garamond', serif`;
+      ctx.fillText(a.elem, x, y + 0.5);
+    }
+  }
+
+  // ---- HUD / tapes / events ----
+  function hud() {
+    const st = sim.state, m = sim.metrics();
+    document.getElementById('hTick').textContent = st.tick;
+    document.getElementById('hCost').textContent = m.cost + 'g';
+    document.getElementById('hArea').textContent = m.area;
+    document.getElementById('hSum').textContent = m.sum !== null ? m.sum : (m.cost + st.tick + m.area) + '…';
+    document.getElementById('hProd').textContent = st.products + '/' + st.caps.goal;
+  }
+  function buildTapes() {
+    const host = document.getElementById('tapes');
+    host.innerHTML = '';
+    for (const arm of sim.state.arms) {
+      const row = document.createElement('div'); row.className = 'tape-row';
+      const lab = document.createElement('span'); lab.className = 'tape-label'; lab.textContent = 'ARM ' + arm.id;
+      const cells = document.createElement('div'); cells.className = 'tape-cells';
+      for (let i = 0; i < arm.tape.delay; i++) { const sp = document.createElement('span'); sp.className = 'delay'; sp.textContent = '»'; cells.appendChild(sp); }
+      for (const op of arm.tape.ops) { const sp = document.createElement('span'); sp.textContent = GLYPH[op]; cells.appendChild(sp); }
+      row.appendChild(lab); row.appendChild(cells); host.appendChild(row);
+    }
+  }
+  function updateTapes() {
+    const t = sim.state.tick;
+    sim.state.arms.forEach((arm, ai) => {
+      const cells = document.getElementById('tapes').children[ai].querySelector('.tape-cells').children;
+      for (let i = 0; i < cells.length; i++) cells[i].classList.remove('on');
+      if (t === 0) return;
+      for (let i = 0; i < arm.tape.delay; i++) cells[i].classList.toggle('spent', t > i);
+      const idx = t <= arm.tape.delay ? t - 1 : arm.tape.delay + (t - arm.tape.delay - 1) % arm.tape.ops.length;
+      if (!sim.state.fault && sim.state.cycles === null) cells[idx].classList.add('on');
+    });
+  }
+  function events() {
+    const host = document.getElementById('events');
+    const st = sim.state;
+    const rows = st.events.slice(-7).map(e => {
+      if (e.type === 'bond') return `<div><span class="t">c${e.tick}</span>bond formed</div>`;
+      if (e.type === 'product') return `<div><span class="t">c${e.tick}</span><span class="good">product ${e.n}/${st.caps.goal} verified</span></div>`;
+      if (e.type === 'complete') return `<div><span class="t">c${e.tick}</span><span class="good">COMPLETE — metrics sealed</span></div>`;
+      return '';
+    });
+    if (st.fault) rows.push(`<div><span class="t">c${st.fault.tick}</span><span class="bad">FAULT: ${st.fault.kind}${st.fault.detail ? ' — ' + st.fault.detail : ''} · machine rejected</span></div>`);
+    host.innerHTML = rows.join('') || '<div><span class="t">c0</span>engine ready</div>';
+    host.scrollTop = host.scrollHeight;
+  }
+  function stamp() {
+    const st = sim.state;
+    const el = document.getElementById('stamp'), inner = document.getElementById('stampInner');
+    if (st.fault) {
+      inner.className = 'stamp-inner bad';
+      inner.innerHTML = `Rejected · ${st.fault.kind}<small>tick ${st.fault.tick}${st.fault.detail ? ' · ' + st.fault.detail : ''}</small>`;
+      el.classList.add('show'); done = true;
+    } else if (st.cycles !== null) {
+      const m = sim.metrics();
+      inner.className = 'stamp-inner';
+      inner.innerHTML = `Verified · ${st.products} of ${st.caps.goal}<small>${m.cost}g + ${m.cycles}c + ${m.area}a = SUM ${m.sum}</small>`;
+      el.classList.add('show'); done = true;
+    } else { el.classList.remove('show'); done = false; }
+  }
+
+  // ---- lifecycle ----
+  function select(i) {
+    exIdx = i;
+    const ex = EXAMPLES[i];
+    document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
+    document.getElementById('blurb').textContent = ex.blurb;
+    sim = GW.createSim(ex.puzzle, ex.machine);
+    view = fitView(ex);
+    phase = 1; done = false;
+    buildTapes(); updateTapes(); hud(); events(); stamp();
+    draw(1);
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(120, now - last); last = now;
+    if (running && !done) {
+      phase += dt / stepMs;
+      if (phase >= 1) {
+        sim.step();
+        phase = 0;
+        updateTapes(); hud(); events(); stamp();
+      }
+    }
+    draw(Math.min(phase, 1));
+    requestAnimationFrame(frame);
+  }
+
+  // ---- controls ----
+  const tabs = document.getElementById('tabs');
+  EXAMPLES.forEach((ex, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (i === 0 ? ' on' : '');
+    b.textContent = ex.name;
+    b.addEventListener('click', () => { select(i); running = true; btnPlay.textContent = 'Pause'; });
+    tabs.appendChild(b);
+  });
+  const btnPlay = document.getElementById('btnPlay');
+  btnPlay.addEventListener('click', () => {
+    if (done) { select(exIdx); running = true; btnPlay.textContent = 'Pause'; return; }
+    running = !running; btnPlay.textContent = running ? 'Pause' : 'Play';
+  });
+  document.getElementById('btnStep').addEventListener('click', () => {
+    running = false; btnPlay.textContent = 'Play';
+    if (done) return;
+    sim.step(); phase = 0;
+    updateTapes(); hud(); events(); stamp();
+  });
+  document.getElementById('btnReset').addEventListener('click', () => { select(exIdx); running = true; btnPlay.textContent = 'Pause'; });
+  document.querySelectorAll('.speed .ctl').forEach(b => b.addEventListener('click', () => {
+    stepMs = +b.dataset.ms;
+    document.querySelectorAll('.speed .ctl').forEach(x => x.classList.toggle('on', x === b));
+  }));
+
+  select(0);
+  if (reduceMotion) { running = false; btnPlay.textContent = 'Play'; }
+  requestAnimationFrame(frame);
+})();
+</script>

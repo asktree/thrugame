@@ -1,0 +1,408 @@
+<title>Great Work! Machine Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap">
+<style>
+  :root {
+    --parch: #F1E9D6; --parch-2: #EAE0C9; --parch-3: #E2D6B8;
+    --ink: #2A2318; --ink-dim: #6B5F49; --ink-faint: #9C8F74;
+    --line: #CFC2A4; --line-soft: #DDD2B6;
+    --brass: #A0762B; --gold: #8A6A1E; --oxblood: #8C3B2E; --verdigris: #33705E;
+    --display: 'Cinzel', 'Times New Roman', serif;
+    --body: 'EB Garamond', Georgia, serif;
+    --mono: 'Courier Prime', 'Courier New', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: #F1E9D6; }
+  body { background: var(--parch); color: var(--ink); font-family: var(--body); font-size: 16px; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 26px 20px 60px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: .06em; }
+  h1 small { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .22em; text-transform: uppercase; margin-left: 12px; }
+  .backlink { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; color: var(--ink-dim); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .backlink:hover { color: var(--ink); }
+
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 0; }
+  .tab {
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-dim); background: var(--parch); border: 1px solid var(--ink-dim);
+    padding: 7px 12px; cursor: pointer;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.on { background: var(--ink); color: var(--parch); border-color: var(--ink); }
+
+  .blurb { border: 1px solid var(--line); border-bottom: 0; background: var(--parch-3); padding: 10px 16px; font-size: 14.5px; font-style: italic; color: var(--ink-dim); margin-top: 8px; }
+
+  .stagebox { border: 1px solid var(--line); background: var(--parch-2); position: relative; }
+  canvas#field { display: block; width: 100%; height: auto; }
+  .stamp {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .4s;
+  }
+  .stamp.show { opacity: 1; }
+  .stamp-inner {
+    border: 2.5px solid var(--gold); color: var(--gold); background: rgba(241,233,214,.85);
+    font-family: var(--display); font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    font-size: 18px; padding: 10px 22px; transform: rotate(-7deg); text-align: center;
+  }
+  .stamp-inner.bad { border-color: var(--oxblood); color: var(--oxblood); }
+  .stamp-inner small { display: block; font-family: var(--mono); font-weight: 400; font-size: 10.5px; letter-spacing: .08em; margin-top: 4px; color: var(--ink-dim); text-transform: none; }
+
+  .bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--line); border-top: 0; background: var(--parch-2); }
+  button.ctl {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink); background: var(--parch); border: 1px solid var(--ink-dim);
+    padding: 7px 14px; cursor: pointer;
+  }
+  button.ctl:hover { background: var(--ink); color: var(--parch); }
+  button.ctl:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  .speed { display: flex; border: 1px solid var(--ink-dim); }
+  .speed .ctl { border: 0; padding: 7px 11px; }
+  .speed .ctl + .ctl { border-left: 1px solid var(--ink-dim); }
+  .speed .ctl.on { background: var(--ink); color: var(--parch); }
+  .hud { margin-left: auto; display: flex; gap: 14px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); letter-spacing: .06em; }
+  .hud b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .hud .sum b { color: var(--gold); }
+
+  .tapes { border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 8px 14px 10px; }
+  .tape-row { display: flex; align-items: center; gap: 10px; padding: 2px 0; }
+  .tape-label { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); width: 60px; flex: none; }
+  .tape-cells { display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+  .tape-cells::-webkit-scrollbar { display: none; }
+  .tape-cells span {
+    font-family: var(--mono); font-size: 12px; line-height: 1; padding: 3px 5px;
+    border: 1px solid var(--line); color: var(--ink-dim); background: var(--parch-2); flex: none;
+  }
+  .tape-cells span.delay { opacity: .45; border-style: dashed; }
+  .tape-cells span.spent { opacity: .25; }
+  .tape-cells span.on { background: var(--ink); color: var(--parch); border-color: var(--ink); opacity: 1; }
+
+  .events { border: 1px solid var(--line); border-top: 0; background: var(--parch-2); padding: 8px 16px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); min-height: 40px; max-height: 96px; overflow-y: auto; line-height: 1.7; }
+  .events .t { color: var(--ink-faint); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .events .bad { color: var(--oxblood); font-weight: 700; }
+  .events .good { color: var(--verdigris); font-weight: 700; }
+
+  footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Great Work!<small>Machine Lab · reference engine</small></h1>
+    <a class="backlink" href="./">← the proposal</a>
+  </header>
+
+  <div class="tabs" id="tabs"></div>
+  <div class="blurb" id="blurb"></div>
+  <div class="stagebox">
+    <canvas id="field" width="980" height="560"></canvas>
+    <div class="stamp" id="stamp"><div class="stamp-inner" id="stampInner"></div></div>
+  </div>
+  <div class="bar">
+    <button class="ctl" id="btnPlay">Pause</button>
+    <button class="ctl" id="btnStep">Step</button>
+    <button class="ctl" id="btnReset">Reset</button>
+    <div class="speed" role="group" aria-label="speed">
+      <button class="ctl on" data-ms="700">1×</button>
+      <button class="ctl" data-ms="350">2×</button>
+      <button class="ctl" data-ms="140">4×</button>
+    </div>
+    <div class="hud">
+      <span>CYCLE <b id="hTick">0</b></span>
+      <span>COST <b id="hCost">—</b></span>
+      <span>AREA <b id="hArea">0</b></span>
+      <span class="sum">SUM <b id="hSum">—</b></span>
+      <span>PRODUCT <b id="hProd">0/6</b></span>
+    </div>
+  </div>
+  <div class="tapes" id="tapes"></div>
+  <div class="events" id="events"></div>
+
+  <footer>
+    <span>GREAT WORK! · reference engine v0.2 · every motion you see is the sweep the verifier checks</span>
+    <span>Agrippa Kellum · for Unto Labs</span>
+  </footer>
+</div>
+
+<script>
+/*__ENGINE__*/
+</script>
+<script>
+/*__EXAMPLES__*/
+</script>
+<script>
+(() => {
+  'use strict';
+  const EXAMPLES = window.GW_EXAMPLES;
+  const ELEMS = {
+    Pb: { fill: '#4A4640', label: '#F1E9D6' },
+    Hg: { fill: '#BDB9AF', label: '#2A2318' },
+    Sa: { fill: '#F6F1E2', label: '#2A2318' },
+    S:  { fill: '#D9A93A', label: '#2A2318' },
+  };
+  const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·' };
+  const CW = 980, CH = 560;
+  const canvas = document.getElementById('field');
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = CW * dpr; canvas.height = CH * dpr;
+  canvas.style.aspectRatio = `${CW} / ${CH}`;
+
+  let exIdx = 0, sim, view, phase = 1, running = true, stepMs = 700, done = false;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- view fitting: run a throwaway sim to completion, fit to its full footprint ----
+  function fitView(ex) {
+    const probe = GW.createSim(ex.puzzle, ex.machine).run(500);
+    const cells = [...probe.state.area].map(k => k.split(',').map(Number));
+    for (const a of ex.machine.arms) if (a.mount.ground) cells.push(a.mount.ground);
+    const pts = cells.map(GW.toPx);
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs) - 2.6, maxX = Math.max(...xs) + 2.6;
+    const minY = Math.min(...ys) - 2.6, maxY = Math.max(...ys) + 2.6;
+    const s = Math.min(46, CW / (maxX - minX), CH / (maxY - minY));
+    return { s, ox: CW / 2 - s * (minX + maxX) / 2, oy: CH / 2 - s * (minY + maxY) / 2 };
+  }
+  const P = (x, y) => [view.ox + view.s * x, view.oy + view.s * y];
+  const Pc = (cell) => { const p = GW.toPx(cell); return P(p[0], p[1]); };
+  const PITCH = Math.sqrt(3);
+
+  function hexPath(x, y, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 3 * i + Math.PI / 6;
+      i === 0 ? ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a)) : ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
+    }
+    ctx.closePath();
+  }
+
+  function draw(f) {
+    const rs = sim.renderState(f);
+    const ex = EXAMPLES[exIdx];
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#EAE0C9'; ctx.fillRect(0, 0, CW, CH);
+
+    // hex field
+    ctx.strokeStyle = 'rgba(160,140,95,0.18)'; ctx.lineWidth = 1;
+    for (let q = -12; q <= 12; q++) for (let r = -12; r <= 12; r++) {
+      const [x, y] = Pc([q, r]);
+      if (x < -40 || x > CW + 40 || y < -40 || y > CH + 40) continue;
+      hexPath(x, y, view.s * PITCH / 2 * 1.11); ctx.stroke();
+    }
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // glyphs
+    for (const [c1, c2] of (ex.puzzle.bonders || [])) {
+      for (const c of [c1, c2]) {
+        const [x, y] = Pc(c);
+        hexPath(x, y, view.s * PITCH / 2 * 1.08);
+        ctx.fillStyle = 'rgba(160,118,43,0.16)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(160,118,43,0.7)'; ctx.lineWidth = 1.4; ctx.stroke();
+      }
+      const [x1, y1] = Pc(c1), [x2, y2] = Pc(c2);
+      ctx.strokeStyle = 'rgba(160,118,43,0.85)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.font = `700 10px 'Courier Prime', monospace`;
+    for (const g of (ex.puzzle.inputs || [])) {
+      const [x, y] = Pc(g.cell);
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(x, y, view.s * 0.62, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(42,35,24,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(42,35,24,0.55)';
+      ctx.fillText('IN·' + g.elem, x, y + view.s * 0.95);
+    }
+    const out = ex.puzzle.output;
+    if (out) {
+      ctx.setLineDash([4, 4]);
+      for (const [i, j] of out.bonds) {
+        const [x1, y1] = Pc(out.cells[i]), [x2, y2] = Pc(out.cells[j]);
+        ctx.strokeStyle = '#33705E'; ctx.globalAlpha = 0.5; ctx.lineWidth = view.s * 0.14;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      out.cells.forEach((c, i) => {
+        const [x, y] = Pc(c);
+        ctx.beginPath(); ctx.arc(x, y, view.s * 0.55, 0, Math.PI * 2);
+        ctx.strokeStyle = '#33705E'; ctx.lineWidth = 1.3; ctx.stroke();
+        ctx.globalAlpha = 0.55; ctx.fillStyle = '#33705E';
+        ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
+        ctx.fillText(out.elems[i], x, y);
+        ctx.globalAlpha = 1; ctx.font = `700 10px 'Courier Prime', monospace`;
+      });
+      ctx.setLineDash([]);
+      const [x, y] = Pc(out.cells[0]);
+      ctx.fillStyle = '#33705E'; ctx.fillText('OUT', x, y - view.s * 1.0);
+    }
+
+    // bonds
+    const atomPx = {};
+    for (const a of rs.atoms) atomPx[a.id] = P(a.x, a.y);
+    ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2;
+    for (const [i, j] of rs.bonds) {
+      if (!atomPx[i] || !atomPx[j]) continue;
+      ctx.beginPath(); ctx.moveTo(...atomPx[i]); ctx.lineTo(...atomPx[j]); ctx.stroke();
+    }
+
+    // arms (under atoms so cargo reads clearly)
+    for (const arm of rs.arms) {
+      const [bx, by] = P(arm.base[0], arm.base[1]);
+      for (const h of arm.hands) {
+        const [hx, hy] = P(h.x, h.y);
+        ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(hx, hy); ctx.stroke();
+        const open = h.holding ? 0.16 : 0.5;
+        for (const side of [-1, 1]) {
+          const ca = h.ang + side * (Math.PI / 2) * open;
+          ctx.lineWidth = view.s * 0.11;
+          ctx.beginPath();
+          ctx.moveTo(hx - Math.cos(h.ang) * view.s * 0.2, hy - Math.sin(h.ang) * view.s * 0.2);
+          ctx.lineTo(hx + Math.cos(ca) * view.s * 0.42, hy + Math.sin(ca) * view.s * 0.42);
+          ctx.stroke();
+        }
+      }
+      // base: ground bases are solid, collidable plates; elbows are pins
+      if (arm.elbow) {
+        ctx.beginPath(); ctx.arc(bx, by, view.s * 0.16, 0, Math.PI * 2);
+        ctx.fillStyle = '#C9B57E'; ctx.fill();
+        ctx.lineWidth = 1.4; ctx.strokeStyle = '#8A6A1E'; ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(bx, by, view.s * 0.35 * PITCH, 0, Math.PI * 2);
+        ctx.fillStyle = arm.carried ? '#D9C58C' : '#C9B57E'; ctx.fill();
+        ctx.lineWidth = 1.8; ctx.strokeStyle = arm.carried ? '#8C3B2E' : '#8A6A1E'; ctx.stroke();
+        ctx.beginPath(); ctx.arc(bx, by, view.s * 0.1, 0, Math.PI * 2);
+        ctx.fillStyle = '#2A2318'; ctx.fill();
+      }
+    }
+
+    // atoms
+    for (const a of rs.atoms) {
+      const [x, y] = atomPx[a.id];
+      const E = ELEMS[a.elem] || { fill: '#999', label: '#000' };
+      ctx.beginPath(); ctx.arc(x, y, view.s * 0.35 * PITCH, 0, Math.PI * 2);
+      ctx.fillStyle = E.fill; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = '#2A2318'; ctx.stroke();
+      ctx.fillStyle = E.label;
+      ctx.font = `600 ${Math.round(view.s * 0.5)}px 'EB Garamond', serif`;
+      ctx.fillText(a.elem, x, y + 0.5);
+    }
+  }
+
+  // ---- HUD / tapes / events ----
+  function hud() {
+    const st = sim.state, m = sim.metrics();
+    document.getElementById('hTick').textContent = st.tick;
+    document.getElementById('hCost').textContent = m.cost + 'g';
+    document.getElementById('hArea').textContent = m.area;
+    document.getElementById('hSum').textContent = m.sum !== null ? m.sum : (m.cost + st.tick + m.area) + '…';
+    document.getElementById('hProd').textContent = st.products + '/' + st.caps.goal;
+  }
+  function buildTapes() {
+    const host = document.getElementById('tapes');
+    host.innerHTML = '';
+    for (const arm of sim.state.arms) {
+      const row = document.createElement('div'); row.className = 'tape-row';
+      const lab = document.createElement('span'); lab.className = 'tape-label'; lab.textContent = 'ARM ' + arm.id;
+      const cells = document.createElement('div'); cells.className = 'tape-cells';
+      for (let i = 0; i < arm.tape.delay; i++) { const sp = document.createElement('span'); sp.className = 'delay'; sp.textContent = '»'; cells.appendChild(sp); }
+      for (const op of arm.tape.ops) { const sp = document.createElement('span'); sp.textContent = GLYPH[op]; cells.appendChild(sp); }
+      row.appendChild(lab); row.appendChild(cells); host.appendChild(row);
+    }
+  }
+  function updateTapes() {
+    const t = sim.state.tick;
+    sim.state.arms.forEach((arm, ai) => {
+      const cells = document.getElementById('tapes').children[ai].querySelector('.tape-cells').children;
+      for (let i = 0; i < cells.length; i++) cells[i].classList.remove('on');
+      if (t === 0) return;
+      for (let i = 0; i < arm.tape.delay; i++) cells[i].classList.toggle('spent', t > i);
+      const idx = t <= arm.tape.delay ? t - 1 : arm.tape.delay + (t - arm.tape.delay - 1) % arm.tape.ops.length;
+      if (!sim.state.fault && sim.state.cycles === null) cells[idx].classList.add('on');
+    });
+  }
+  function events() {
+    const host = document.getElementById('events');
+    const st = sim.state;
+    const rows = st.events.slice(-7).map(e => {
+      if (e.type === 'bond') return `<div><span class="t">c${e.tick}</span>bond formed</div>`;
+      if (e.type === 'product') return `<div><span class="t">c${e.tick}</span><span class="good">product ${e.n}/${st.caps.goal} verified</span></div>`;
+      if (e.type === 'complete') return `<div><span class="t">c${e.tick}</span><span class="good">COMPLETE — metrics sealed</span></div>`;
+      return '';
+    });
+    if (st.fault) rows.push(`<div><span class="t">c${st.fault.tick}</span><span class="bad">FAULT: ${st.fault.kind}${st.fault.detail ? ' — ' + st.fault.detail : ''} · machine rejected</span></div>`);
+    host.innerHTML = rows.join('') || '<div><span class="t">c0</span>engine ready</div>';
+    host.scrollTop = host.scrollHeight;
+  }
+  function stamp() {
+    const st = sim.state;
+    const el = document.getElementById('stamp'), inner = document.getElementById('stampInner');
+    if (st.fault) {
+      inner.className = 'stamp-inner bad';
+      inner.innerHTML = `Rejected · ${st.fault.kind}<small>tick ${st.fault.tick}${st.fault.detail ? ' · ' + st.fault.detail : ''}</small>`;
+      el.classList.add('show'); done = true;
+    } else if (st.cycles !== null) {
+      const m = sim.metrics();
+      inner.className = 'stamp-inner';
+      inner.innerHTML = `Verified · ${st.products} of ${st.caps.goal}<small>${m.cost}g + ${m.cycles}c + ${m.area}a = SUM ${m.sum}</small>`;
+      el.classList.add('show'); done = true;
+    } else { el.classList.remove('show'); done = false; }
+  }
+
+  // ---- lifecycle ----
+  function select(i) {
+    exIdx = i;
+    const ex = EXAMPLES[i];
+    document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
+    document.getElementById('blurb').textContent = ex.blurb;
+    sim = GW.createSim(ex.puzzle, ex.machine);
+    view = fitView(ex);
+    phase = 1; done = false;
+    buildTapes(); updateTapes(); hud(); events(); stamp();
+    draw(1);
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(120, now - last); last = now;
+    if (running && !done) {
+      phase += dt / stepMs;
+      if (phase >= 1) {
+        sim.step();
+        phase = 0;
+        updateTapes(); hud(); events(); stamp();
+      }
+    }
+    draw(Math.min(phase, 1));
+    requestAnimationFrame(frame);
+  }
+
+  // ---- controls ----
+  const tabs = document.getElementById('tabs');
+  EXAMPLES.forEach((ex, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (i === 0 ? ' on' : '');
+    b.textContent = ex.name;
+    b.addEventListener('click', () => { select(i); running = true; btnPlay.textContent = 'Pause'; });
+    tabs.appendChild(b);
+  });
+  const btnPlay = document.getElementById('btnPlay');
+  btnPlay.addEventListener('click', () => {
+    if (done) { select(exIdx); running = true; btnPlay.textContent = 'Pause'; return; }
+    running = !running; btnPlay.textContent = running ? 'Pause' : 'Play';
+  });
+  document.getElementById('btnStep').addEventListener('click', () => {
+    running = false; btnPlay.textContent = 'Play';
+    if (done) return;
+    sim.step(); phase = 0;
+    updateTapes(); hud(); events(); stamp();
+  });
+  document.getElementById('btnReset').addEventListener('click', () => { select(exIdx); running = true; btnPlay.textContent = 'Pause'; });
+  document.querySelectorAll('.speed .ctl').forEach(b => b.addEventListener('click', () => {
+    stepMs = +b.dataset.ms;
+    document.querySelectorAll('.speed .ctl').forEach(x => x.classList.toggle('on', x === b));
+  }));
+
+  select(0);
+  if (reduceMotion) { running = false; btnPlay.textContent = 'Play'; }
+  requestAnimationFrame(frame);
+})();
+</script>
