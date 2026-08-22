@@ -334,6 +334,14 @@
       if (S.fault) return S;
 
       // snapshot atoms + commit molecule motion (exact)
+      M.bonds0 = [];
+      {
+        const seen = new Set();
+        for (const a of S.atoms) for (const id of a.bonds) {
+          const kk = Math.min(a.id, id) + '-' + Math.max(a.id, id);
+          if (!seen.has(kk)) { seen.add(kk); M.bonds0.push([a.id, id]); }
+        }
+      }
       for (const a of S.atoms) {
         const rootId = molOf.get(a.id);
         const xf = rootId !== undefined ? molXf.get(rootId) : null;
@@ -445,14 +453,18 @@
       } else {
         atoms = S.atoms.map(a => { const p = toPx(a.cell); return { id: a.id, elem: a.elem, x: p[0], y: p[1] }; });
       }
-      const bondPairs = [];
-      const seen = new Set();
-      const src = (M && f < 1)
-        ? M.atoms.map(m => S.atoms.find(a => a.id === m.id)).filter(Boolean)
-        : S.atoms;
-      for (const a of src) for (const id of a.bonds) {
-        const kk = Math.min(a.id, id) + '-' + Math.max(a.id, id);
-        if (!seen.has(kk)) { seen.add(kk); bondPairs.push([a.id, id]); }
+      // during the animated tick, show only bonds that existed BEFORE the motion —
+      // a bond formed this tick appears when its atom lands, not while approaching
+      let bondPairs;
+      if (M && f < 1) {
+        bondPairs = M.bonds0;
+      } else {
+        bondPairs = [];
+        const seen = new Set();
+        for (const a of S.atoms) for (const id of a.bonds) {
+          const kk = Math.min(a.id, id) + '-' + Math.max(a.id, id);
+          if (!seen.has(kk)) { seen.add(kk); bondPairs.push([a.id, id]); }
+        }
       }
       return { arms, atoms, bonds: bondPairs, tick: S.tick, products: S.products, fault: S.fault };
     }
