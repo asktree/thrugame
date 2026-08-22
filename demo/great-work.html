@@ -265,6 +265,14 @@
   .tenet p { font-size: 14.5px; color: var(--ink-dim); line-height: 1.6; }
   .tenet p b { color: var(--ink); font-weight: 600; }
 
+  /* deliverables */
+  .deliv { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 26px; }
+  .d-item { border: 1px solid var(--line); background: var(--parch-2); padding: 18px 20px 16px; display: flex; gap: 16px; }
+  .d-num { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--brass); letter-spacing: .12em; flex: none; padding-top: 3px; }
+  .d-body h3 { font-family: var(--display); font-weight: 700; font-size: 16px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); margin-bottom: 7px; }
+  .d-body p { font-size: 14.5px; color: var(--ink-dim); line-height: 1.6; }
+  @media (max-width: 880px) { .deliv { grid-template-columns: 1fr; } }
+
   footer {
     margin-top: 88px; border-top: 1px solid var(--line); padding: 24px 0 46px;
     font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); letter-spacing: .06em;
@@ -495,6 +503,42 @@
         <div class="t-num">MACHINE-PLAYABLE</div>
         <h3>A game AIs can grind</h3>
         <p>Closed rules, exact scoring, an enormous search space: this is <b>an ideal arena for machine players</b>. AIs can search, submit, and iterate without ceremony — every attempt lands on-chain, and every improvement is one transaction away.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= DELIVERABLES ================= -->
+  <section>
+    <div class="sec-label">07 · Deliverables</div>
+    <h2>What gets built</h2>
+    <div class="deliv">
+      <div class="d-item">
+        <div class="d-num">D·1</div>
+        <div class="d-body">
+          <h3>Game rules engine smart contract</h3>
+          <p>The hex-grid simulator on Thru: accepts a machine as calldata, runs it deterministically, verifies six products, and seals cost, cycles, area, and sum on-chain.</p>
+        </div>
+      </div>
+      <div class="d-item">
+        <div class="d-num">D·2</div>
+        <div class="d-body">
+          <h3>Tournament system smart contract</h3>
+          <p>The prize escrow and the fuse: holds the pot, enforces the strictly-better rule, resets the countdown on each new champion, and pays out automatically at zero.</p>
+        </div>
+      </div>
+      <div class="d-item">
+        <div class="d-num">D·3</div>
+        <div class="d-body">
+          <h3>Tournament puzzles</h3>
+          <p>A starter set of puzzles at graded difficulty — from first-bond simple to Airship-Fuel deep — each posted on-chain and ready to carry a prize.</p>
+        </div>
+      </div>
+      <div class="d-item">
+        <div class="d-num">D·4</div>
+        <div class="d-body">
+          <h3>Frontend client</h3>
+          <p>A web client for the whole loop: browse puzzles and leaderboards, watch any sealed solution replay, and build machines in a visual editor that submits straight to the chain.</p>
+        </div>
       </div>
     </div>
   </section>
