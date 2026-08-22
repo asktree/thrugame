@@ -241,6 +241,22 @@
   .payload code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); white-space: pre; }
   .payload code .hi { color: var(--verdigris); font-weight: 700; }
 
+  /* bounty poster */
+  .bounty {
+    max-width: 560px; margin: 30px auto 0; text-align: center;
+    border: 3px double var(--brass); background: var(--parch-2);
+    padding: 20px 22px 16px;
+  }
+  .b-head { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase; color: var(--ink-dim); }
+  .b-pool { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4.5vw, 40px); letter-spacing: .06em; color: var(--gold); margin: 8px 0 14px; }
+  .b-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); }
+  .b-cell { background: var(--parch-3); padding: 9px 6px 10px; display: flex; flex-direction: column; gap: 3px; }
+  .b-k { font-family: var(--mono); font-size: 9px; letter-spacing: .2em; color: var(--ink-faint); text-transform: uppercase; }
+  .b-v { font-family: var(--mono); font-size: 13.5px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .b-v.he { color: var(--verdigris); }
+  .b-note { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .04em; margin-top: 12px; line-height: 1.6; }
+  @media (max-width: 880px) { .b-grid { grid-template-columns: 1fr 1fr; } }
+
   /* tenets */
   .tenets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 26px; }
   .tenet { border: 1px solid var(--line); background: var(--parch-2); padding: 18px 18px 16px; }
@@ -278,8 +294,7 @@
   <div class="puzzle-banner">
     <div class="ptabs" role="tablist" aria-label="Puzzle select">
       <button class="ptab on" data-p="0">Nº 001 · Lead Amalgam</button>
-      <button class="ptab" data-p="1">Nº 002 · Tria Prima</button>
-      <button class="ptab" data-p="2">Nº 003 · Airship Fuel</button>
+      <button class="ptab" data-p="1">Nº 002 · Airship Fuel</button>
     </div>
     <span class="puzzle-spec" id="pspec">inputs: Pb, Hg → product: Pb–Hg ×6</span>
   </div>
@@ -370,7 +385,7 @@
     <div class="prose">
       <p>Great Work is an open-ended engineering puzzle in the lineage of Zachtronics' <em>Opus Magnum</em>, rebuilt for a blockchain. A puzzle is a transmutation: reagents in, product out. A solution is a <strong>machine</strong> — arms placed on a hex grid, each running a short looping instruction tape, ferrying atoms across glyphs that bond them into the requested compound.</p>
       <p>The difference is who checks your work. There is no server and no screenshot to take on faith: the puzzle lives in a <strong>rules-engine contract on Thru</strong>, and a solution is submitted as plain transaction data. The contract runs the machine, step by deterministic step. Either the product appears — six times, to prove the loop is a loop — or the submission is rejected. <strong>Verification is simulation</strong>, and simulation is exactly what a smart contract does perfectly.</p>
-      <p>There are no ticks to answer, no opponent to outlive, no clock to forfeit to. You compete against everyone, asynchronously, forever — on three numbers.</p>
+      <p>There is no live opponent and no schedule to keep. You compete against everyone at once, asynchronously, forever — on three numbers.</p>
     </div>
   </section>
 
@@ -439,9 +454,31 @@
     </div>
   </section>
 
+  <!-- ================= TOURNAMENT ================= -->
+  <section>
+    <div class="sec-label">05 · The tournament</div>
+    <h2>King of the hill, on a fuse</h2>
+    <div class="prose">
+      <p>Any puzzle can carry a prize — tokens locked inside the rules-engine contract itself. One rule decides who collects them: <strong>hold the best sum when the fuse burns out.</strong></p>
+      <p>The fuse is a one-month countdown. Submit a <strong>strictly better</strong> sum than the reigning solution and the crown moves to you — and the fuse resets to a full month. Matching the champion's score does nothing: their machine is public calldata, so a copy earns only a tie, and <em>ties change nothing</em>. To take the crown you must bring arithmetic the chain has never seen.</p>
+      <p>While improvements keep coming, the clock keeps resetting and the pot keeps waiting. The closer the frontier gets to optimal, the harder each reset becomes — until one champion survives a full month untouched and <strong>the contract pays them itself</strong>. No organizer, no judges, no announcement day. The tournament ends exactly when the puzzle is exhausted, and the prize lands on the last person who could still improve it.</p>
+    </div>
+    <div class="bounty">
+      <div class="b-head">Puzzle Nº 002 · Airship Fuel — Prize Escrow</div>
+      <div class="b-pool">25,000 THRU</div>
+      <div class="b-grid">
+        <div class="b-cell"><span class="b-k">Reigning</span><span class="b-v he">hermes.thru</span></div>
+        <div class="b-cell"><span class="b-k">Best sum</span><span class="b-v">142</span></div>
+        <div class="b-cell"><span class="b-k">Fuse</span><span class="b-v">19d 06h 41m</span></div>
+        <div class="b-cell"><span class="b-k">Resets on</span><span class="b-v">SUM ≤ 141</span></div>
+      </div>
+      <div class="b-note">fuse resets to 30 days on any strictly better sum · at zero, the contract pays the reigning champion</div>
+    </div>
+  </section>
+
   <!-- ================= WHY CHAIN ================= -->
   <section>
-    <div class="sec-label">05 · Why a blockchain</div>
+    <div class="sec-label">06 · Why a blockchain</div>
     <h2>The notary of records</h2>
     <div class="tenets">
       <div class="tenet">
@@ -514,32 +551,7 @@
       ],
     },
     {
-      no: '002', name: 'Tria Prima', chain: ['Sa','Hg','S'],
-      spec: 'inputs: Sa, Hg, S → product: Sa–Hg–S ×6',
-      machines: [
-        { ...FL,
-          arms: [
-            { base: [0,0],   angle: 3, tape: ['G','+','+','+','+','+','D','+'] },
-            { base: [0,-2],  angle: 0, tape: ['W','G','+','D','-','W','W','W'] },
-            { base: [-1,-1], angle: 3, tape: ['G','+','+','+','D','-','-','-'] },
-          ],
-          inputs: [ { cell: [-1,0], elem: 'Sa' }, { cell: [1,-2], elem: 'Hg' }, { cell: [-2,-1], elem: 'S' } ],
-          bonders: [ [[0,-1],[1,-1]] ],
-          output: { cells: [[-1,1],[0,1],[1,0]], elems: ['Sa','Hg','S'], bonds: [[0,1],[1,2]] },
-        },
-        { ...HE,
-          arms: [
-            { base: [0,0],  angle: 3, tape: ['G','+','+','+','W','W','W','+','+','D','+'] },
-            { base: [0,-2], angle: 0, tape: ['W','G','+','D','+','G','-','D','-','W','W'] },
-          ],
-          inputs: [ { cell: [-1,0], elem: 'Sa' }, { cell: [1,-2], elem: 'Hg' }, { cell: [-1,-1], elem: 'S' } ],
-          bonders: [ [[0,-1],[1,-1]] ],
-          output: { cells: [[-1,1],[0,1],[1,0]], elems: ['Sa','Hg','S'], bonds: [[0,1],[1,2]] },
-        },
-      ],
-    },
-    {
-      no: '003', name: 'Airship Fuel', chain: ['Hg','S','S','S'],
+      no: '002', name: 'Airship Fuel', chain: ['Hg','S','S','S'],
       spec: 'inputs: Hg, S → product: Hg–S–S–S ×6',
       machines: [
         { ...FL,
@@ -817,14 +829,32 @@
       ctx.fillStyle = 'rgba(42,35,24,0.55)';
       ctx.fillText('IN·' + inp.elem, x, y + v.s * 0.95);
     }
-    // glyphs: output
+    // glyphs: output — fully specified: phantom bonds + ghost element labels
+    ctx.setLineDash([4, 4]);
+    for (const [i, j] of def.output.bonds) {
+      const [x1, y1] = px(v, ...def.output.cells[i]);
+      const [x2, y2] = px(v, ...def.output.cells[j]);
+      const d = Math.hypot(x2 - x1, y2 - y1) || 1;
+      const ux = (x2 - x1) / d, uy = (y2 - y1) / d, off = v.s * 0.55;
+      ctx.strokeStyle = def.color; ctx.globalAlpha = 0.55; ctx.lineWidth = v.s * 0.14;
+      ctx.beginPath();
+      ctx.moveTo(x1 + ux * off, y1 + uy * off);
+      ctx.lineTo(x2 - ux * off, y2 - uy * off);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     for (let k = 0; k < def.output.cells.length; k++) {
       const [x, y] = px(v, ...def.output.cells[k]);
-      ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.arc(x, y, v.s * 0.55, 0, Math.PI * 2);
       ctx.strokeStyle = def.color; ctx.lineWidth = 1.3; ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = def.color;
+      ctx.font = `600 ${Math.round(v.s * 0.4)}px 'EB Garamond', Georgia, serif`;
+      ctx.fillText(def.output.elems[k], x, y + 0.5);
+      ctx.globalAlpha = 1;
+      ctx.font = `700 10px 'Courier Prime', monospace`;
     }
+    ctx.setLineDash([]);
     {
       const [x, y] = px(v, ...def.output.cells[0]);
       ctx.fillStyle = def.color;
@@ -859,6 +889,9 @@
       const ins = st.done ? null : arm.tape[arm.idx];
       let ang = Math.atan2(1.5 * DIRS[arm.angle][1], SQ3 * (DIRS[arm.angle][0] + DIRS[arm.angle][1] / 2));
       if (ins === '+' || ins === '-') ang += (ins === '+' ? 1 : -1) * Math.PI / 3 * ease(p);
+      // pivot spins the gripper head about the hand, not the arm
+      let claw = ang;
+      if (ins === 'P' || ins === 'Q') claw += (ins === 'P' ? 1 : -1) * Math.PI / 3 * ease(p);
       const hx = bx + Math.cos(ang) * v.s * SQ3, hy = by + Math.sin(ang) * v.s * SQ3;
       // shaft
       ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = v.s * 0.16; ctx.lineCap = 'round';
@@ -872,10 +905,10 @@
       // claw
       const open = arm.anchor ? 0.16 : 0.5;
       for (const side of [-1, 1]) {
-        const ca = ang + side * (Math.PI / 2) * open;
+        const ca = claw + side * (Math.PI / 2) * open;
         ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = v.s * 0.11;
         ctx.beginPath();
-        ctx.moveTo(hx - Math.cos(ang) * v.s * 0.2, hy - Math.sin(ang) * v.s * 0.2);
+        ctx.moveTo(hx - Math.cos(claw) * v.s * 0.2, hy - Math.sin(claw) * v.s * 0.2);
         ctx.lineTo(hx + Math.cos(ca) * v.s * 0.42, hy + Math.sin(ca) * v.s * 0.42);
         ctx.stroke();
       }
