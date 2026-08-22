@@ -318,8 +318,8 @@
     <div class="duel-grid">
       <div class="rig flamel">
         <div class="rig-head">
-          <span class="rig-title">The Spendthrift</span>
-          <span class="rig-author">flamel.thru</span>
+          <span class="rig-title">Alice</span>
+          <span class="rig-author">alice.thru</span>
         </div>
         <div class="stage">
           <canvas class="field" id="cv0" width="520" height="440" aria-label="Animated machine: three arms bonding lead and quicksilver"></canvas>
@@ -336,8 +336,8 @@
       </div>
       <div class="rig hermes">
         <div class="rig-head">
-          <span class="rig-title">The Miser</span>
-          <span class="rig-author">hermes.thru</span>
+          <span class="rig-title">Bob</span>
+          <span class="rig-author">bob.thru</span>
         </div>
         <div class="stage">
           <canvas class="field" id="cv1" width="520" height="440" aria-label="Animated machine: a single arm bonding lead and quicksilver"></canvas>
@@ -431,13 +431,13 @@
         <tr><td class="gl">D</td><td class="op">RELEASE</td><td>Open the claw. Whatever was carried stays where it is.</td></tr>
         <tr><td class="gl">↻</td><td class="op">TURN CW</td><td>Rotate the arm 60° clockwise about its base, carrying its cargo in a rigid arc.</td></tr>
         <tr><td class="gl">↺</td><td class="op">TURN CCW</td><td>Rotate the arm 60° counter-clockwise.</td></tr>
-        <tr><td class="gl">↷</td><td class="op">PIVOT CW</td><td>Spin the held molecule 60° clockwise about the claw itself — the arm stays put, the cargo swings. Watch the Spendthrift's Airship Fuel wheel use it to fling the finished chain onto the product glyph.</td></tr>
+        <tr><td class="gl">↷</td><td class="op">PIVOT CW</td><td>Spin the held molecule 60° clockwise about the claw itself — the arm stays put, the cargo swings. Watch Alice's Airship Fuel wheel use it to fling the finished chain onto the product glyph.</td></tr>
         <tr><td class="gl">↶</td><td class="op">PIVOT CCW</td><td>Spin the held molecule counter-clockwise about the claw.</td></tr>
         <tr><td class="gl">·</td><td class="op">WAIT</td><td>Hold position for one cycle. Timing is a resource too.</td></tr>
       </table>
     </div>
     <div class="payload">
-      <div class="pl-label">The Miser, as submitted — one transaction, whole machine</div>
+      <div class="pl-label">Bob's machine, as submitted — one transaction, whole machine</div>
       <code>submit(puzzle: <span class="hi">1</span>, arms: [{ base: (0,0), len: 1, face: NE,
   tape: <span class="hi">"G↺D↻↻G↻↻↻DG↺↺D↺↺"</span> }])   → verified: 6/6 · sealed: 30g + 94c + 7a = SUM 131</code>
     </div>
@@ -448,7 +448,7 @@
     <div class="sec-label">04 · The ranking</div>
     <h2>Three numbers, one sum</h2>
     <div class="prose">
-      <p>Every sealed solution is scored three ways, and the demo above is a duel between the extremes. <strong style="color:var(--oxblood)">The Spendthrift</strong> buys three arms and pipelines them — a product every six cycles, at 70 gold of parts. <strong style="color:var(--verdigris)">The Miser</strong> owns one arm that does everything — a sixteen-step soliloquy, 30 gold, less than half the board.</p>
+      <p>Every sealed solution is scored three ways, and the demo above is a duel between the extremes. <strong style="color:var(--oxblood)">Alice</strong> buys three arms and pipelines them — a product every six cycles, at 70 gold of parts. <strong style="color:var(--verdigris)">Bob</strong> owns one arm that does everything — a sixteen-step soliloquy, 30 gold, less than half the board.</p>
       <p>The ranking itself is one number: <strong>SUM = cost + cycles + area</strong>, lower is better. A single ordinal, computed by the contract from your machine and the rules — <em>and nothing else</em>. Your score doesn't depend on who else is playing, so it can't be gamed the way population-relative ratings can: no ELO, no matchmaking, no flooding the pool with copies of a strategy to tilt the table. Copying the leader's machine only ever <em>ties</em> the leader — and the chain's own timestamps prove whose submission came first. A pure optimum still wants every metric low; the extremes above just show there's more than one road down.</p>
       <p>And because every submitted machine is public calldata, <strong>the record holder's blueprint is right there</strong>. Read it, shave one point off its sum, take the crown. The metagame is open-source by construction — an optimization arms race the chain referees for free.</p>
     </div>
@@ -467,7 +467,7 @@
       <div class="b-head">Puzzle Nº 002 · Airship Fuel — Prize Escrow</div>
       <div class="b-pool">25,000 THRU</div>
       <div class="b-grid">
-        <div class="b-cell"><span class="b-k">Reigning</span><span class="b-v he">hermes.thru</span></div>
+        <div class="b-cell"><span class="b-k">Reigning</span><span class="b-v he">bob.thru</span></div>
         <div class="b-cell"><span class="b-k">Best sum</span><span class="b-v">142</span></div>
         <div class="b-cell"><span class="b-k">Fuse</span><span class="b-v">19d 06h 41m</span></div>
         <div class="b-cell"><span class="b-k">Resets on</span><span class="b-v">SUM ≤ 141</span></div>
@@ -523,11 +523,11 @@
     Sa: { fill: '#F6F1E2', edge: '#2A2318', label: '#2A2318', name: 'Sa' },
     S:  { fill: '#D9A93A', edge: '#2A2318', label: '#2A2318', name: 'S' },
   };
-  const FL = { key: 'fl', title: 'The Spendthrift', author: 'flamel.thru', color: '#8C3B2E' };
-  const HE = { key: 'he', title: 'The Miser', author: 'hermes.thru', color: '#33705E' };
+  const FL = { key: 'fl', title: 'Alice', author: 'alice.thru', color: '#8C3B2E' };
+  const HE = { key: 'he', title: 'Bob', author: 'bob.thru', color: '#33705E' };
   const PUZZLES = [
     {
-      no: '001', name: 'Lead Amalgam', chain: ['Pb','Hg'],
+      no: '001', name: 'Lead Amalgam', chain: ['Pb','Hg'], shape: [[0,0],[1,0]],
       spec: 'inputs: Pb, Hg → product: Pb–Hg ×6',
       machines: [
         { ...FL,
@@ -551,7 +551,7 @@
       ],
     },
     {
-      no: '002', name: 'Airship Fuel', chain: ['Hg','S','S','S'],
+      no: '002', name: 'Airship Fuel', chain: ['Hg','S','S','S'], shape: [[0,0],[1,0],[2,-1],[2,-2]],
       spec: 'inputs: Hg, S → product: Hg–S–S–S ×6',
       machines: [
         { ...FL,
@@ -1014,15 +1014,34 @@
   let PZi = 0;
   const PZ = () => PUZZLES[PZi];
 
-  function chip(elem, sz) {
+  function chip(elem) {
     const E = ELEMS[elem];
     return `<span class="pa" style="background:${E.fill};color:${E.label}">${E.name}</span>`;
+  }
+  // the required product drawn in its true hex geometry
+  function productSVG(p) {
+    const s = 13, R = 12, PAD = 15;
+    const pts = p.shape.map(([q, r]) => [s * SQ3 * (q + r / 2), s * 1.5 * r]);
+    const xs = pts.map(t => t[0]), ys = pts.map(t => t[1]);
+    const x0 = Math.min(...xs) - PAD, y0 = Math.min(...ys) - PAD;
+    const w = Math.max(...xs) - Math.min(...xs) + PAD * 2, h = Math.max(...ys) - Math.min(...ys) + PAD * 2;
+    let bonds = '', atoms = '';
+    for (let i = 1; i < pts.length; i++) {
+      bonds += `<line x1="${pts[i-1][0]}" y1="${pts[i-1][1]}" x2="${pts[i][0]}" y2="${pts[i][1]}" stroke="#2A2318" stroke-width="4"/>`;
+    }
+    p.chain.forEach((e, i) => {
+      const E = ELEMS[e];
+      atoms += `<circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="${R}" fill="${E.fill}" stroke="#2A2318" stroke-width="1.5"/>` +
+        `<text x="${pts[i][0]}" y="${pts[i][1]}" text-anchor="middle" dominant-baseline="central" ` +
+        `font-family="'Courier Prime',monospace" font-size="9.5" font-weight="700" fill="${E.label}">${E.name}</text>`;
+    });
+    return `<svg width="${w}" height="${h}" viewBox="${x0} ${y0} ${w} ${h}" role="img" aria-label="required product molecule">${bonds}${atoms}</svg>`;
   }
   function renderProblem() {
     const p = PZ();
     const uniq = [...new Set(p.machines[0].inputs.map(i => i.elem))];
     document.getElementById('probIn').innerHTML = uniq.map(e => chip(e)).join('<span class="pgap"></span>');
-    document.getElementById('probOut').innerHTML = p.chain.map(e => chip(e)).join('<span class="pb"></span>');
+    document.getElementById('probOut').innerHTML = productSVG(p);
     document.getElementById('pspec').textContent = p.spec;
   }
 
