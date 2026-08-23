@@ -37,7 +37,7 @@ centers. All rotation is in steps of 60°.
 | Arm, dual gripper | 24g | two grippers, 180° apart |
 | Arm, tri gripper | 26g | three grippers, 120° apart |
 | Arm, hex gripper | 30g | six grippers, 60° apart |
-| Elbow attachment | +5g × order | an arm on an arm costs +5g; an arm on *that* arm +10g; fourth order +15g — articulation compounds (§5) |
+| Elbow attachment | +10g | mounting an arm on an arm; a **tip** mount replaces the parent's grabber head and refunds its 5g (§5) |
 | Bond glyph | 10g | two adjacent cells; bonds whatever pair rests on them |
 | Debond glyph | 15g | two adjacent cells; removes the bond between the atoms on them |
 | Calcification glyph | 10g | one cell; a cardinal atom resting on it becomes salt |
@@ -60,7 +60,7 @@ that introduce new geometry or a new bond type.
 
 - Arm **length** is chosen at build time, 1–3 cells, at no cost.
 - Every arm has a **base**. A base either anchors to a board cell (**ground base**) or
-  mounts on another arm via an **elbow** (+5g).
+  mounts on another arm via an **elbow** (+10g).
 - **All bases are grabbable** (§8).
 
 ### Layout
@@ -107,7 +107,11 @@ Tracks are deliberately omitted: base-grabbing covers relocation.
 
 Two roads to articulation, deliberately priced apart:
 
-- **Elbow** (+5g × order): permanent weld; the joint doesn't collide; no gripper is spent. Depth compounds: each further order of attachment costs 5g more than the last.
+- **Elbow** (+10g): permanent weld; the joint doesn't collide. A child mounted
+  **mid-shaft** leaves the parent whole. A child mounted at the parent's **tip**
+  replaces the parent's grabber head outright: the parent can no longer grab,
+  release, or pivot — turns only — and the grabber's 5g comes off the price.
+  Replacing the grabber with an arm is the only way to remove it.
 - **Grab a base** (no surcharge): any gripper may grab any arm's base (§8); the carried
   base still collides, the gripper is occupied while carrying, and the arrangement can
   be changed mid-run.

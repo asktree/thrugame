@@ -142,7 +142,28 @@
   // ---------- constants ----------
   const OFFSETS = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
   const PRICE = { 1: 20, 2: 24, 3: 26, 6: 30 };
-  const ELBOW_STEP = 5; // elbow surcharge compounds: 5g per order of attachment
+  const ELBOW_COST = 10;   // mounting an arm on an arm
+  const GRABBER_COST = 5;  // the grabber head's share of an arm's price
+
+  // Arm pricing. Mounting on an arm costs ELBOW_COST. A child mounted at the
+  // parent's TIP replaces the parent's grabber head outright — the parent can
+  // no longer grab or pivot (validated in createSim) and its GRABBER_COST is
+  // refunded. Mid-shaft mounts leave the parent's grabber alone.
+  function tipParentIds(arms) {
+    const byId = new Map(arms.map(a => [a.id, a]));
+    const tips = new Set();
+    for (const a of arms) {
+      if (!a.mount.elbow) continue;
+      const p = byId.get(a.mount.elbow.parent);
+      if (p && a.mount.elbow.at === (p.len || 1)) tips.add(p.id);
+    }
+    return tips;
+  }
+  function armsCost(arms) {
+    let cost = 0;
+    for (const a of arms) cost += PRICE[a.grippers || 1] + (a.mount.elbow ? ELBOW_COST : 0);
+    return cost - GRABBER_COST * tipParentIds(arms).size;
+  }
   // transmutation roster adopted from Opus Magnum's campaign
   const METALS = ['Pb', 'Sn', 'Fe', 'Cu', 'Ag', 'Au'];
   const CARDINALS = ['Ai', 'Ea', 'Fi', 'Wa'];
@@ -226,12 +247,7 @@
       byId[arm.id] = arm;
       S.arms.push(arm);
     }
-    // pricing: elbow surcharge scales with attachment order (2nd order +5, 3rd +10, ...)
-    for (const arm of S.arms) {
-      let depth = 0, cur = arm;
-      while (cur.mount.elbow) { cur = byId[cur.mount.elbow.parent]; depth++; }
-      S.cost += PRICE[arm.grippers] + ELBOW_STEP * depth;
-    }
+    S.cost += armsCost(S.arms);
     for (const fam in GLYPH_PRICE) S.cost += (puzzle[fam] || []).length * GLYPH_PRICE[fam];
 
     // -- validation --
@@ -256,6 +272,19 @@
         if (baseCells.has(k)) reject('two bases on one cell');
         baseCells.add(k);
         arm.basePos = arm.mount.ground.slice();
+      }
+    }
+    // a tip-mounted child replaces the parent's grabber head entirely: no
+    // grabs, no releases, no pivots — turns only. Checked on the EXPANDED tape.
+    {
+      const tips = tipParentIds(S.arms);
+      for (const arm of S.arms) {
+        if (!tips.has(arm.id)) continue;
+        for (const op of arm.tape.ops) {
+          if (op === 'G' || op === 'D' || op === 'P' || op === 'Q') {
+            reject('arm ' + arm.id + ' has no grabber (tip-mounted child) and cannot ' + op);
+          }
+        }
       }
     }
 
@@ -785,7 +814,8 @@
   }
 
   const GW = {
-    createSim, expandTape, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_STEP, RADIUS, K_SAMPLES, DEFAULT_CAPS,
+    createSim, expandTape, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_COST, GRABBER_COST,
+    armsCost, tipParentIds, RADIUS, K_SAMPLES, DEFAULT_CAPS,
     toPx, fromPx: axialRound,   // float, render/editor-pointer use only (see note above)
     // the deterministic core, exported so a C reimplementation can be conformance-tested
     // primitive by primitive against this oracle.

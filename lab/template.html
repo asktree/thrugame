@@ -238,20 +238,30 @@
     }
   }
 
-  function drawArmLimbs(arm, bx, by) {
+  // an arm that carries an elbow-mounted child is doing double duty: draw its
+  // machinery heavier so the load-bearing shaft reads as the sturdier part.
+  const PARENT_THICK = 1.15;
+
+  // `thick` scales every stroke of the limb; `hideTip` drops the head that sits
+  // where the arm's own facing ends — a child mounted at the tip has replaced that
+  // grabber outright (the engine refunds it and forbids G/D/P/Q), and its elbow pin
+  // is already drawn there by the base pass.
+  function drawArmLimbs(arm, bx, by, thick, hideTip) {
+    const k = thick || 1;
+    ctx.strokeStyle = '#8A6A1E'; ctx.lineCap = 'round';
+    // claws first, shafts after: the shaft lies OVER the head it carries
     arm.hands.forEach((h, gi) => {
+      if (hideTip && gi === 0) return;
       const [hx, hy] = P(h.x, h.y);
-      ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(hx, hy); ctx.stroke();
       // three-fold symmetric grabber head; its pose is the arm's own direction
       ctx.beginPath(); ctx.arc(hx, hy, view.s * 0.13, 0, Math.PI * 2);
-      ctx.lineWidth = view.s * 0.1; ctx.stroke();
+      ctx.lineWidth = view.s * 0.1 * k; ctx.stroke();
       // the claw snaps shut on a grab and eases open on a release
       const g = FX.grip(arm.id + ':' + gi, h.holding ? 1 : 0, frameDt);
       const r1 = view.s * 0.17, r2 = view.s * (0.5 - 0.12 * g);
-      ctx.lineWidth = view.s * 0.11;
-      for (let k = 0; k < 3; k++) {
-        const a = h.ang + Math.PI / 3 + k * (Math.PI * 2 / 3);
+      ctx.lineWidth = view.s * 0.11 * k;
+      for (let kk = 0; kk < 3; kk++) {
+        const a = h.ang + Math.PI / 3 + kk * (Math.PI * 2 / 3);
         const bend = 0.35 * g;
         ctx.beginPath();
         ctx.moveTo(hx + Math.cos(a) * r1, hy + Math.sin(a) * r1);
@@ -259,6 +269,18 @@
         ctx.stroke();
       }
     });
+    ctx.lineWidth = view.s * 0.16 * k;
+    for (const h of arm.hands) {
+      const [hx, hy] = P(h.x, h.y);
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(hx, hy); ctx.stroke();
+    }
+  }
+
+  // which arms carry a child, and which had their grabber replaced by one at the tip
+  function armFlags(arms) {
+    const parents = new Set();
+    for (const a of arms) if (a.mount && a.mount.elbow) parents.add(a.mount.elbow.parent);
+    return { parents, tips: GW.tipParentIds(arms) };
   }
 
   function draw(f) {
@@ -407,7 +429,11 @@
     FX.draw('over', atomPx, armPx);
 
     // pass 3 — every shaft and claw, on top of all plates, atoms and neighbours
-    for (const arm of rs.arms) drawArmLimbs(arm, ...armPx[arm.id]);
+    const flags = armFlags(sim.state.arms);
+    for (const arm of rs.arms) {
+      drawArmLimbs(arm, ...armPx[arm.id],
+        flags.parents.has(arm.id) ? PARENT_THICK : 1, flags.tips.has(arm.id));
+    }
 
   }
 

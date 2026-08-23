@@ -31,7 +31,8 @@ static int64_t price_of(uint8_t grippers) {
     default: return 30;
   }
 }
-#define ELBOW_STEP 5
+#define ELBOW_COST   10  /* mounting an arm on an arm */
+#define GRABBER_COST 5   /* the grabber head's share of an arm's price */
 
 static int32_t mod6(int32_t n) { return ((n % 6) + 6) % 6; }
 
@@ -327,11 +328,27 @@ int gw_sim_init(gw_sim_t *S, const gw_puzzle_t *puzzle, const gw_machine_t *m) {
     }
   }
 
-  /* pricing: arm price + compounding elbow surcharge + glyph prices */
+  /* a child mounted at the parent's TIP replaces the parent's grabber head:
+     the parent can no longer grab, release, or pivot (validated below on the
+     expanded tape) and its GRABBER_COST is refunded. */
+  uint32_t tip_parents = 0;
   for (int i = 0; i < S->narms; i++) {
-    int depth = 0, cur = i;
-    while (S->arms[cur].is_elbow) { cur = S->arms[cur].parent; depth++; }
-    S->cost += price_of(S->arms[i].grippers) + ELBOW_STEP * depth;
+    if (!S->arms[i].is_elbow) continue;
+    if (S->arms[i].at == S->arms[S->arms[i].parent].len) tip_parents |= 1u << S->arms[i].parent;
+  }
+  for (int i = 0; i < S->narms; i++) {
+    if (!(tip_parents & (1u << i))) continue;
+    for (int k = 0; k < S->arms[i].ntape; k++) {
+      uint8_t op = S->arms[i].ops[k];
+      if (op == GW_OP_G || op == GW_OP_D || op == GW_OP_PIV_CW || op == GW_OP_PIV_CCW)
+        return GW_ERR_GRABBERLESS;
+    }
+  }
+
+  /* pricing: arm price + arm-on-arm surcharge - tip-replaced grabbers + glyphs */
+  for (int i = 0; i < S->narms; i++) {
+    S->cost += price_of(S->arms[i].grippers) + (S->arms[i].is_elbow ? ELBOW_COST : 0);
+    if (tip_parents & (1u << i)) S->cost -= GRABBER_COST;
   }
   S->cost += (int64_t)puzzle->nbonders * 10 + (int64_t)puzzle->ndebonders * 15
     + (int64_t)puzzle->ncalcifiers * 10 + (int64_t)puzzle->nduplicators * 20

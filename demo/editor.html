@@ -132,7 +132,7 @@
     <div class="part" data-glyph="purifiers">PURIFY<small>20g</small></div>
     <div class="part" data-glyph="animismus">ANIMA<small>20g</small></div>
     <div class="part" data-glyph="disposals">DISPOSE<small>0g</small></div>
-    <span class="hint">drag parts onto the board · drag back here to remove · reagents are the puzzle's fixed pool<br>the handle aims, lengthens &amp; rotates · click a stack again for what's underneath · ctrl-z undoes</span>
+    <span class="hint">drag parts onto the board · drag back here to remove · reagents are the puzzle's fixed pool<br>the handle aims, lengthens &amp; rotates · click a stack again for what's underneath · ctrl-z undoes<br>drop an arm on another arm's shaft to mount it: +10g · at the tip it replaces that grabber (−5g, parent turns only)</span>
   </div>
 
   <div class="stagebox">
@@ -323,7 +323,28 @@
   // ---------- constants ----------
   const OFFSETS = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
   const PRICE = { 1: 20, 2: 24, 3: 26, 6: 30 };
-  const ELBOW_STEP = 5; // elbow surcharge compounds: 5g per order of attachment
+  const ELBOW_COST = 10;   // mounting an arm on an arm
+  const GRABBER_COST = 5;  // the grabber head's share of an arm's price
+
+  // Arm pricing. Mounting on an arm costs ELBOW_COST. A child mounted at the
+  // parent's TIP replaces the parent's grabber head outright — the parent can
+  // no longer grab or pivot (validated in createSim) and its GRABBER_COST is
+  // refunded. Mid-shaft mounts leave the parent's grabber alone.
+  function tipParentIds(arms) {
+    const byId = new Map(arms.map(a => [a.id, a]));
+    const tips = new Set();
+    for (const a of arms) {
+      if (!a.mount.elbow) continue;
+      const p = byId.get(a.mount.elbow.parent);
+      if (p && a.mount.elbow.at === (p.len || 1)) tips.add(p.id);
+    }
+    return tips;
+  }
+  function armsCost(arms) {
+    let cost = 0;
+    for (const a of arms) cost += PRICE[a.grippers || 1] + (a.mount.elbow ? ELBOW_COST : 0);
+    return cost - GRABBER_COST * tipParentIds(arms).size;
+  }
   // transmutation roster adopted from Opus Magnum's campaign
   const METALS = ['Pb', 'Sn', 'Fe', 'Cu', 'Ag', 'Au'];
   const CARDINALS = ['Ai', 'Ea', 'Fi', 'Wa'];
@@ -407,12 +428,7 @@
       byId[arm.id] = arm;
       S.arms.push(arm);
     }
-    // pricing: elbow surcharge scales with attachment order (2nd order +5, 3rd +10, ...)
-    for (const arm of S.arms) {
-      let depth = 0, cur = arm;
-      while (cur.mount.elbow) { cur = byId[cur.mount.elbow.parent]; depth++; }
-      S.cost += PRICE[arm.grippers] + ELBOW_STEP * depth;
-    }
+    S.cost += armsCost(S.arms);
     for (const fam in GLYPH_PRICE) S.cost += (puzzle[fam] || []).length * GLYPH_PRICE[fam];
 
     // -- validation --
@@ -437,6 +453,19 @@
         if (baseCells.has(k)) reject('two bases on one cell');
         baseCells.add(k);
         arm.basePos = arm.mount.ground.slice();
+      }
+    }
+    // a tip-mounted child replaces the parent's grabber head entirely: no
+    // grabs, no releases, no pivots — turns only. Checked on the EXPANDED tape.
+    {
+      const tips = tipParentIds(S.arms);
+      for (const arm of S.arms) {
+        if (!tips.has(arm.id)) continue;
+        for (const op of arm.tape.ops) {
+          if (op === 'G' || op === 'D' || op === 'P' || op === 'Q') {
+            reject('arm ' + arm.id + ' has no grabber (tip-mounted child) and cannot ' + op);
+          }
+        }
       }
     }
 
@@ -966,7 +995,8 @@
   }
 
   const GW = {
-    createSim, expandTape, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_STEP, RADIUS, K_SAMPLES, DEFAULT_CAPS,
+    createSim, expandTape, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_COST, GRABBER_COST,
+    armsCost, tipParentIds, RADIUS, K_SAMPLES, DEFAULT_CAPS,
     toPx, fromPx: axialRound,   // float, render/editor-pointer use only (see note above)
     // the deterministic core, exported so a C reimplementation can be conformance-tested
     // primitive by primitive against this oracle.
@@ -2169,13 +2199,11 @@
   }
   const GRIPOFF = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
 
+  // arm pricing is the engine's, not a copy of it: GW.armsCost knows that an elbow
+  // mount costs ELBOW_COST flat and that a child at the parent's tip refunds the
+  // grabber it replaced. Only the glyph tally is the editor's own.
   function costOf() {
-    let cost = 0;
-    for (const a of layout.arms) {
-      let depth = 0, cur = a, guard = 0;
-      while (cur && cur.mount.elbow && guard++ < 20) { cur = armById(cur.mount.elbow.parent); depth++; }
-      cost += GW.PRICE[a.grippers] + GW.ELBOW_STEP * depth;
-    }
+    let cost = GW.armsCost(layout.arms);
     for (const g of layout.glyphs) cost += GW.GLYPH_PRICE[g.type];
     return cost;
   }
@@ -2348,17 +2376,18 @@
     ctx.fillStyle = '#33705E'; ctx.fillText('OUT', x, y - view.s * 1.0);
   }
 
-  function drawClaw(x, y, ang, grip, color) {
+  function drawClaw(x, y, ang, grip, color, thick) {
     // three-fold symmetric grabber head, like the game it honors: the claw's pose
     // is the arm's own direction, so 60-degree turns alternate its two states.
     // `grip` is 0..1 so a grab can snap shut instead of teleporting between states.
+    const k = thick || 1;
     ctx.strokeStyle = color; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(x, y, view.s * 0.13, 0, Math.PI * 2);
-    ctx.lineWidth = view.s * 0.1; ctx.stroke();
+    ctx.lineWidth = view.s * 0.1 * k; ctx.stroke();
     const r1 = view.s * 0.17, r2 = view.s * (0.5 - 0.12 * grip);
-    ctx.lineWidth = view.s * 0.11;
-    for (let k = 0; k < 3; k++) {
-      const a = ang + Math.PI / 3 + k * (Math.PI * 2 / 3);
+    ctx.lineWidth = view.s * 0.11 * k;
+    for (let kk = 0; kk < 3; kk++) {
+      const a = ang + Math.PI / 3 + kk * (Math.PI * 2 / 3);
       const bend = 0.35 * grip;
       ctx.beginPath();
       ctx.moveTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1);
@@ -2391,17 +2420,40 @@
     ctx.globalAlpha = 1;
   }
 
-  function drawArmLimbs(basePx, hands, selected, ghost, gkey) {
+  // an arm that carries an elbow-mounted child is doing double duty: draw its
+  // machinery heavier so the load-bearing shaft reads as the sturdier part.
+  const PARENT_THICK = 1.15;
+
+  // `opts.thick` scales every stroke of the limb; `opts.hideTip` drops the head at
+  // offset 0 — the one where the arm's own facing ends. A child mounted at the tip
+  // has replaced that grabber outright (the engine refunds it and forbids G/D/P/Q),
+  // and its elbow pin already stands there from the base pass.
+  function drawArmLimbs(basePx, hands, selected, ghost, gkey, opts) {
     const [bx, by] = basePx;
+    const o = opts || {}, k = o.thick || 1;
+    const col = selected ? '#A0762B' : '#8A6A1E';
     ctx.globalAlpha = ghost ? 0.45 : 1;
+    // claws first, shafts after: the shaft lies OVER the head it carries
     hands.forEach((h, gi) => {
-      ctx.strokeStyle = selected ? '#A0762B' : '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(h.x, h.y); ctx.stroke();
+      if (o.hideTip && gi === 0) return;
       const grip = gkey ? FX.grip(gkey + ':' + gi, h.holding ? 1 : 0, frameDt) : (h.holding ? 1 : 0);
-      drawClaw(h.x, h.y, h.ang, grip, selected ? '#A0762B' : '#8A6A1E');
+      drawClaw(h.x, h.y, h.ang, grip, col, k);
     });
+    ctx.strokeStyle = col; ctx.lineWidth = view.s * 0.16 * k; ctx.lineCap = 'round';
+    for (const h of hands) {
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(h.x, h.y); ctx.stroke();
+    }
     ctx.globalAlpha = 1;
   }
+
+  // which arms carry a child, and which had their grabber replaced by one at the tip
+  function armFlags(arms) {
+    const parents = new Set();
+    for (const a of arms) if (a.mount && a.mount.elbow) parents.add(a.mount.elbow.parent);
+    return { parents, tips: GW.tipParentIds(arms) };
+  }
+  const limbOpts = (flags, id) =>
+    ({ thick: flags.parents.has(id) ? PARENT_THICK : 1, hideTip: flags.tips.has(id) });
 
   function handsFor(posePos, poseRot, arm) {
     const [bx, by] = Pc(posePos);
@@ -2463,9 +2515,10 @@
       drawArmBase(Pc(poses[arm.id].pos), !!arm.mount.elbow, isSel(arm), false);
     }
     // pass 2 — all shafts and claws, above every plate
+    const flags = armFlags(layout.arms);
     for (const arm of layout.arms) {
       const p = poses[arm.id];
-      drawArmLimbs(Pc(p.pos), handsFor(p.pos, p.rot, arm), isSel(arm), false);
+      drawArmLimbs(Pc(p.pos), handsFor(p.pos, p.rot, arm), isSel(arm), false, null, limbOpts(flags, arm.id));
     }
     // rotation handle for the selected rotatable piece
     if (sel && rotatable(sel) && (!drag || drag.kind === 'handle')) {
@@ -2534,10 +2587,11 @@
     }
     FX.draw('over', atomPx, armPx);
     // pass 3 — every shaft and claw, on top of all plates, atoms and neighbours
+    const flags = armFlags(sim.state.arms);
     for (const arm of rs.arms) {
       drawArmLimbs(armPx[arm.id],
         arm.hands.map(h => { const [x, y] = P(h.x, h.y); return { x, y, ang: h.ang, holding: h.holding }; }),
-        false, false, 'r' + arm.id);
+        false, false, 'r' + arm.id, limbOpts(flags, arm.id));
     }
   }
 
@@ -2596,10 +2650,25 @@
   const freshId = () => { while (armById('a' + nextId)) nextId++; return 'a' + nextId; };
   function touched() { saveDraft(); refreshAll(); }
 
+  // returns the mount AND the rotation of the frame it lands in — a shaft mount
+  // inherits the parent's facing, the ground's frame is always rotation 0. Callers
+  // that move an existing arm use `rot` to keep its ABSOLUTE facing across the move.
   function mountFor(cell, excludeId) {
     if (baseAt(cell)) return null;
     const hit = shaftAt(cell, excludeId);
-    return hit ? { elbow: { parent: hit.arm.id, at: hit.at } } : { ground: [cell[0], cell[1]] };
+    return hit ? { mount: { elbow: { parent: hit.arm.id, at: hit.at } }, rot: hit.rot }
+      : { mount: { ground: [cell[0], cell[1]] }, rot: 0 };
+  }
+  const sameMount = (a, b) => (a.ground && b.ground && eq(a.ground, b.ground))
+    || (!!a.elbow && !!b.elbow && a.elbow.parent === b.elbow.parent && a.elbow.at === b.elbow.at);
+  // re-mounting keeps the arm pointing where it pointed: `angle` is relative to the
+  // frame it hangs in, so moving between frames has to rebase it against the new one.
+  function remount(arm, m) {
+    if (sameMount(arm.mount, m.mount)) return false;
+    const abs = mod6(initPoses()[arm.id].rot + arm.angle);
+    arm.mount = m.mount;
+    arm.angle = mod6(abs - m.rot);
+    return true;
   }
   function deleteSelected() {
     if (!sel) return;
@@ -2673,6 +2742,9 @@
       else t.ops[cursor.pos] = op;
       cursor.pos = Math.min(cursor.pos + 1, t.ops.length);
     });
+    // a grabberless arm still takes the op — the engine's validate() is the hard
+    // stop at Test time — but say why it will be refused
+    if ('GDPQ'.indexOf(op) >= 0 && isTipParent(cursor.armId)) setStatus(TIP_NOTE, 'bad');
   }
   function insOp() {
     if (!cursor) return;
@@ -2885,11 +2957,16 @@
     setStatus('testing — the verifier is watching every sweep');
   }
 
+  // an arm whose tip carries a child has no grabber left to speak of
+  const isTipParent = (id) => GW.tipParentIds(layout.arms).has(id);
+  const TIP_NOTE = 'this arm\'s grabber was replaced by a mounted arm — turns only';
+
   function refreshAll() {
     buildTapes(); hud();
     if (mode === 'edit') {
       const bad = validate();
-      setStatus(bad ? `<span class="bad">✗ ${bad}</span>` : `<span class="good">✓ layout legal</span> · ${layout.arms.length} arm(s), ${layout.glyphs.length} glyph(s) · code ${code().length} chars`);
+      const note = sel && sel.kind === 'arm' && isTipParent(sel.id) ? ` · <span class="bad">${TIP_NOTE}</span>` : '';
+      setStatus((bad ? `<span class="bad">✗ ${bad}</span>` : `<span class="good">✓ layout legal</span> · ${layout.arms.length} arm(s), ${layout.glyphs.length} glyph(s) · code ${code().length} chars`) + note);
     }
   }
 
@@ -2965,7 +3042,7 @@
     } else if (drag.kind === 'base') {
       const a = armById(drag.armId); if (!a) return;
       const m = mountFor(hoverCell, drag.armId);
-      if (m && !(a.mount.ground && m.ground && eq(a.mount.ground, m.ground))) { a.mount = m; drag.moved = true; }
+      if (m && remount(a, m)) drag.moved = true;
     } else if (drag.kind === 'glyph' && drag.end !== undefined) {
       // two-cell glyphs move by whichever end you grabbed; near the other end they pivot around it
       const g = layout.glyphs[drag.i]; if (!g) return;
@@ -3022,7 +3099,8 @@
             const m = mountFor(hoverCell, null);
             if (!m) { setStatus('a base already sits there', 'bad'); return; }
             const id = freshId();
-            layout.arms.push({ id, grippers: d.part.arm, len: 1, mount: m, angle: 0, tape: { delay: 0, ops: ['W'] } });
+            // a brand-new arm has no facing to preserve: angle 0 in its own frame
+            layout.arms.push({ id, grippers: d.part.arm, len: 1, mount: m.mount, angle: 0, tape: { delay: 0, ops: ['W'] } });
             sel = { kind: 'arm', id }; cursor = { armId: id, pos: 0 };
           } else if (d.part.glyph) {
             layout.glyphs.push({ type: d.part.glyph, at: hoverCell.slice(), rot: 0 });

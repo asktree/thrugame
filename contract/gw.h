@@ -57,6 +57,7 @@ enum {                              /* invalid-machine rejections (pre-run) */
   GW_ERR_DECODE,                    /* malformed codec bytes */
   GW_ERR_PARTS, GW_ERR_GRIPPERS, GW_ERR_LENGTH, GW_ERR_TAPE, GW_ERR_OP,
   GW_ERR_ELBOW_PARENT, GW_ERR_ELBOW_AT, GW_ERR_ELBOW_DEPTH, GW_ERR_BASE_CLASH,
+  GW_ERR_GRABBERLESS,               /* tip-mounted child; parent tape grabs/pivots */
   GW_ERR_GLYPH_SHAPE, GW_ERR_GLYPH_OVERLAP, GW_ERR_BASE_ON_GLYPH,
   GW_ERR_CAPACITY,                  /* exceeds a GW_MAX_* build bound */
 };

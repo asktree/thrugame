@@ -270,15 +270,34 @@ for (const ex of EXAMPLES) {
   check('codec: rejects truncated bytes', bad(() => CODEC.decodeMachine(Uint8Array.from([1, 1, 0]))));
 }
 
-// ---- elbow pricing compounds with order ----
+// ---- arm-on-arm pricing and the tip-mount grabber replacement ----
 {
+  // A (len 1) tip-carries B; B (len 2) mid-shaft-carries C.
+  // A: 20, loses its grabber to B: -5. B: 20+10. C: 20+10 (mid-shaft, no refund).
   const machine = { arms: [
     { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0, tape: { ops: ['W'] } },
-    { id: 'B', grippers: 1, len: 1, mount: { elbow: { parent: 'A', at: 1 } }, angle: 0, tape: { ops: ['W'] } },
+    { id: 'B', grippers: 1, len: 2, mount: { elbow: { parent: 'A', at: 1 } }, angle: 0, tape: { ops: ['W'] } },
     { id: 'C', grippers: 1, len: 1, mount: { elbow: { parent: 'B', at: 1 } }, angle: 0, tape: { ops: ['W'] } },
   ] };
   const sim = GW.createSim({}, machine);
-  check('pricing: 20 + (20+5) + (20+10) = 75', sim.metrics().cost === 75, 'got ' + sim.metrics().cost);
+  check('pricing: tip mount refunds the grabber (20-5 + 30 + 30 = 75)',
+    sim.metrics().cost === 75, 'got ' + sim.metrics().cost);
+  check('pricing: GW.armsCost agrees with createSim', GW.armsCost(machine.arms) === 75);
+
+  const grabber = (op) => ({ arms: [
+    { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0, tape: { ops: [op] } },
+    { id: 'B', grippers: 1, len: 1, mount: { elbow: { parent: 'A', at: 1 } }, angle: 0, tape: { ops: ['W'] } },
+  ] });
+  const rejects = (m) => { try { GW.createSim({}, m); return false; } catch (e) { return /no grabber/.test(e.message); } };
+  check('tip mount: parent cannot grab, release, or pivot (turns still fine)',
+    rejects(grabber('G')) && rejects(grabber('D')) && rejects(grabber('P')) && rejects(grabber('Q'))
+    && !rejects(grabber('+')) && !rejects(grabber('W')));
+  // the ban applies to the EXPANDED tape: + R expands clean, G R does not
+  check('tip mount: ban sees through repeat markers',
+    rejects({ arms: [
+      { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0, tape: { ops: ['G', 'R'] } },
+      { id: 'B', grippers: 1, len: 1, mount: { elbow: { parent: 'A', at: 1 } }, angle: 0, tape: { ops: ['W'] } },
+    ] }));
 }
 
 // ==========================================================================
@@ -673,12 +692,23 @@ function lcg(seed) {
     };
   };
   const N = 150;
-  let crashed = null, diverged = null, badMetrics = null, faulted = 0;
+  let crashed = null, diverged = null, badMetrics = null, faulted = 0, rejected = 0;
   const kinds = {};
   for (let n = 0; n < N; n++) {
     const m = randMachine();
     let a, b;
-    try { a = GW.createSim(PUZZLE, m).run(60); b = GW.createSim(PUZZLE, m).run(60); }
+    // random machines may legitimately be invalid (e.g. a tip-mounted parent
+    // whose tape grabs) — a clean rejection is fine as long as both runs agree
+    try { a = GW.createSim(PUZZLE, m).run(60); }
+    catch (ea) {
+      if (!/^invalid machine:/.test(ea.message)) { if (!crashed) crashed = ea.message + ' on ' + JSON.stringify(m); continue; }
+      let eb = null;
+      try { GW.createSim(PUZZLE, m); } catch (e2) { eb = e2.message; }
+      if (!diverged && eb !== ea.message) diverged = 'reject divergence: ' + ea.message + ' vs ' + eb;
+      rejected++;
+      continue;
+    }
+    try { b = GW.createSim(PUZZLE, m).run(60); }
     catch (e) { if (!crashed) crashed = e.message + ' on ' + JSON.stringify(m); continue; }
     const sa = snapshot(a), sb = snapshot(b);
     if (!diverged && !deepEq(sa, sb)) diverged = JSON.stringify(m) + '\n A ' + JSON.stringify(sa) + '\n B ' + JSON.stringify(sb);
@@ -689,7 +719,7 @@ function lcg(seed) {
       && (mm.cycles === null || (typeof mm.cycles === 'number' && Number.isFinite(mm.cycles)))
       && (mm.sum === null || typeof mm.sum === 'number'))) badMetrics = JSON.stringify(mm);
   }
-  check(`sim fuzz: ${N} seeded-random machines all build and run 60 ticks without crashing`,
+  check(`sim fuzz: ${N} seeded-random machines run 60 ticks or reject cleanly (${rejected} rejected)`,
     crashed === null, crashed);
   check(`sim fuzz: two independent runs agree bit-for-bit (${faulted} faulted: ${JSON.stringify(kinds)})`,
     diverged === null, diverged);
