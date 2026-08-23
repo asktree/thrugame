@@ -244,6 +244,26 @@
       }
     }
 
+    // -- layout validation: glyphs may not overlap each other; bases may not sit on glyphs --
+    {
+      const glyphCells = new Set();
+      const claim = (c) => {
+        const k = cellKey(c);
+        if (glyphCells.has(k)) reject('glyph overlap at ' + k);
+        glyphCells.add(k);
+      };
+      for (const fam in GLYPH_PRICE) for (const g of (puzzle[fam] || [])) {
+        for (const c of (Array.isArray(g[0]) ? g : [g])) claim(c);
+      }
+      for (const g of (puzzle.inputs || [])) claim(g.cell);
+      for (const c of ((puzzle.output && puzzle.output.cells) || [])) claim(c);
+      for (const arm of S.arms) {
+        if (!arm.mount.elbow && glyphCells.has(cellKey(arm.mount.ground))) {
+          reject('base on glyph cell ' + cellKey(arm.mount.ground));
+        }
+      }
+    }
+
     // initial atoms (tests/puzzles may pre-place)
     for (const a of (puzzle.atoms || [])) {
       S.atoms.push({ id: S.nextAtom++, cell: a.cell.slice(), elem: a.elem, bonds: new Set() });
@@ -703,11 +723,11 @@
       key: 'ferris',
       name: 'The Ferris',
       blurb: 'An elbow arm rides its parent between two worlds: Pb-side and Hg-side share one child tape. The bonder doubles as the product glyph, so the compound vanishes the instant it forms.',
-      expect: { cycles: 79 },
+      expect: { cycles: 83 },
       puzzle: {
         inputs: [{ cell: [2, -1], elem: 'Pb' }, { cell: [0, 2], elem: 'Hg' }],
         bonders: [[[2, 0], [1, 1]]],
-        output: { cells: [[2, 0], [1, 1]], elems: ['Pb', 'Hg'], bonds: [[0, 1]] },
+        output: { cells: [[3, 1], [3, 0]], elems: ['Pb', 'Hg'], bonds: [[0, 1]] },
       },
       machine: {
         arms: [
@@ -715,6 +735,8 @@
             tape: { ops: ['W', 'W', 'W', '+', 'W', 'W', 'W', '-'] } },
           { id: 'C', grippers: 1, len: 1, mount: { elbow: { parent: 'P', at: 1 } }, angle: 5,
             tape: { ops: ['G', '+', 'D', 'W', 'G', '-', 'D', 'W'] } },
+          { id: 'X', grippers: 1, len: 1, mount: { ground: [2, 1] }, angle: 4,
+            tape: { delay: 7, ops: ['G', '+', '+', 'D', '-', '-', 'W', 'W'] } },
         ],
       },
     },
@@ -722,11 +744,11 @@
       key: 'crane',
       name: 'The Crane',
       blurb: 'A worker arm runs one six-step loop forever. The crane relocates it — mid-loop, tapes still ticking — so the same coordinate-free tape ferries lead in one place and quicksilver in another.',
-      expect: { cycles: 157 },
+      expect: { cycles: 163 },
       puzzle: {
         inputs: [{ cell: [3, -1], elem: 'Pb' }, { cell: [3, 2], elem: 'Hg' }],
         bonders: [[[1, 1], [1, 2]]],
-        output: { cells: [[1, 1], [1, 2]], elems: ['Pb', 'Hg'], bonds: [[0, 1]] },
+        output: { cells: [[0, 4], [1, 4]], elems: ['Hg', 'Pb'], bonds: [[0, 1]] },
       },
       machine: {
         arms: [
@@ -734,6 +756,8 @@
             tape: { ops: ['G', '+', '+', '+', 'D', '-', '-', '-'] } },
           { id: 'C', grippers: 1, len: 2, mount: { ground: [0, 2] }, angle: 5,
             tape: { delay: 5, ops: ['G', '+', 'D', 'W', 'W', 'W', 'W', 'W', 'G', '-', 'D', 'W', 'W', 'W', 'W', 'W'] } },
+          { id: 'X', grippers: 1, len: 1, mount: { ground: [0, 3] }, angle: 5,
+            tape: { delay: 15, ops: ['G', '+', '+', 'D', '-', '-', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W'] } },
         ],
       },
     },
@@ -782,39 +806,33 @@
     {
       key: 'leachworks',
       name: 'The Leaching Works',
-      blurb: 'One reagent, three transmutations deep: water is calcified into salt, salt pairs are transmuted by animismus into vitae and mors — which spawn directly onto the product glyph — and five bonders knit a branched six-atom compound around them. Six arms, one factory.',
-      expect: { cycles: 233 },
+      blurb: 'Water alone becomes salt, mors, vitae, salt — bonded in a chain. Three calcifiers and an animismus glyph feed a rocking wheel that drags the growing chain back and forth across a single bonder, then lays the finished compound around its own hub, where the product glyph waits. Five arms, one product every twenty ticks.',
+      expect: { cycles: 217 },
       puzzle: {
         inputs: [
-          { cell: [2, -4], elem: 'Wa' }, { cell: [0, -3], elem: 'Wa' }, { cell: [3, -3], elem: 'Wa' },
-          { cell: [0, 3], elem: 'Wa' }, { cell: [-3, 1], elem: 'Wa' },
+          { cell: [-3, 0], elem: 'Wa' }, { cell: [0, -4], elem: 'Wa' }, { cell: [5, -1], elem: 'Wa' },
         ],
-        calcifiers: [[1, -3], [-1, 2], [-3, 2]],
-        animismus: [[[1, -1], [0, 1], [0, 0], [1, 0]]],
-        bonders: [
-          [[0, 0], [1, 0]], [[0, 0], [0, -1]], [[0, 0], [-1, 1]],
-          [[1, 0], [2, -1]], [[1, 0], [1, 1]],
-        ],
+        calcifiers: [[-1, -1], [1, -3], [4, -2]],
+        animismus: [[[3, -1], [3, 0], [2, -2], [2, -3]]],
+        bonders: [[[0, -1], [1, -1]]],
         output: {
-          cells: [[0, 0], [1, 0], [0, -1], [2, -1], [-1, 1], [1, 1]],
-          elems: ['Vi', 'Mo', 'Wa', 'Wa', 'Sa', 'Sa'],
-          bonds: [[0, 1], [0, 2], [0, 4], [1, 3], [1, 5]],
+          cells: [[1, 0], [0, 1], [-1, 1], [-1, 0]],
+          elems: ['Sa', 'Mo', 'Vi', 'Sa'],
+          bonds: [[0, 1], [1, 2], [2, 3]],
         },
       },
       machine: {
         arms: [
-          { id: 'K', grippers: 1, len: 1, mount: { ground: [2, -3] }, angle: 4,
-            tape: { ops: ['G','-','D','G','-','D','+','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
-          { id: 'D', grippers: 1, len: 1, mount: { ground: [2, -2] }, angle: 3,
-            tape: { delay: 6, ops: ['G','-','D','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
-          { id: 'E', grippers: 1, len: 1, mount: { ground: [0, -2] }, angle: 4,
-            tape: { ops: ['G','-','-','-','D','+','+','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
-          { id: 'F', grippers: 1, len: 1, mount: { ground: [3, -2] }, angle: 4,
-            tape: { ops: ['G','+','+','+','+','D','-','-','-','-','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
-          { id: 'M', grippers: 1, len: 1, mount: { ground: [0, 2] }, angle: 1,
-            tape: { ops: ['G','+','+','D','G','+','+','D','+','+','G','+','+','D','G','+','D','-','-','-','W','W','W','W'] } },
-          { id: 'S', grippers: 1, len: 1, mount: { ground: [-2, 1] }, angle: 3,
-            tape: { ops: ['G','-','D','G','-','-','D','+','+','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'W', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 3,
+            tape: { delay: 20, ops: ['G','+','-','W','W','W','-','W','W','W','W','W','W','W','-','-','D','+','+','+'] } },
+          { id: 'H', grippers: 1, len: 1, mount: { ground: [-2, 0] }, angle: 3,
+            tape: { delay: 15, ops: ['G','+','+','+','D','-','-','-','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'N', grippers: 1, len: 1, mount: { ground: [0, -3] }, angle: 4,
+            tape: { delay: 23, ops: ['G','+','+','D','-','-','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'P', grippers: 1, len: 1, mount: { ground: [4, -1] }, angle: 0,
+            tape: { ops: ['G','-','-','D','G','-','-','D','-','-','G','-','-','D','G','-','D','-','-','-'] } },
+          { id: 'F', grippers: 1, len: 1, mount: { ground: [1, -2] }, angle: 5,
+            tape: { delay: 17, ops: ['G','-','-','-','-','D','-','G','+','D','+','+','+','G','+','+','+','D','-','-'] } },
         ],
       },
     },

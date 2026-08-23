@@ -118,6 +118,26 @@
       }
     }
 
+    // -- layout validation: glyphs may not overlap each other; bases may not sit on glyphs --
+    {
+      const glyphCells = new Set();
+      const claim = (c) => {
+        const k = cellKey(c);
+        if (glyphCells.has(k)) reject('glyph overlap at ' + k);
+        glyphCells.add(k);
+      };
+      for (const fam in GLYPH_PRICE) for (const g of (puzzle[fam] || [])) {
+        for (const c of (Array.isArray(g[0]) ? g : [g])) claim(c);
+      }
+      for (const g of (puzzle.inputs || [])) claim(g.cell);
+      for (const c of ((puzzle.output && puzzle.output.cells) || [])) claim(c);
+      for (const arm of S.arms) {
+        if (!arm.mount.elbow && glyphCells.has(cellKey(arm.mount.ground))) {
+          reject('base on glyph cell ' + cellKey(arm.mount.ground));
+        }
+      }
+    }
+
     // initial atoms (tests/puzzles may pre-place)
     for (const a of (puzzle.atoms || [])) {
       S.atoms.push({ id: S.nextAtom++, cell: a.cell.slice(), elem: a.elem, bonds: new Set() });

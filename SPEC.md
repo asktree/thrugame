@@ -58,6 +58,14 @@ introduce new geometry or a new bond type.
   mounts on another arm via an **elbow** (+5g).
 - **All bases are grabbable** (§8).
 
+### Layout
+
+At submission time the board layout must be non-overlapping: **no two glyphs may share
+a cell** (reagent and product glyphs included), and **no ground base may sit on a glyph
+cell**. In particular, nothing may overlap the product glyph — a finished molecule is
+always assembled elsewhere and brought to it. Overlapping layouts are rejected before
+simulation begins.
+
 ### Occupancy and collidability
 
 - Anything that anchors to the board, and anything grabbable, **occupies its cell and
@@ -174,7 +182,7 @@ until **ten products** are consumed or a fault occurs. On success, three metrics
 sealed:
 
 - **Cost** — the sum of part prices.
-- **Cycles** — the tick on which the sixth product is consumed.
+- **Cycles** — the tick on which the tenth product is consumed.
 - **Area** — the number of distinct cells visited (center-wise, at any sample instant)
   by any atom, base, or gripper, plus all glyph cells.
 - **SUM = cost + cycles + area.** Lower is better. Ranking is by SUM; ties stand in

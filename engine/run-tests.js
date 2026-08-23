@@ -141,7 +141,6 @@ for (const ex of EXAMPLES) {
     animismus: [[[12, 0], [13, 0], [14, 0], [15, 0]]],
     disposals: [[16, 0]],
     bonders: [[[18, 0], [19, 0]]],
-    debonders: [[[18, 0], [19, 0]]],
   };
   const machine = { arms: [{ id: 'A', grippers: 1, len: 1, mount: { ground: [0, 5] }, angle: 0, tape: { ops: ['W'] } }] };
   const sim = GW.createSim(puzzle, machine); sim.step();
@@ -152,8 +151,46 @@ for (const ex of EXAMPLES) {
   check('purification: two Cu become Ag', !at([8, 0]) && !at([9, 0]) && at([10, 0]).elem === 'Ag');
   check('animismus: two salt become vitae and mors', at([14, 0]).elem === 'Vi' && at([15, 0]).elem === 'Mo');
   check('disposal: atom destroyed', !at([16, 0]));
-  check('debond: bond severed same tick it forms', at([18, 0]).bonds.size === 0);
+  check('bond glyph joins the pair', at([18, 0]).bonds.size === 1);
   check('no fault in glyph pack', !sim.state.fault, JSON.stringify(sim.state.fault));
+}
+
+// ---- debond glyph severs a bond (glyphs may no longer stack, so carry the pair over) ----
+{
+  const puzzle = {
+    atoms: [{ cell: [0, 0], elem: 'Ea' }, { cell: [1, 0], elem: 'Ea' }],
+    bonders: [[[0, 0], [1, 0]]],
+    debonders: [[[2, 0], [2, -1]]],
+  };
+  const machine = { arms: [
+    { id: 'A', grippers: 1, len: 1, mount: { ground: [1, 1] }, angle: 4,
+      tape: { ops: ['W', 'G', '+', 'W'] } },
+  ] };
+  const sim = GW.createSim(puzzle, machine);
+  sim.step(); // t1: bond forms on the bonder
+  const bonded = sim.state.atoms.every(a => a.bonds.size === 1);
+  sim.step(); sim.step(); // t2: grab; t3: swing pair onto the debonder
+  const severed = sim.state.atoms.every(a => a.bonds.size === 0);
+  check('debond: pair bonds, then debonder severs', bonded && severed && !sim.state.fault,
+    JSON.stringify({ bonded, severed, fault: sim.state.fault }));
+}
+
+// ---- layout: overlapping glyphs and bases on glyphs are rejected ----
+{
+  const arms = [{ id: 'A', grippers: 1, len: 1, mount: { ground: [5, 5] }, angle: 0, tape: { ops: ['W'] } }];
+  const rejects = (puzzle, machine) => {
+    try { GW.createSim(puzzle, machine); return false; } catch (e) { return /glyph|base/.test(String(e)); }
+  };
+  check('layout: stacked bonders rejected',
+    rejects({ bonders: [[[0, 0], [1, 0]], [[0, 0], [0, 1]]] }, { arms }));
+  check('layout: glyph on product glyph rejected',
+    rejects({ calcifiers: [[0, 0]], output: { cells: [[0, 0]], elems: ['Sa'], bonds: [] } }, { arms }));
+  check('layout: input on glyph rejected',
+    rejects({ inputs: [{ cell: [0, 0], elem: 'Wa' }], disposals: [[0, 0]] }, { arms }));
+  check('layout: ground base on glyph cell rejected',
+    rejects({ calcifiers: [[5, 5]] }, { arms }));
+  check('layout: disjoint glyphs accepted',
+    !rejects({ bonders: [[[0, 0], [1, 0]]], calcifiers: [[3, 0]] }, { arms }));
 }
 
 // ---- elbow pricing compounds with order ----
