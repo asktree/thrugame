@@ -1,6 +1,6 @@
 # GREAT WORK! — Game Specification
 
-**Version 0.3 (draft) · game rules only — implementation details live elsewhere**
+**Version 0.4 (draft) · game rules only — implementation details live elsewhere**
 
 Great Work! is an open optimization puzzle. (The name is meant to be read as a compliment.) A puzzle asks for a product molecule to be
 manufactured from reagents; a solution is a **machine** — parts placed on a hex grid,
@@ -167,6 +167,31 @@ At each sample instant, if any two collidable discs (atoms, occupying bases) ove
 the machine faults. This sampled check **is** the collision rule — it is exact and
 complete, not an approximation of some finer rule. Motion that threads between sample
 instants is legal, by definition.
+
+### Deterministic arithmetic
+
+The sweep is defined over **Q16.16 fixed-point integers**, not real numbers: every
+value is an integer equal to round(real · 65536), every product is descaled by
+**floor** division, and all trigonometry is table lookup. Because one direction step
+is 60° and K = 12, every angle a sample instant can ask about is an exact multiple
+of 5° — angles are integers counting 5° units, and a 13-entry cos/sin table for
+0°–60° (extended by exact sextant rotations, cos 60° = ½ and sin 60° = √3/2) covers
+all of them.
+
+The constants are **normative** — a verifier copies the literals, never recomputes
+them from a math library:
+
+- `SQRT3 = 113512`, `HALF_SQRT3 = 56756` (√3 and √3/2, scaled)
+- `THRESH2 = 96338` — the collision comparison is squared distance
+  < THRESH2, where (0.7·√3)² = 1.47 exactly and round(1.47 · 65536) = 96338.
+  Strict less-than: exactly-touching discs do not collide.
+- the `COS5`/`SIN5` tables, `round(cos/sin(k·5°) · 65536)` for k = 0..12.
+
+Every implementation — the reference JS engine and the on-chain verifier — must
+reproduce these operations bit-for-bit in 64-bit integers; the JS engine
+(`engine/engine.js`, the `GW.Q` exports) is the conformance oracle. Divisions floor
+toward −∞ (C's `/` truncates toward zero and must be wrapped). Area accrual (§11)
+rounds sampled positions to cells in the same arithmetic.
 
 ## 10. Faults
 

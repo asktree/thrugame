@@ -154,10 +154,11 @@
     for (let i = 0; i < k; i++) { const t = q; q = -r; r = t + r; }
     return [q, r];
   }
+  // RENDER ONLY (§ deterministic arithmetic below owns every simulation decision):
+  // toPx / dirRadF / axialRound are float helpers kept for the canvas and the editor's
+  // pointer picking. Nothing that decides a fault, an area cell or a cycle count may call them.
   const toPx = (c) => [SQ3 * (c[0] + c[1] / 2), 1.5 * c[1]];
   const dirRad = (d) => Math.atan2(1.5 * DIRS[mod6(d)][1], SQ3 * (DIRS[mod6(d)][0] + DIRS[mod6(d)][1] / 2));
-  // continuous unit step in pixel space for a fractional direction (radians)
-  const radVec = (a) => [Math.cos(a), Math.sin(a)];
   // NOTE: dir 0 (E) has pixel angle 0; each +1 dir step = +60° in screen space.
   const DIR0 = dirRad(0);
   const dirRadF = (dF) => DIR0 + dF * Math.PI / 3;
@@ -166,6 +167,105 @@
     const r = y / 1.5, q = x / SQ3 - r / 2;
     let rq = Math.round(q), rr = Math.round(r), rs = Math.round(-q - r);
     const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - (-q - r));
+    if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs;
+    return [rq, rr];
+  }
+
+  // ==========================================================================
+  // deterministic arithmetic
+  // --------------------------------------------------------------------------
+  // Every value below is Q16.16 fixed point: an ordinary JS number holding an
+  // INTEGER equal to round(real · 65536). No floats, no Math.sqrt/cos/sin, and
+  // never a JS bitwise operator (<<, >>, |, &) — those truncate to 32 bits and
+  // would silently wreck Q16.16 magnitudes.
+  //
+  // Division is FLOOR division everywhere (see fdiv). C's `/` truncates toward
+  // zero, so the on-chain oracle must implement an explicit floored divide for
+  // negative operands or it will disagree by one ulp and, eventually, by a verdict.
+  //
+  // The constants in this block (SQRT3, HALF_SQRT3, THRESH2, COS5, SIN5) are
+  // NORMATIVE: the verifier must copy the literals verbatim rather than recompute
+  // them from a math library. Collision, area accrual and therefore cycles/SUM all
+  // fall out of these operations, so the on-chain verifier must reproduce them
+  // bit-for-bit. int64 is sufficient and required for every intermediate.
+  // ==========================================================================
+  const ONE = 65536;                              // Q16.16 scale, 2^16
+  // Floor division. C oracle: NOT `a / b` (which truncates toward zero) — use a
+  // floored variant, e.g. `q = a / b; if ((a % b) && ((a < 0) != (b < 0))) q--;`
+  // Math.floor(a/b) here is exact for every magnitude this engine produces: |a| < 2^46,
+  // so the IEEE quotient's absolute error is below 2^-30, while a non-multiple integer
+  // dividend sits at least 1/b ≈ 2^-17 away from an integer quotient — the two can never
+  // meet, so the floor never lands on the wrong side of an integer boundary.
+  const fdiv = (a, b) => Math.floor(a / b);
+  // Q16.16 multiply. Magnitude bound: board coords satisfy |q|,|r| <= ~40, so px
+  // values stay under 2^23 in Q16.16 and any product here is under ~2^46 < 2^53.
+  const fmul = (a, b) => fdiv(a * b, ONE);
+  const fabs = (a) => (a < 0 ? -a : a);
+  // round-half-up to a plain integer; identical to JS Math.round on these ranges.
+  const qround = (a) => fdiv(a + 32768, ONE);
+
+  const SQRT3 = 113512;        // round(sqrt(3) * 65536) = round(113511.6817...)
+  const HALF_SQRT3 = 56756;    // round(sqrt(3)/2 * 65536) = round(56755.8409...) = SQRT3/2
+  // Collision threshold, compared as SQUARED distance so no sqrt is ever needed.
+  // Centers collide closer than 2*RADIUS*PITCH = 2*0.35*sqrt(3) = 0.7*sqrt(3) px.
+  // (0.7*sqrt(3))^2 = 0.49*3 = 1.47 exactly, so
+  //   THRESH2 = round(((0.7*sqrt(3))*65536)^2 / 65536) = round(1.47 * 65536)
+  //           = round(96337.92) = 96338.
+  const THRESH2 = 96338;
+  // Sweep samples land on multiples of 60°/K_SAMPLES = 5°, so all trigonometry is
+  // table lookup at 5° granularity. 13 entries cover one sextant, 0°..60°:
+  // COS5[k] = round(cos(k*5°) * 65536), SIN5[k] = round(sin(k*5°) * 65536).
+  const COS5 = [65536, 65287, 64540, 63303, 61584, 59396, 56756, 53684, 50203, 46341, 42126, 37590, 32768];
+  const SIN5 = [0, 5712, 11380, 16962, 22415, 27697, 32768, 37590, 42126, 46341, 50203, 53684, 56756];
+  const ANG_TURN = 72;                            // 5° units in a full turn
+  const ANG_DIR = 12;                             // 5° units in one lattice direction (60°)
+  const modA = (u) => ((u % ANG_TURN) + ANG_TURN) % ANG_TURN;
+  // trigQ(u) = [cos, sin] in Q16.16 of the angle u*5°, u any integer.
+  // The sextant (the whole-lattice-direction part) is applied as an exact 60°
+  // rotation using cos60 = 1/2 and sin60 = sqrt(3)/2 = HALF_SQRT3; only the
+  // remaining 0..55° reads the table.
+  function trigQ(u) {
+    u = modA(u);
+    const s = fdiv(u, ANG_DIR), k = u - s * ANG_DIR;   // s in 0..5, k in 0..11
+    const c = COS5[k], n = SIN5[k];
+    switch (s) {
+      case 0: return [c, n];
+      case 1: return [fdiv(c, 2) - fmul(HALF_SQRT3, n), fmul(HALF_SQRT3, c) + fdiv(n, 2)];
+      case 2: return [-fdiv(c, 2) - fmul(HALF_SQRT3, n), fmul(HALF_SQRT3, c) - fdiv(n, 2)];
+      case 3: return [-c, -n];
+      case 4: return [-fdiv(c, 2) + fmul(HALF_SQRT3, n), -fmul(HALF_SQRT3, c) - fdiv(n, 2)];
+      default: return [fdiv(c, 2) + fmul(HALF_SQRT3, n), -fmul(HALF_SQRT3, c) + fdiv(n, 2)];
+    }
+  }
+  // lattice cell -> pixel, in Q16.16. x = sqrt(3)*(q + r/2) = sqrt(3)*(2q+r)/2;
+  // y = 1.5*r is exact (r * 98304) with no rounding at all.
+  const toPxQ = (q, r) => [fdiv(SQRT3 * (2 * q + r), 2), r * 98304];
+  // step of `n` lattice units along the direction u (in 5° units), in Q16.16 px.
+  // One pitch is sqrt(3) px, so the leg length is n*SQRT3 (n <= 3 here).
+  function stepQ(n, u) {
+    const t = trigQ(u);
+    return [fmul(SQRT3 * n, t[0]), fmul(SQRT3 * n, t[1])];
+  }
+  // rotate the Q16.16 offset (dx,dy) by u*5° about the origin.
+  function rotQ(dx, dy, u) {
+    const t = trigQ(u);
+    return [fmul(t[0], dx) - fmul(t[1], dy), fmul(t[1], dx) + fmul(t[0], dy)];
+  }
+  // THE collision predicate. Squared distance in Q16.16 (Q32.32 descaled back by
+  // fmul) against the normative squared threshold. No sqrt, no epsilon: `<` means
+  // exactly-touching is not a collision, matching the float rule's -1e-9 slack.
+  function tooCloseQ(ax, ay, bx, by) {
+    const dx = ax - bx, dy = ay - by;
+    return fmul(dx, dx) + fmul(dy, dy) < THRESH2;
+  }
+  // inverse of toPxQ + cube rounding, for area accrual. Q16.16 in, lattice cell out.
+  function axialRoundQ(x, y) {
+    const rQ = fdiv(y * 2, 3);                     // y / 1.5
+    const qQ = fdiv(x * ONE, SQRT3) - fdiv(rQ, 2); // x / sqrt(3) - r/2
+    const sQ = -qQ - rQ;
+    let rq = qround(qQ), rr = qround(rQ);
+    const rs = qround(sQ);
+    const dq = fabs(rq * ONE - qQ), dr = fabs(rr * ONE - rQ), ds = fabs(rs * ONE - sQ);
     if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs;
     return [rq, rr];
   }
@@ -179,6 +279,9 @@
   const CARDINALS = ['Ai', 'Ea', 'Fi', 'Wa'];
   const GLYPH_PRICE = { bonders: 10, debonders: 15, calcifiers: 10, duplicators: 20,
     projectors: 20, purifiers: 20, animismus: 20, disposals: 0 };
+  // RADIUS is documentation/export only — the simulation compares against THRESH2,
+  // which is the normative Q16.16 form of (2*RADIUS*PITCH)^2. K_SAMPLES = 12 is what
+  // makes every sweep angle an exact multiple of 60/12 = 5°, hence the COS5/SIN5 table.
   const RADIUS = 0.35, K_SAMPLES = 12;
   const OPS = 'GD+-PQW';
   const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 9 };
@@ -370,8 +473,45 @@
       return out;
     }
 
-    // -- fractional kinematics (pixels), valid during a cached motion --
+    // -- fractional kinematics, DETERMINISTIC (Q16.16), valid during a cached motion --
+    // These are the simulation's own kinematics: the sweep, the collision test and area
+    // accrual all read them. They are sampled only at the K_SAMPLES instants f = k/K, and
+    // since one dir step is 60° and K = 12, every angle is an exact multiple of 5°.
+    // Angles are therefore carried as INTEGER counts of 5° units ("rotU"/"dU"), never radians:
+    // a float dF of (n + m*k/12) is exactly the integer 12n + m*k here.
     // M = S.motion: {angle0:{id:θ}, delta:{id:±1|0}, pivot:{id:±1|0}, carryRel0:{id}, snapshot atoms}
+    function poseQ(arm, k, M) {
+      if (arm.mount.elbow) {
+        const p = byId[arm.mount.elbow.parent];
+        const pp = poseQ(p, k, M);
+        const dU = pp.rotU + ANG_DIR * M.angle0[p.id] + M.delta[p.id] * k;
+        const v = stepQ(arm.mount.elbow.at, dU);
+        return { x: pp.x + v[0], y: pp.y + v[1], rotU: dU };
+      }
+      if (M.carriers0[arm.id] && M.carriers0[arm.id].length) {
+        const { arm: hid, grip } = M.carriers0[arm.id][0];
+        const h = byId[hid];
+        const hp = poseQ(h, k, M);
+        const hdU = hp.rotU + ANG_DIR * (M.angle0[h.id] + OFFSETS[h.grippers][grip]) + M.delta[h.id] * k;
+        const v = stepQ(h.len, hdU);
+        return {
+          x: hp.x + v[0], y: hp.y + v[1],
+          rotU: hdU + ANG_DIR * M.carryRel0[arm.id] + (M.pivot[hid] || 0) * k,
+        };
+      }
+      const b = M.basePos0[arm.id];
+      const px = toPxQ(b[0], b[1]);
+      return { x: px[0], y: px[1], rotU: ANG_DIR * M.baseRot0[arm.id] };
+    }
+    function handQ(arm, grip, k, M) {
+      const p = poseQ(arm, k, M);
+      const dU = p.rotU + ANG_DIR * (M.angle0[arm.id] + OFFSETS[arm.grippers][grip]) + M.delta[arm.id] * k;
+      const v = stepQ(arm.len, dU);
+      return { x: p.x + v[0], y: p.y + v[1], dU };
+    }
+
+    // -- fractional kinematics (float pixels) -- RENDER ONLY, arbitrary f in [0,1].
+    // Never consulted by step(); see poseQ/handQ above for the simulation's version.
     function poseF(arm, f, M) {
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
@@ -555,42 +695,39 @@
 
       // 3b. sweep — K sample instants, full pair check + area accumulation
       S.motion = M;
-      const collidables = (f) => {
+      // Sample index k is the whole sweep instant; every position below is Q16.16.
+      const collidables = (k) => {
         const out = [];
         for (const m of M.atoms) {
           if (m.holder) {
             const arm = byId[m.holder.armId];
-            const hF = handF(arm, m.holder.grip, f, M);
-            const h0F = handF(arm, m.holder.grip, 0, M);
-            const p0 = toPx(m.cell0), h0 = [h0F.x, h0F.y];
-            const dA = (hF.dF - h0F.dF + m.holder.s * f) * Math.PI / 3;
-            const rx = p0[0] - h0[0], ry = p0[1] - h0[1];
-            out.push({ kind: 'atom', id: m.id, elem: m.elem,
-              x: hF.x + rx * Math.cos(dA) - ry * Math.sin(dA),
-              y: hF.y + rx * Math.sin(dA) + ry * Math.cos(dA) });
+            const hK = handQ(arm, m.holder.grip, k, M);
+            const h0 = handQ(arm, m.holder.grip, 0, M);
+            const p0 = toPxQ(m.cell0[0], m.cell0[1]);
+            // angle swept by the held molecule, in 5° units (s is the gripper pivot)
+            const dU = hK.dU - h0.dU + m.holder.s * k;
+            const rel = rotQ(p0[0] - h0.x, p0[1] - h0.y, dU);
+            out.push({ kind: 'atom', id: m.id, elem: m.elem, x: hK.x + rel[0], y: hK.y + rel[1] });
           } else {
-            const p = toPx(m.cell0);
+            const p = toPxQ(m.cell0[0], m.cell0[1]);
             out.push({ kind: 'atom', id: m.id, elem: m.elem, x: p[0], y: p[1] });
           }
         }
         for (const arm of S.arms) {
           if (arm.mount.elbow) continue; // elbows don't collide
-          const p = poseF(arm, f, M);
+          const p = poseQ(arm, k, M);
           out.push({ kind: 'base', id: arm.id, x: p.x, y: p.y });
         }
         return out;
       };
-      const D2 = (2 * RADIUS * SQ3) * (2 * RADIUS * SQ3) - 1e-9; // radius is in pitch units; pixels are pitch·√3
       for (let k = 1; k <= K_SAMPLES && !S.fault; k++) {
-        const f = k / K_SAMPLES;
-        const objs = collidables(f);
-        for (const o of objs) S.area.add(cellKey(axialRound(o.x, o.y)));
+        const objs = collidables(k);
+        for (const o of objs) S.area.add(cellKey(axialRoundQ(o.x, o.y)));
         for (const arm of S.arms) OFFSETS[arm.grippers].forEach((_, gi) => {
-          const h = handF(arm, gi, f, M); S.area.add(cellKey(axialRound(h.x, h.y)));
+          const h = handQ(arm, gi, k, M); S.area.add(cellKey(axialRoundQ(h.x, h.y)));
         });
         for (let i = 0; i < objs.length; i++) for (let j = i + 1; j < objs.length; j++) {
-          const dx = objs[i].x - objs[j].x, dy = objs[i].y - objs[j].y;
-          if (dx * dx + dy * dy < D2) {
+          if (tooCloseQ(objs[i].x, objs[i].y, objs[j].x, objs[j].y)) {
             S.fault = { kind: 'collision', tick: S.tick, detail: `${objs[i].kind} ${objs[i].id} × ${objs[j].kind} ${objs[j].id} @ f=${k}/${K_SAMPLES}` };
             break;
           }
@@ -741,7 +878,14 @@
     };
   }
 
-  const GW = { createSim, DIRS, rotK, toPx, fromPx: axialRound, PRICE, GLYPH_PRICE, ELBOW_STEP, RADIUS, K_SAMPLES, DEFAULT_CAPS };
+  const GW = {
+    createSim, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_STEP, RADIUS, K_SAMPLES, DEFAULT_CAPS,
+    toPx, fromPx: axialRound,   // float, render/editor-pointer use only (see note above)
+    // the deterministic core, exported so a C reimplementation can be conformance-tested
+    // primitive by primitive against this oracle.
+    Q: { ONE, fdiv, fmul, SQRT3, HALF_SQRT3, THRESH2, COS5, SIN5, ANG_TURN, ANG_DIR,
+      trigQ, toPxQ, stepQ, rotQ, tooCloseQ, axialRoundQ },
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = GW;
   else root.GW = GW;
 })(typeof self !== 'undefined' ? self : this);
