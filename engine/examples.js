@@ -68,9 +68,9 @@
       blurb: 'Tria Prima: salt, quicksilver, sulfur in one chain. The wheel carries the growing molecule around its ring while the feeder threads beads onto it — passing within a whisker of a fault, legally.',
       expect: { cycles: 125 },
       puzzle: {
-        inputs: [{ cell: [-1, 0], elem: 'Sa' }, { cell: [1, -2], elem: 'Hg' }, { cell: [-1, -2], elem: 'S' }],
+        inputs: [{ cell: [-1, 0], elem: 'Sa' }, { cell: [1, -2], elem: 'Hg' }, { cell: [-1, -2], elem: 'Sa' }],
         bonders: [[[0, -1], [1, -1]]],
-        output: { cells: [[-1, 1], [0, 1], [1, 0]], elems: ['Sa', 'Hg', 'S'], bonds: [[0, 1], [1, 2]] },
+        output: { cells: [[-1, 1], [0, 1], [1, 0]], elems: ['Sa', 'Hg', 'Sa'], bonds: [[0, 1], [1, 2]] },
       },
       machine: {
         arms: [
