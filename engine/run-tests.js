@@ -2,6 +2,7 @@
 'use strict';
 const GW = require('./engine.js');
 const EXAMPLES = require('./examples.js');
+const CODEC = require('./codec.js');
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {
@@ -226,6 +227,27 @@ for (const ex of EXAMPLES) {
   sim.step();
   check('molecule reagent: respawns when both cells clear', sim.state.atoms.length === 4,
     `atoms=${sim.state.atoms.length}`);
+}
+
+// ---- codec: every example machine round-trips byte-for-byte and runs identically ----
+for (const ex of EXAMPLES) {
+  const s = CODEC.encodeString(ex.machine);
+  const back = CODEC.decodeString(s);
+  const a = GW.createSim(ex.puzzle, ex.machine).run(500);
+  const b = GW.createSim(ex.puzzle, back).run(500);
+  const same = JSON.stringify(a.metrics()) === JSON.stringify(b.metrics())
+    && JSON.stringify(a.state.fault) === JSON.stringify(b.state.fault);
+  check(`codec: ${ex.key} round-trips (${s.length} chars)`, same
+    && CODEC.encodeString(back) === s);
+}
+{
+  const bad = (fn) => { try { fn(); return false; } catch (e) { return /codec/.test(String(e)); } };
+  check('codec: rejects op garbage', bad(() => CODEC.encodeMachine({ arms: [
+    { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0, tape: { ops: ['X'] } }] })));
+  check('codec: rejects forward elbow reference', bad(() => CODEC.encodeMachine({ arms: [
+    { id: 'A', grippers: 1, len: 1, mount: { elbow: { parent: 'B', at: 1 } }, angle: 0, tape: { ops: ['W'] } },
+    { id: 'B', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0, tape: { ops: ['W'] } }] })));
+  check('codec: rejects truncated bytes', bad(() => CODEC.decodeMachine(Uint8Array.from([1, 1, 0]))));
 }
 
 // ---- elbow pricing compounds with order ----

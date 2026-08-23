@@ -1,0 +1,909 @@
+<title>Great Work! Solution Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap">
+<style>
+  :root {
+    --parch: #F1E9D6; --parch-2: #EAE0C9; --parch-3: #E2D6B8;
+    --ink: #2A2318; --ink-dim: #6B5F49; --ink-faint: #9C8F74;
+    --line: #CFC2A4; --line-soft: #DDD2B6;
+    --brass: #A0762B; --gold: #8A6A1E; --oxblood: #8C3B2E; --verdigris: #33705E;
+    --display: 'Cinzel', 'Times New Roman', serif;
+    --body: 'EB Garamond', Georgia, serif;
+    --mono: 'Courier Prime', 'Courier New', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: #F1E9D6; }
+  body { background: var(--parch); color: var(--ink); font-family: var(--body); font-size: 16px; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 26px 20px 60px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: .06em; }
+  h1 small { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .22em; text-transform: uppercase; margin-left: 12px; }
+  .backlink { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; color: var(--ink-dim); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .backlink:hover { color: var(--ink); }
+
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab {
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-dim); background: var(--parch); border: 1px solid var(--ink-dim);
+    padding: 7px 12px; cursor: pointer;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.on { background: var(--ink); color: var(--parch); border-color: var(--ink); }
+
+  .toolrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 14px; border: 1px solid var(--line); border-bottom: 0; background: var(--parch-3); margin-top: 8px; }
+  .toolrow .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 3px; }
+  .toolrow .hint { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .05em; margin-left: auto; }
+  button.ctl, .seg button {
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink); background: var(--parch); border: 1px solid var(--ink-dim);
+    padding: 6px 11px; cursor: pointer;
+  }
+  button.ctl:hover, .seg button:hover { background: var(--ink); color: var(--parch); }
+  button.ctl.on { background: var(--ink); color: var(--parch); }
+  button.ctl.warn { border-color: var(--oxblood); color: var(--oxblood); }
+  button.ctl.warn:hover { background: var(--oxblood); color: var(--parch); }
+  .seg { display: flex; border: 1px solid var(--ink-dim); }
+  .seg button { border: 0; padding: 6px 10px; }
+  .seg button + button { border-left: 1px solid var(--ink-dim); }
+  .seg button.on { background: var(--ink); color: var(--parch); }
+  .seg-label { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .1em; }
+
+  .stagebox { border: 1px solid var(--line); background: var(--parch-2); position: relative; }
+  canvas#field { display: block; width: 100%; height: auto; cursor: crosshair; }
+  canvas#field.tool-select { cursor: default; }
+  .stamp { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .4s; }
+  .stamp.show { opacity: 1; }
+  .stamp-inner {
+    border: 2.5px solid var(--gold); color: var(--gold); background: rgba(241,233,214,.85);
+    font-family: var(--display); font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    font-size: 18px; padding: 10px 22px; transform: rotate(-7deg); text-align: center;
+  }
+  .stamp-inner.bad { border-color: var(--oxblood); color: var(--oxblood); }
+  .stamp-inner small { display: block; font-family: var(--mono); font-weight: 400; font-size: 10.5px; letter-spacing: .08em; margin-top: 4px; color: var(--ink-dim); text-transform: none; }
+
+  .bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--line); border-top: 0; background: var(--parch-2); }
+  .speed { display: flex; border: 1px solid var(--ink-dim); }
+  .speed .ctl { border: 0; padding: 7px 11px; }
+  .speed .ctl + .ctl { border-left: 1px solid var(--ink-dim); }
+  .hud { margin-left: auto; display: flex; gap: 14px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); letter-spacing: .06em; }
+  .hud b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .hud .sum b { color: var(--gold); }
+
+  .status { border: 1px solid var(--line); border-top: 0; background: var(--parch-2); padding: 7px 16px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); }
+  .status .bad { color: var(--oxblood); font-weight: 700; }
+  .status .good { color: var(--verdigris); font-weight: 700; }
+
+  .tapes { border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 8px 14px 10px; }
+  .oppal { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding-bottom: 7px; margin-bottom: 6px; border-bottom: 1px solid var(--line-soft); }
+  .oppal .seg-label { margin-right: 3px; }
+  .oppal button { font-family: var(--mono); font-size: 13px; font-weight: 700; padding: 3px 9px; border: 1px solid var(--ink-dim); background: var(--parch); cursor: pointer; color: var(--ink); }
+  .oppal button:hover { background: var(--ink); color: var(--parch); }
+  .tape-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+  .tape-label { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); width: 58px; flex: none; cursor: pointer; }
+  .tape-row.sel .tape-label { color: var(--gold); }
+  .tape-cells { display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+  .tape-cells::-webkit-scrollbar { display: none; }
+  .tape-cells span {
+    font-family: var(--mono); font-size: 12px; line-height: 1; padding: 3px 5px;
+    border: 1px solid var(--line); color: var(--ink-dim); background: var(--parch-2); flex: none; cursor: pointer;
+  }
+  .tape-cells span.delay { opacity: .45; border-style: dashed; }
+  .tape-cells span.spent { opacity: .25; }
+  .tape-cells span.on { background: var(--ink); color: var(--parch); border-color: var(--ink); opacity: 1; }
+  .tape-cells span.cursor { border-color: var(--gold); box-shadow: 0 0 0 1.5px var(--gold); }
+
+  .sharebox { border: 1px solid var(--line); border-top: 0; background: var(--parch-2); padding: 9px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .sharebox input { flex: 1; min-width: 220px; font-family: var(--mono); font-size: 11px; padding: 6px 8px; border: 1px solid var(--line); background: var(--parch); color: var(--ink); }
+
+  footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Great Work!<small>Solution Editor</small></h1>
+    <a class="backlink" href="lab.html">← the machine lab</a>
+  </header>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="toolrow" id="editTools">
+    <span class="seg-label">TOOL</span>
+    <div class="seg" id="toolSeg">
+      <button data-tool="select" class="on">Select</button>
+      <button data-tool="arm">Arm</button>
+      <button data-tool="elbow">Elbow</button>
+    </div>
+    <span class="seg-label">GRIP</span>
+    <div class="seg" id="gripSeg">
+      <button data-g="1" class="on">1</button><button data-g="2">2</button><button data-g="3">3</button><button data-g="6">6</button>
+    </div>
+    <span class="seg-label">LEN</span>
+    <div class="seg" id="lenSeg">
+      <button data-l="1" class="on">1</button><button data-l="2">2</button><button data-l="3">3</button>
+    </div>
+    <div class="sep"></div>
+    <button class="ctl" id="btnRotL" title="rotate selected ( [ )">↺</button>
+    <button class="ctl" id="btnRotR" title="rotate selected ( ] )">↻</button>
+    <button class="ctl warn" id="btnDelete">Delete</button>
+    <div class="sep"></div>
+    <button class="ctl" id="btnRef">Reference</button>
+    <button class="ctl warn" id="btnClear">Clear</button>
+    <span class="hint" id="toolHint">click the board to place · drag a base to move</span>
+  </div>
+
+  <div class="stagebox">
+    <canvas id="field" width="980" height="560"></canvas>
+    <div class="stamp" id="stamp"><div class="stamp-inner" id="stampInner"></div></div>
+  </div>
+
+  <div class="bar">
+    <button class="ctl" id="btnMode">▶ Test</button>
+    <button class="ctl" id="btnPlay" disabled>Pause</button>
+    <button class="ctl" id="btnStep" disabled>Step</button>
+    <div class="speed" role="group" aria-label="speed">
+      <button class="ctl" data-ms="700">1×</button>
+      <button class="ctl on" data-ms="350">2×</button>
+      <button class="ctl" data-ms="140">4×</button>
+      <button class="ctl" data-ms="0">MAX</button>
+    </div>
+    <div class="hud">
+      <span>CYCLE <b id="hTick">0</b></span>
+      <span>COST <b id="hCost">—</b></span>
+      <span>AREA <b id="hArea">—</b></span>
+      <span class="sum">SUM <b id="hSum">—</b></span>
+      <span>PRODUCT <b id="hProd">0/9</b></span>
+    </div>
+  </div>
+
+  <div class="status" id="status">ready</div>
+  <div class="tapes" id="tapes"></div>
+
+  <div class="sharebox">
+    <button class="ctl" id="btnCopy">Copy code</button>
+    <input id="shareIn" placeholder="paste a solution code — e.g. leachworks.AQZK…" spellcheck="false">
+    <button class="ctl" id="btnImport">Import</button>
+  </div>
+
+  <footer>
+    <span>GREAT WORK! · solution editor · the code you copy is the calldata you would submit</span>
+    <span>Agrippa Kellum · for Unto Labs</span>
+  </footer>
+</div>
+
+<script>
+/*__ENGINE__*/
+</script>
+<script>
+/*__CODEC__*/
+</script>
+<script>
+/*__EXAMPLES__*/
+</script>
+<script>
+(() => {
+  'use strict';
+  const EXAMPLES = window.GW_EXAMPLES, CODEC = window.GWCodec;
+  const ELEMS = {
+    Pb: { fill: '#4A4640', label: '#F1E9D6' }, Sn: { fill: '#9A968C', label: '#2A2318' },
+    Fe: { fill: '#6E5F52', label: '#F1E9D6' }, Cu: { fill: '#A0622B', label: '#F1E9D6' },
+    Ag: { fill: '#D6D2CB', label: '#2A2318' }, Au: { fill: '#C9A227', label: '#2A2318' },
+    Hg: { fill: '#BDB9AF', label: '#2A2318' }, Sa: { fill: '#F6F1E2', label: '#2A2318' },
+    S:  { fill: '#D9A93A', label: '#2A2318' }, Ai: { fill: '#CBD8DC', label: '#2A2318' },
+    Ea: { fill: '#7A6E4F', label: '#F1E9D6' }, Fi: { fill: '#C25436', label: '#F1E9D6' },
+    Wa: { fill: '#5B7EA6', label: '#F1E9D6' }, Vi: { fill: '#C97B8E', label: '#2A2318' },
+    Mo: { fill: '#443C46', label: '#F1E9D6' },
+  };
+  const SPECIAL_GLYPHS = [
+    ['debonders', 'DEBOND'], ['calcifiers', 'CALCIFY'], ['duplicators', 'DUPE'],
+    ['projectors', 'PROJECT'], ['purifiers', 'PURIFY'], ['animismus', 'ANIMA'],
+    ['disposals', 'DISPOSE'],
+  ];
+  const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·' };
+  const PITCH = Math.sqrt(3);
+  const CW = 980, CH = 560;
+  const canvas = document.getElementById('field');
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = CW * dpr; canvas.height = CH * dpr;
+  canvas.style.aspectRatio = `${CW} / ${CH}`;
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- state ----------
+  let pIdx = 0;                       // puzzle index into EXAMPLES
+  let machine = { arms: [] };         // working machine (edit-mode truth)
+  let mode = 'edit';                  // 'edit' | 'run'
+  let sim = null;                     // run-mode simulation
+  let view = { s: 40, ox: CW / 2, oy: CH / 2 };
+  let tool = 'select', cfg = { grippers: 1, len: 1 };
+  let selId = null;                   // selected arm id
+  let cursor = null;                  // tape cursor {armId, pos}
+  let hoverCell = null, elbowParent = null;
+  let running = false, stepMs = 350, phase = 1, done = false;
+  let drag = null;                    // {armId, moved} | {pan:true, x, y}
+
+  const puzzle = () => EXAMPLES[pIdx].puzzle;
+  const key = () => EXAMPLES[pIdx].key;
+  const armById = (id) => machine.arms.find(a => a.id === id);
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+
+  // ---------- geometry ----------
+  const P = (x, y) => [view.ox + view.s * x, view.oy + view.s * y];
+  const Pc = (cell) => { const p = GW.toPx(cell); return P(p[0], p[1]); };
+  const cellAt = (mx, my) => GW.fromPx((mx - view.ox) / view.s, (my - view.oy) / view.s);
+  const eq = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
+
+  // initial pose of every arm (edit-mode drawing + hit tests); mirrors engine.pose at t0
+  function initPoses() {
+    const out = {}, guard = new Set();
+    const pose = (arm) => {
+      if (out[arm.id]) return out[arm.id];
+      if (guard.has(arm.id)) return { pos: [0, 0], rot: 0 };
+      guard.add(arm.id);
+      let p;
+      if (arm.mount.elbow) {
+        const par = armById(arm.mount.elbow.parent);
+        if (!par) p = { pos: [0, 0], rot: 0 };
+        else {
+          const pp = pose(par);
+          const d = ((pp.rot + par.angle) % 6 + 6) % 6;
+          p = { pos: [pp.pos[0] + GW.DIRS[d][0] * arm.mount.elbow.at, pp.pos[1] + GW.DIRS[d][1] * arm.mount.elbow.at], rot: d };
+        }
+      } else p = { pos: arm.mount.ground.slice(), rot: 0 };
+      out[arm.id] = p; return p;
+    };
+    machine.arms.forEach(pose);
+    return out;
+  }
+  const GRIPOFF = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
+
+  function costOf() {
+    let cost = 0;
+    for (const a of machine.arms) {
+      let depth = 0, cur = a, guard = 0;
+      while (cur && cur.mount.elbow && guard++ < 20) { cur = armById(cur.mount.elbow.parent); depth++; }
+      cost += GW.PRICE[a.grippers] + GW.ELBOW_STEP * depth;
+    }
+    for (const fam in GW.GLYPH_PRICE) cost += (puzzle()[fam] || []).length * GW.GLYPH_PRICE[fam];
+    return cost;
+  }
+
+  // validation preview: try building a sim; return null or the rejection reason
+  function validate() {
+    if (!machine.arms.length) return 'place an arm to begin';
+    try { GW.createSim(puzzle(), machine); return null; }
+    catch (e) { return String(e.message || e).replace('invalid machine: ', ''); }
+  }
+
+  // ---------- view fitting ----------
+  function fitView() {
+    const cells = [];
+    const pz = puzzle();
+    for (const fam in GW.GLYPH_PRICE) for (const g of (pz[fam] || [])) {
+      for (const c of (Array.isArray(g[0]) ? g : [g])) cells.push(c);
+    }
+    for (const g of (pz.inputs || [])) (g.cell ? [g.cell] : g.cells).forEach(c => cells.push(c));
+    for (const c of ((pz.output && pz.output.cells) || [])) cells.push(c);
+    for (const a of machine.arms) if (a.mount.ground) cells.push(a.mount.ground);
+    if (!cells.length) cells.push([0, 0]);
+    const pts = cells.map(GW.toPx);
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs) - 3.2, maxX = Math.max(...xs) + 3.2;
+    const minY = Math.min(...ys) - 3.2, maxY = Math.max(...ys) + 3.2;
+    const s = Math.min(42, CW / (maxX - minX), CH / (maxY - minY));
+    view = { s, ox: CW / 2 - s * (minX + maxX) / 2, oy: CH / 2 - s * (minY + maxY) / 2 };
+  }
+
+  function hexPath(x, y, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 3 * i + Math.PI / 6;
+      i === 0 ? ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a)) : ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
+    }
+    ctx.closePath();
+  }
+
+  // ---------- drawing ----------
+  function drawBoard() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#EAE0C9'; ctx.fillRect(0, 0, CW, CH);
+    ctx.strokeStyle = 'rgba(160,140,95,0.18)'; ctx.lineWidth = 1;
+    for (let q = -16; q <= 16; q++) for (let r = -16; r <= 16; r++) {
+      const [x, y] = Pc([q, r]);
+      if (x < -40 || x > CW + 40 || y < -40 || y > CH + 40) continue;
+      hexPath(x, y, view.s * PITCH / 2 * 1.11); ctx.stroke();
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const pz = puzzle();
+    for (const [c1, c2] of (pz.bonders || [])) {
+      for (const c of [c1, c2]) {
+        const [x, y] = Pc(c);
+        hexPath(x, y, view.s * PITCH / 2 * 1.08);
+        ctx.fillStyle = 'rgba(160,118,43,0.16)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(160,118,43,0.7)'; ctx.lineWidth = 1.4; ctx.stroke();
+      }
+      const [x1, y1] = Pc(c1), [x2, y2] = Pc(c2);
+      ctx.strokeStyle = 'rgba(160,118,43,0.85)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.font = `700 9px 'Courier Prime', monospace`;
+    for (const [fam, label] of SPECIAL_GLYPHS) {
+      for (const g of (pz[fam] || [])) {
+        const cells = Array.isArray(g[0]) ? g : [g];
+        for (const c of cells) {
+          const [x, y] = Pc(c);
+          hexPath(x, y, view.s * PITCH / 2 * 1.08);
+          ctx.fillStyle = 'rgba(140,59,46,0.12)'; ctx.fill();
+          ctx.strokeStyle = 'rgba(140,59,46,0.6)'; ctx.lineWidth = 1.4; ctx.stroke();
+        }
+        for (let i = 1; i < cells.length; i++) {
+          const [x1, y1] = Pc(cells[i - 1]), [x2, y2] = Pc(cells[i]);
+          ctx.strokeStyle = 'rgba(140,59,46,0.55)'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        }
+        const [lx, ly] = Pc(cells[0]);
+        ctx.fillStyle = 'rgba(140,59,46,0.8)';
+        ctx.fillText(label, lx, ly - view.s * 1.0);
+      }
+    }
+    ctx.font = `700 10px 'Courier Prime', monospace`;
+    for (const g of (pz.inputs || [])) {
+      const cells = g.cell ? [g.cell] : g.cells;
+      const elems = g.cell ? [g.elem] : g.elems;
+      ctx.setLineDash([3, 3]);
+      for (const [i, j] of (g.bonds || [])) {
+        const [x1, y1] = Pc(cells[i]), [x2, y2] = Pc(cells[j]);
+        ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = view.s * 0.12;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      cells.forEach((c, i) => {
+        const [x, y] = Pc(c);
+        ctx.beginPath(); ctx.arc(x, y, view.s * 0.62, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(42,35,24,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+        if (cells.length > 1) {
+          ctx.globalAlpha = 0.45; ctx.fillStyle = '#2A2318';
+          ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
+          ctx.fillText(elems[i], x, y);
+          ctx.globalAlpha = 1; ctx.font = `700 10px 'Courier Prime', monospace`;
+        }
+      });
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(42,35,24,0.55)';
+      const [lx, ly] = Pc(cells[0]);
+      ctx.fillText('IN·' + elems[0], lx, ly + view.s * 0.95);
+    }
+    const out = pz.output;
+    if (out) {
+      ctx.setLineDash([4, 4]);
+      for (const [i, j] of out.bonds) {
+        const [x1, y1] = Pc(out.cells[i]), [x2, y2] = Pc(out.cells[j]);
+        ctx.strokeStyle = '#33705E'; ctx.globalAlpha = 0.5; ctx.lineWidth = view.s * 0.14;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      out.cells.forEach((c, i) => {
+        const [x, y] = Pc(c);
+        ctx.beginPath(); ctx.arc(x, y, view.s * 0.55, 0, Math.PI * 2);
+        ctx.strokeStyle = '#33705E'; ctx.lineWidth = 1.3; ctx.stroke();
+        ctx.globalAlpha = 0.55; ctx.fillStyle = '#33705E';
+        ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
+        ctx.fillText(out.elems[i], x, y);
+        ctx.globalAlpha = 1; ctx.font = `700 10px 'Courier Prime', monospace`;
+      });
+      ctx.setLineDash([]);
+      const [x, y] = Pc(out.cells[0]);
+      ctx.fillStyle = '#33705E'; ctx.fillText('OUT', x, y - view.s * 1.0);
+    }
+  }
+
+  function drawArmShape(base, hands, elbow, selected, ghost) {
+    const [bx, by] = base;
+    ctx.globalAlpha = ghost ? 0.45 : 1;
+    for (const h of hands) {
+      ctx.strokeStyle = selected ? '#A0762B' : '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(h.x, h.y); ctx.stroke();
+      for (const side of [-1, 1]) {
+        const ca = h.ang + side * (Math.PI / 2) * 0.5;
+        ctx.lineWidth = view.s * 0.11;
+        ctx.beginPath();
+        ctx.moveTo(h.x - Math.cos(h.ang) * view.s * 0.2, h.y - Math.sin(h.ang) * view.s * 0.2);
+        ctx.lineTo(h.x + Math.cos(ca) * view.s * 0.42, h.y + Math.sin(ca) * view.s * 0.42);
+        ctx.stroke();
+      }
+    }
+    if (elbow) {
+      ctx.beginPath(); ctx.arc(bx, by, view.s * 0.16, 0, Math.PI * 2);
+      ctx.fillStyle = '#C9B57E'; ctx.fill();
+      ctx.lineWidth = 1.4; ctx.strokeStyle = '#8A6A1E'; ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(bx, by, view.s * 0.35 * PITCH, 0, Math.PI * 2);
+      ctx.fillStyle = '#C9B57E'; ctx.fill();
+      ctx.lineWidth = selected ? 2.6 : 1.8;
+      ctx.strokeStyle = selected ? '#A0762B' : '#8A6A1E'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx, by, view.s * 0.1, 0, Math.PI * 2);
+      ctx.fillStyle = '#2A2318'; ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function handsFor(posePos, poseRot, arm) {
+    return GRIPOFF[arm.grippers].map(off => {
+      const d = ((poseRot + arm.angle + off) % 6 + 6) % 6;
+      const cell = [posePos[0] + GW.DIRS[d][0] * arm.len, posePos[1] + GW.DIRS[d][1] * arm.len];
+      const [hx, hy] = Pc(cell);
+      const [bx, by] = Pc(posePos);
+      return { x: hx, y: hy, ang: Math.atan2(hy - by, hx - bx) };
+    });
+  }
+
+  function drawEdit() {
+    drawBoard();
+    const poses = initPoses();
+    for (const arm of machine.arms) {
+      const p = poses[arm.id];
+      drawArmShape(Pc(p.pos), handsFor(p.pos, p.rot, arm), !!arm.mount.elbow, arm.id === selId, false);
+    }
+    // placement ghost
+    if (hoverCell && tool === 'arm') {
+      const ghost = { grippers: cfg.grippers, len: cfg.len, angle: 0 };
+      drawArmShape(Pc(hoverCell), handsFor(hoverCell, 0, ghost), false, false, true);
+    }
+    if (hoverCell && tool === 'elbow') {
+      const hit = shaftAt(hoverCell);
+      if (hit) {
+        const ghost = { grippers: cfg.grippers, len: cfg.len, angle: 0 };
+        drawArmShape(Pc(hoverCell), handsFor(hoverCell, hit.rot, ghost), true, false, true);
+      }
+    }
+  }
+
+  function drawRun(f) {
+    drawBoard();
+    const rs = sim.renderState(f);
+    const atomPx = {};
+    for (const a of rs.atoms) atomPx[a.id] = P(a.x, a.y);
+    ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2;
+    for (const [i, j] of rs.bonds) {
+      if (!atomPx[i] || !atomPx[j]) continue;
+      ctx.beginPath(); ctx.moveTo(...atomPx[i]); ctx.lineTo(...atomPx[j]); ctx.stroke();
+    }
+    for (const arm of rs.arms) {
+      drawArmShape(P(arm.base[0], arm.base[1]),
+        arm.hands.map(h => { const [x, y] = P(h.x, h.y); return { x, y, ang: h.ang }; }),
+        arm.elbow, false, false);
+    }
+    for (const a of rs.atoms) {
+      const [x, y] = atomPx[a.id];
+      const E = ELEMS[a.elem] || { fill: '#999', label: '#000' };
+      ctx.beginPath(); ctx.arc(x, y, view.s * 0.35 * PITCH, 0, Math.PI * 2);
+      ctx.fillStyle = E.fill; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = '#2A2318'; ctx.stroke();
+      ctx.fillStyle = E.label;
+      ctx.font = `600 ${Math.round(view.s * 0.5)}px 'EB Garamond', serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(a.elem, x, y + 0.5);
+    }
+  }
+
+  // ---------- hit testing ----------
+  function baseAt(cell) {
+    const poses = initPoses();
+    for (const arm of machine.arms) if (eq(poses[arm.id].pos, cell)) return arm;
+    return null;
+  }
+  function shaftAt(cell) {
+    // a shaft position of some arm: returns {arm, at, rot} for elbow attachment
+    const poses = initPoses();
+    for (const arm of machine.arms) {
+      const p = poses[arm.id];
+      const d = ((p.rot + arm.angle) % 6 + 6) % 6;
+      for (let i = 1; i <= arm.len; i++) {
+        const c = [p.pos[0] + GW.DIRS[d][0] * i, p.pos[1] + GW.DIRS[d][1] * i];
+        if (eq(c, cell)) return { arm, at: i, rot: d };
+      }
+    }
+    return null;
+  }
+
+  // ---------- edit ops ----------
+  let nextId = 0;
+  const freshId = () => { while (armById('a' + nextId)) nextId++; return 'a' + nextId; };
+  function touched() { saveDraft(); refreshAll(); }
+
+  function placeArm(cell) {
+    if (baseAt(cell)) { setStatus('a base already sits there', 'bad'); return; }
+    machine.arms.push({ id: freshId(), grippers: cfg.grippers, len: cfg.len,
+      mount: { ground: [cell[0], cell[1]] }, angle: 0, tape: { delay: 0, ops: ['W'] } });
+    selId = machine.arms[machine.arms.length - 1].id;
+    cursor = { armId: selId, pos: 0 };
+    touched();
+  }
+  function placeElbow(cell) {
+    const hit = shaftAt(cell);
+    if (!hit) { setStatus('elbows attach to a point along an existing arm — click a shaft cell', 'bad'); return; }
+    machine.arms.push({ id: freshId(), grippers: cfg.grippers, len: cfg.len,
+      mount: { elbow: { parent: hit.arm.id, at: hit.at } }, angle: 0, tape: { delay: 0, ops: ['W'] } });
+    selId = machine.arms[machine.arms.length - 1].id;
+    cursor = { armId: selId, pos: 0 };
+    touched();
+  }
+  function deleteArm(id) {
+    const doomed = new Set([id]);
+    let grew = true;                    // children of a deleted arm go with it
+    while (grew) {
+      grew = false;
+      for (const a of machine.arms) {
+        if (a.mount.elbow && doomed.has(a.mount.elbow.parent) && !doomed.has(a.id)) { doomed.add(a.id); grew = true; }
+      }
+    }
+    machine.arms = machine.arms.filter(a => !doomed.has(a.id));
+    if (doomed.has(selId)) selId = null;
+    if (cursor && doomed.has(cursor.armId)) cursor = null;
+    touched();
+  }
+  function rotateArm(id, dk) {
+    const a = armById(id); if (!a) return;
+    a.angle = ((a.angle + dk) % 6 + 6) % 6;
+    touched();
+  }
+
+  // ---------- tape editing ----------
+  function tapeOf(id) { return armById(id).tape; }
+  function setOp(op) {
+    if (!cursor) { setStatus('select a tape cell first', 'bad'); return; }
+    const t = tapeOf(cursor.armId);
+    if (cursor.pos >= t.ops.length) t.ops.push(op);
+    else t.ops[cursor.pos] = op;
+    cursor.pos = Math.min(cursor.pos + 1, t.ops.length);
+    touched();
+  }
+  function insOp() {
+    if (!cursor) return;
+    const t = tapeOf(cursor.armId);
+    t.ops.splice(Math.min(cursor.pos, t.ops.length), 0, 'W');
+    touched();
+  }
+  function delOp() {
+    if (!cursor) return;
+    const t = tapeOf(cursor.armId);
+    if (t.ops.length <= 1) return;
+    t.ops.splice(Math.min(cursor.pos, t.ops.length - 1), 1);
+    cursor.pos = Math.min(cursor.pos, t.ops.length - 1);
+    touched();
+  }
+  function bumpDelay(d) {
+    if (!cursor) { setStatus('select a tape cell first', 'bad'); return; }
+    const t = tapeOf(cursor.armId);
+    t.delay = Math.max(0, (t.delay || 0) + d);
+    touched();
+  }
+
+  // ---------- tapes panel ----------
+  function buildTapes() {
+    const host = $('tapes');
+    host.innerHTML = '';
+    if (mode === 'edit') {
+      const pal = document.createElement('div'); pal.className = 'oppal';
+      pal.innerHTML = `<span class="seg-label">SET OP</span>`;
+      for (const op of ['G', 'D', '+', '-', 'P', 'Q', 'W']) {
+        const b = document.createElement('button'); b.textContent = GLYPH[op];
+        b.title = { G: 'grab', D: 'release', '+': 'turn cw', '-': 'turn ccw', P: 'pivot cw', Q: 'pivot ccw', W: 'wait' }[op];
+        b.addEventListener('click', () => setOp(op));
+        pal.appendChild(b);
+      }
+      const mk = (txt, title, fn) => { const b = document.createElement('button'); b.textContent = txt; b.title = title; b.addEventListener('click', fn); pal.appendChild(b); };
+      mk('+cell', 'insert a cell at the cursor', insOp);
+      mk('−cell', 'remove the cell at the cursor', delOp);
+      mk('»+', 'add a first-pass delay block', () => bumpDelay(1));
+      mk('»−', 'remove a delay block', () => bumpDelay(-1));
+      host.appendChild(pal);
+    }
+    const arms = mode === 'run' ? sim.state.arms : machine.arms;
+    for (const arm of arms) {
+      const row = document.createElement('div'); row.className = 'tape-row' + (arm.id === selId && mode === 'edit' ? ' sel' : '');
+      const lab = document.createElement('span'); lab.className = 'tape-label'; lab.textContent = 'ARM ' + arm.id;
+      lab.addEventListener('click', () => { if (mode === 'edit') { selId = arm.id; refreshAll(); } });
+      const cells = document.createElement('div'); cells.className = 'tape-cells';
+      for (let i = 0; i < arm.tape.delay; i++) {
+        const sp = document.createElement('span'); sp.className = 'delay'; sp.textContent = '»'; cells.appendChild(sp);
+      }
+      arm.tape.ops.forEach((op, i) => {
+        const sp = document.createElement('span'); sp.textContent = GLYPH[op];
+        if (mode === 'edit') {
+          if (cursor && cursor.armId === arm.id && cursor.pos === i) sp.classList.add('cursor');
+          sp.addEventListener('click', () => { selId = arm.id; cursor = { armId: arm.id, pos: i }; refreshAll(); });
+        }
+        cells.appendChild(sp);
+      });
+      if (mode === 'edit') {
+        const add = document.createElement('span'); add.textContent = '+'; add.style.opacity = '.5';
+        add.addEventListener('click', () => { selId = arm.id; cursor = { armId: arm.id, pos: arm.tape.ops.length }; insOp(); });
+        cells.appendChild(add);
+      }
+      row.appendChild(lab); row.appendChild(cells); host.appendChild(row);
+    }
+    if (!arms.length) host.innerHTML += `<div class="tape-row"><span class="tape-label" style="width:auto">no arms yet — pick the ARM tool and click the board</span></div>`;
+  }
+  function updateRunTapes() {
+    const t = sim.state.tick;
+    const rows = $('tapes').querySelectorAll('.tape-row');
+    sim.state.arms.forEach((arm, ai) => {
+      const row = rows[ai]; if (!row) return;
+      const cells = row.querySelector('.tape-cells').children;
+      for (let i = 0; i < cells.length; i++) cells[i].classList.remove('on');
+      if (t === 0) return;
+      for (let i = 0; i < arm.tape.delay; i++) cells[i].classList.toggle('spent', t > i);
+      const idx = t <= arm.tape.delay ? t - 1 : arm.tape.delay + (t - arm.tape.delay - 1) % arm.tape.ops.length;
+      if (!sim.state.fault && sim.state.cycles === null && cells[idx]) cells[idx].classList.add('on');
+    });
+  }
+
+  // ---------- HUD / status / stamp ----------
+  function setStatus(msg, cls) { $('status').innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; }
+  function hud() {
+    if (mode === 'run' && sim) {
+      const st = sim.state, m = sim.metrics();
+      $('hTick').textContent = st.tick;
+      $('hCost').textContent = m.cost + 'g';
+      $('hArea').textContent = m.area;
+      $('hSum').textContent = m.sum !== null ? m.sum : (m.cost + st.tick + m.area) + '…';
+      $('hProd').textContent = st.products + '/' + st.caps.goal;
+    } else {
+      $('hTick').textContent = '0';
+      $('hCost').textContent = costOf() + 'g';
+      $('hArea').textContent = '—';
+      $('hSum').textContent = '—';
+      $('hProd').textContent = '0/' + ((puzzle().caps && puzzle().caps.goal) || GW.DEFAULT_CAPS.goal);
+    }
+  }
+  function stamp() {
+    const el = $('stamp'), inner = $('stampInner');
+    if (mode !== 'run' || !sim) { el.classList.remove('show'); return; }
+    const st = sim.state;
+    if (st.fault) {
+      inner.className = 'stamp-inner bad';
+      inner.innerHTML = `Rejected · ${st.fault.kind}<small>tick ${st.fault.tick}${st.fault.detail ? ' · ' + st.fault.detail : ''}</small>`;
+      el.classList.add('show'); done = true;
+    } else if (st.cycles !== null) {
+      const m = sim.metrics();
+      inner.className = 'stamp-inner';
+      inner.innerHTML = `Verified · ${st.products} of ${st.caps.goal}<small>${m.cost}g + ${m.cycles}c + ${m.area}a = SUM ${m.sum}</small>`;
+      el.classList.add('show'); done = true;
+    } else { el.classList.remove('show'); done = false; }
+  }
+
+  // ---------- persistence / sharing ----------
+  function code() { return key() + '.' + CODEC.encodeString(machine); }
+  function saveDraft() {
+    try { localStorage.setItem('gw-draft-' + key(), CODEC.encodeString(machine)); } catch (e) {}
+  }
+  function loadDraft() {
+    try {
+      const s = localStorage.getItem('gw-draft-' + key());
+      if (s) return CODEC.decodeString(s);
+    } catch (e) {}
+    return null;
+  }
+  function importCode(str) {
+    const dot = str.indexOf('.');
+    if (dot < 0) { setStatus('codes look like <puzzle>.<data>', 'bad'); return false; }
+    const k = str.slice(0, dot), data = str.slice(dot + 1).trim();
+    const idx = EXAMPLES.findIndex(e => e.key === k);
+    if (idx < 0) { setStatus('unknown puzzle “' + k + '”', 'bad'); return false; }
+    let m;
+    try { m = CODEC.decodeString(data); } catch (e) { setStatus(String(e.message || e), 'bad'); return false; }
+    pIdx = idx;
+    machine = m; selId = null; cursor = null;
+    enterEdit();
+    document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', i === pIdx));
+    fitView(); touched();
+    setStatus('imported ' + machine.arms.length + ' arm(s) into ' + EXAMPLES[idx].name, 'good');
+    return true;
+  }
+
+  // ---------- mode switching ----------
+  function enterEdit() {
+    mode = 'edit'; sim = null; running = false; done = false;
+    $('btnMode').textContent = '▶ Test';
+    $('btnPlay').disabled = true; $('btnStep').disabled = true;
+    $('editTools').style.display = '';
+    stamp();
+  }
+  function enterRun() {
+    const bad = validate();
+    if (bad) { setStatus('cannot test: ' + bad, 'bad'); return; }
+    mode = 'run';
+    sim = GW.createSim(puzzle(), clone(machine));
+    running = true; done = false; phase = 1;
+    $('btnMode').textContent = '✎ Edit';
+    $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
+    $('btnStep').disabled = false;
+    $('editTools').style.display = 'none';
+    buildTapes(); updateRunTapes(); hud(); stamp();
+    setStatus('testing — the verifier is watching every sweep');
+  }
+
+  function refreshAll() {
+    buildTapes(); hud();
+    if (mode === 'edit') {
+      const bad = validate();
+      setStatus(bad ? `<span class="bad">✗ ${bad}</span>` : `<span class="good">✓ layout legal</span> · ${machine.arms.length} arm(s) · code ${code().length} chars`);
+    }
+  }
+
+  // ---------- canvas input ----------
+  const mousePos = (ev) => {
+    const r = canvas.getBoundingClientRect();
+    return [(ev.clientX - r.left) * (CW / r.width), (ev.clientY - r.top) * (CH / r.height)];
+  };
+  canvas.addEventListener('mousedown', (ev) => {
+    if (mode !== 'edit') return;
+    const [mx, my] = mousePos(ev);
+    const cell = cellAt(mx, my);
+    if (tool === 'select') {
+      const arm = baseAt(cell);
+      if (arm) { selId = arm.id; cursor = { armId: arm.id, pos: 0 }; drag = { armId: arm.id, moved: false }; refreshAll(); }
+      else { selId = null; drag = { pan: true, x: mx, y: my }; refreshAll(); }
+    }
+  });
+  canvas.addEventListener('mousemove', (ev) => {
+    const [mx, my] = mousePos(ev);
+    hoverCell = cellAt(mx, my);
+    if (drag && drag.pan) {
+      view.ox += mx - drag.x; view.oy += my - drag.y;
+      drag.x = mx; drag.y = my;
+    } else if (drag && drag.armId) {
+      const arm = armById(drag.armId);
+      if (arm && arm.mount.ground && !eq(arm.mount.ground, hoverCell) && !baseAt(hoverCell)) {
+        arm.mount.ground = [hoverCell[0], hoverCell[1]];
+        drag.moved = true;
+      }
+    }
+  });
+  window.addEventListener('mouseup', () => {
+    if (drag && drag.armId && drag.moved) touched();
+    drag = null;
+  });
+  canvas.addEventListener('click', (ev) => {
+    if (mode !== 'edit') return;
+    const [mx, my] = mousePos(ev);
+    const cell = cellAt(mx, my);
+    if (tool === 'arm') placeArm(cell);
+    else if (tool === 'elbow') placeElbow(cell);
+  });
+  canvas.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    const [mx, my] = mousePos(ev);
+    const k = ev.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const s2 = Math.max(10, Math.min(64, view.s * k));
+    view.ox = mx - (mx - view.ox) * (s2 / view.s);
+    view.oy = my - (my - view.oy) * (s2 / view.s);
+    view.s = s2;
+  }, { passive: false });
+
+  window.addEventListener('keydown', (ev) => {
+    if (mode !== 'edit') return;
+    if (ev.target.tagName === 'INPUT') return;
+    if (ev.key === '[') rotateArm(selId, -1);
+    else if (ev.key === ']') rotateArm(selId, 1);
+    else if (ev.key === 'Delete' || ev.key === 'Backspace') { if (selId) { deleteArm(selId); ev.preventDefault(); } }
+    else if (ev.key === 'Escape') { selId = null; tool = 'select'; syncToolSeg(); refreshAll(); }
+  });
+
+  // ---------- toolbar ----------
+  function syncToolSeg() {
+    document.querySelectorAll('#toolSeg button').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
+    canvas.classList.toggle('tool-select', tool === 'select');
+    $('toolHint').textContent = tool === 'arm' ? 'click an empty cell to plant a base'
+      : tool === 'elbow' ? 'click a shaft cell of an existing arm'
+      : 'click a base to select · drag to move · [ ] rotate · empty space pans';
+  }
+  document.querySelectorAll('#toolSeg button').forEach(b => b.addEventListener('click', () => { tool = b.dataset.tool; syncToolSeg(); }));
+  document.querySelectorAll('#gripSeg button').forEach(b => b.addEventListener('click', () => {
+    cfg.grippers = +b.dataset.g;
+    document.querySelectorAll('#gripSeg button').forEach(x => x.classList.toggle('on', x === b));
+    if (selId && armById(selId)) { armById(selId).grippers = cfg.grippers; touched(); }
+  }));
+  document.querySelectorAll('#lenSeg button').forEach(b => b.addEventListener('click', () => {
+    cfg.len = +b.dataset.l;
+    document.querySelectorAll('#lenSeg button').forEach(x => x.classList.toggle('on', x === b));
+    if (selId && armById(selId)) { armById(selId).len = cfg.len; touched(); }
+  }));
+  $('btnRotL').addEventListener('click', () => rotateArm(selId, -1));
+  $('btnRotR').addEventListener('click', () => rotateArm(selId, 1));
+  $('btnDelete').addEventListener('click', () => { if (selId) deleteArm(selId); });
+  $('btnRef').addEventListener('click', () => {
+    machine = clone(EXAMPLES[pIdx].machine);
+    machine.arms.forEach(a => { a.tape = a.tape || {}; a.tape.delay = a.tape.delay || 0; });
+    selId = null; cursor = null; fitView(); touched();
+    setStatus('reference solution loaded', 'good');
+  });
+  $('btnClear').addEventListener('click', () => { machine = { arms: [] }; selId = null; cursor = null; touched(); });
+
+  // ---------- run controls ----------
+  $('btnMode').addEventListener('click', () => { mode === 'edit' ? enterRun() : (enterEdit(), refreshAll()); });
+  $('btnPlay').addEventListener('click', () => {
+    if (done) { enterRun(); return; }
+    running = !running; $('btnPlay').textContent = running ? 'Pause' : 'Play';
+  });
+  $('btnStep').addEventListener('click', () => {
+    running = false; $('btnPlay').textContent = 'Play';
+    if (done || !sim) return;
+    sim.step(); phase = 0;
+    updateRunTapes(); hud(); stamp();
+  });
+  document.querySelectorAll('.speed .ctl').forEach(b => b.addEventListener('click', () => {
+    stepMs = +b.dataset.ms;
+    document.querySelectorAll('.speed .ctl').forEach(x => x.classList.toggle('on', x === b));
+  }));
+
+  // ---------- share ----------
+  $('btnCopy').addEventListener('click', () => {
+    const c = code();
+    $('shareIn').value = c;
+    try { navigator.clipboard.writeText(c); setStatus('code copied — ' + c.length + ' chars of calldata', 'good'); }
+    catch (e) { setStatus('code in the box below — copy it manually', 'good'); }
+    try { history.replaceState(null, '', '#' + c); } catch (e) {}
+  });
+  $('btnImport').addEventListener('click', () => importCode($('shareIn').value.trim()));
+
+  // ---------- puzzles ----------
+  function selectPuzzle(i, keepMachine) {
+    pIdx = i;
+    document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
+    if (!keepMachine) {
+      machine = loadDraft() || clone(EXAMPLES[i].machine);
+      machine.arms.forEach(a => { a.tape = a.tape || {}; a.tape.delay = a.tape.delay || 0; });
+    }
+    selId = null; cursor = null;
+    enterEdit(); fitView(); refreshAll(); hud();
+    try { history.replaceState(null, '', '#' + key()); } catch (e) {}
+  }
+  const tabs = $('tabs');
+  EXAMPLES.forEach((ex, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (i === 0 ? ' on' : '');
+    b.textContent = ex.name;
+    b.addEventListener('click', () => selectPuzzle(i));
+    tabs.appendChild(b);
+  });
+
+  // ---------- boot ----------
+  const hash = decodeURIComponent(location.hash.slice(1));
+  let booted = false;
+  if (hash) {
+    if (hash.includes('.')) booted = importCode(hash);
+    else {
+      const i = EXAMPLES.findIndex(e => e.key === hash);
+      if (i >= 0) { selectPuzzle(i); booted = true; }
+    }
+  }
+  if (!booted) selectPuzzle(0);
+  syncToolSeg();
+
+  // ---------- frame loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(120, now - last); last = now;
+    if (mode === 'run' && sim) {
+      if (running && !done) {
+        if (stepMs === 0) {
+          for (let i = 0; i < 40 && !done; i++) { sim.step(); if (sim.state.fault || sim.state.cycles !== null) break; }
+          phase = 1;
+          updateRunTapes(); hud(); stamp();
+        } else {
+          phase += dt / stepMs;
+          if (phase >= 1) {
+            sim.step(); phase = 0;
+            updateRunTapes(); hud(); stamp();
+          }
+        }
+      }
+      drawRun(Math.min(phase, 1));
+    } else {
+      drawEdit();
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>

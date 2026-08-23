@@ -88,7 +88,11 @@
 <div class="wrap">
   <header>
     <h1>Great Work!<small>Machine Lab · reference engine</small></h1>
-    <a class="backlink" href="./">← the proposal</a>
+    <span>
+      <a class="backlink" id="editLink" href="editor.html">open in the editor →</a>
+      &nbsp;&nbsp;
+      <a class="backlink" href="./">← the proposal</a>
+    </span>
   </header>
 
   <div class="tabs" id="tabs"></div>
@@ -125,6 +129,9 @@
 
 <script>
 /*__ENGINE__*/
+</script>
+<script>
+/*__CODEC__*/
 </script>
 <script>
 /*__EXAMPLES__*/
@@ -408,6 +415,11 @@
     const ex = EXAMPLES[i];
     document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
     document.getElementById('blurb').textContent = ex.blurb;
+    const editLink = document.getElementById('editLink');
+    if (editLink && window.GWCodec) {
+      try { editLink.href = 'editor.html#' + ex.key + '.' + GWCodec.encodeString(ex.machine); }
+      catch (e) { editLink.href = 'editor.html#' + ex.key; }
+    }
     sim = GW.createSim(ex.puzzle, ex.machine);
     view = fitView(ex);
     phase = 1; done = false;

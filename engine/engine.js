@@ -610,7 +610,7 @@
     };
   }
 
-  const GW = { createSim, DIRS, rotK, toPx, PRICE, RADIUS, K_SAMPLES, DEFAULT_CAPS };
+  const GW = { createSim, DIRS, rotK, toPx, fromPx: axialRound, PRICE, GLYPH_PRICE, ELBOW_STEP, RADIUS, K_SAMPLES, DEFAULT_CAPS };
   if (typeof module !== 'undefined' && module.exports) module.exports = GW;
   else root.GW = GW;
 })(typeof self !== 'undefined' ? self : this);
