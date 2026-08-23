@@ -7,7 +7,7 @@
       key: 'courier',
       name: 'The Courier',
       blurb: 'One arm, no elbows: grab, bond, deliver, repeat. The floor every builder starts from.',
-      expect: { cycles: 158 },
+      expect: { cycles: 142 },
       puzzle: {
         inputs: [{ cell: [1, -1], elem: 'Pb' }, { cell: [1, 0], elem: 'Hg' }],
         bonders: [[[-1, 0], [0, -1]]],
@@ -24,7 +24,7 @@
       key: 'ferris',
       name: 'The Ferris',
       blurb: 'An elbow arm rides its parent between two worlds: Pb-side and Hg-side share one child tape. The bonder doubles as the product glyph, so the compound vanishes the instant it forms.',
-      expect: { cycles: 83 },
+      expect: { cycles: 75 },
       puzzle: {
         inputs: [{ cell: [2, -1], elem: 'Pb' }, { cell: [0, 2], elem: 'Hg' }],
         bonders: [[[2, 0], [1, 1]]],
@@ -45,7 +45,7 @@
       key: 'crane',
       name: 'The Crane',
       blurb: 'A worker arm runs one six-step loop forever. The crane relocates it — mid-loop, tapes still ticking — so the same coordinate-free tape ferries lead in one place and quicksilver in another.',
-      expect: { cycles: 163 },
+      expect: { cycles: 147 },
       puzzle: {
         inputs: [{ cell: [3, -1], elem: 'Pb' }, { cell: [3, 2], elem: 'Hg' }],
         bonders: [[[1, 1], [1, 2]]],
@@ -66,7 +66,7 @@
       key: 'beadwheel',
       name: 'The Bead Wheel',
       blurb: 'Tria Prima: salt, quicksilver, sulfur in one chain. The wheel carries the growing molecule around its ring while the feeder threads beads onto it — passing within a whisker of a fault, legally.',
-      expect: { cycles: 139 },
+      expect: { cycles: 125 },
       puzzle: {
         inputs: [{ cell: [-1, 0], elem: 'Sa' }, { cell: [1, -2], elem: 'Hg' }, { cell: [-1, -2], elem: 'S' }],
         bonders: [[[0, -1], [1, -1]]],
@@ -85,7 +85,7 @@
       key: 'goldladder',
       name: 'The Gold Ladder',
       blurb: 'Lead to tin to iron to copper to silver to gold: a dual-gripper shuttle feeds quicksilver to the projection glyph — one hand delivering while the other reloads — and the courier extracts the finished gold.',
-      expect: { cycles: 308 },
+      expect: { cycles: 277 },
       puzzle: {
         inputs: [{ cell: [-1, 0], elem: 'Pb' }, { cell: [3, -3], elem: 'Hg' }],
         projectors: [[[1, 0], [1, -1]]],
@@ -108,7 +108,7 @@
       key: 'leachworks',
       name: 'The Leaching Works',
       blurb: 'Water alone becomes a chain of salt, salt, mors, and vitae. Four waters calcify in transit; an animismus glyph — its shape fixed, like every glyph — turns a salt pair into vitae and mors; and a rocking wheel drags the growing chain back and forth across a single bonder before laying the finished compound around its own hub. Six arms, one product every twenty ticks.',
-      expect: { cycles: 199 },
+      expect: { cycles: 179 },
       puzzle: {
         inputs: [
           { cell: [-3, 0], elem: 'Wa' }, { cell: [1, -3], elem: 'Wa' },
@@ -144,7 +144,7 @@
       key: 'airshipfuel',
       name: 'Airship Fuel',
       blurb: 'Imported from Opus Magnum (chapter one). Fire alone becomes a zigzag of salt and flame. A dimer factory bonds salt to fire — the salt calcified in transit — and two joiner arms pose the halves over a second bonder: one pivot for the left half, two for the right, because the zigzag bends both ways.',
-      expect: { cycles: 180 },
+      expect: { cycles: 162 },
       puzzle: {
         inputs: [
           { cell: [3, 2], elem: 'Fi' }, { cell: [5, 0], elem: 'Fi' }, { cell: [0, -3], elem: 'Fi' },
@@ -171,7 +171,7 @@
       key: 'surrenderflare',
       name: 'Surrender Flare',
       blurb: 'Imported from Opus Magnum (chapter two). An iron core sealed inside six salt petals must come out copper — but the projection glyph cannot reach a surrounded core. So: sever one petal, walk the open flower around the wheel past the quicksilver, pivot the core onto a bonder, and let the porter hand the petal back. The porter then carries the whole flower to the product glyph.',
-      expect: { cycles: 180 },
+      expect: { cycles: 162 },
       puzzle: {
         inputs: [
           { cells: [[2, -2], [3, -2], [2, -1], [1, -1], [1, -2], [2, -3], [3, -3]],

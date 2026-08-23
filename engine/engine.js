@@ -50,7 +50,7 @@
     projectors: 20, purifiers: 20, animismus: 20, disposals: 0 };
   const RADIUS = 0.35, K_SAMPLES = 12;
   const OPS = 'GD+-PQW';
-  const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 10 };
+  const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 9 };
 
   // ---------- simulation ----------
   function createSim(puzzle, machine) {

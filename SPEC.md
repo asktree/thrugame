@@ -5,7 +5,7 @@
 Great Work! is an open optimization puzzle. (The name is meant to be read as a compliment.) A puzzle asks for a product molecule to be
 manufactured from reagents; a solution is a **machine** — parts placed on a hex grid,
 each running a short looping instruction tape. The rules engine simulates the machine
-deterministically. A submission either produces ten products without faulting — and has
+deterministically. A submission either produces nine products without faulting — and has
 its metrics sealed to the permanent record — or it is rejected. There are no judges and
 no partial credit.
 
@@ -178,7 +178,7 @@ with the fault and tick number. Faults:
   tick that are not identical. (Covers double-grab conflicts, torn molecules, and every
   tug-of-war.)
 - **Grab cycle** — the grab graph ceases to be a forest.
-- **Exhaustion** — the cycle cap (§12) is reached before ten products.
+- **Exhaustion** — the cycle cap (§12) is reached before nine products.
 
 There is no undefined behavior. Anything not permitted is a fault; anything that
 faults is rejected; everything else is legal.
@@ -186,11 +186,11 @@ faults is rejected; everything else is legal.
 ## 11. Verification and metrics
 
 A submission is the full machine: parts, placements, tapes. The rules engine runs it
-until **ten products** are consumed or a fault occurs. On success, three metrics are
+until **nine products** are consumed or a fault occurs. On success, three metrics are
 sealed:
 
 - **Cost** — the sum of part prices.
-- **Cycles** — the tick on which the tenth product is consumed.
+- **Cycles** — the tick on which the ninth product is consumed.
 - **Area** — the number of distinct cells visited (center-wise, at any sample instant)
   by any atom, base, or gripper, plus all glyph cells.
 - **SUM = cost + cycles + area.** Lower is better. Ranking is by SUM; ties stand in
