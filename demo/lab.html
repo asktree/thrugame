@@ -2036,6 +2036,49 @@
     ctx.closePath();
   }
 
+  // ---- arm parts, split so the painter can run them as separate passes ----
+  // base plates and elbow pins are board furniture: they belong under the cargo.
+  // shafts and claws are the moving machinery: they belong over everything, so one
+  // arm's reach never vanishes beneath a neighbour's plate.
+  function drawArmBase(arm, bx, by) {
+    // ground bases are solid, collidable plates; elbows are pins. Both are
+    // grid-aligned hexagons — the plate never turns with the arm it carries.
+    if (arm.elbow) {
+      hexPath(bx, by, view.s * PITCH * PIN_R);
+      ctx.fillStyle = '#C9B57E'; ctx.fill();
+      ctx.lineWidth = 1.4; ctx.strokeStyle = '#8A6A1E'; ctx.stroke();
+    } else {
+      hexPath(bx, by, view.s * PITCH * BASE_R);
+      ctx.fillStyle = arm.carried ? '#D9C58C' : '#C9B57E'; ctx.fill();
+      ctx.lineWidth = 1.8; ctx.strokeStyle = arm.carried ? '#8C3B2E' : '#8A6A1E'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx, by, view.s * 0.1, 0, Math.PI * 2);
+      ctx.fillStyle = '#2A2318'; ctx.fill();
+    }
+  }
+
+  function drawArmLimbs(arm, bx, by) {
+    arm.hands.forEach((h, gi) => {
+      const [hx, hy] = P(h.x, h.y);
+      ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(hx, hy); ctx.stroke();
+      // three-fold symmetric grabber head; its pose is the arm's own direction
+      ctx.beginPath(); ctx.arc(hx, hy, view.s * 0.13, 0, Math.PI * 2);
+      ctx.lineWidth = view.s * 0.1; ctx.stroke();
+      // the claw snaps shut on a grab and eases open on a release
+      const g = FX.grip(arm.id + ':' + gi, h.holding ? 1 : 0, frameDt);
+      const r1 = view.s * 0.17, r2 = view.s * (0.5 - 0.12 * g);
+      ctx.lineWidth = view.s * 0.11;
+      for (let k = 0; k < 3; k++) {
+        const a = h.ang + Math.PI / 3 + k * (Math.PI * 2 / 3);
+        const bend = 0.35 * g;
+        ctx.beginPath();
+        ctx.moveTo(hx + Math.cos(a) * r1, hy + Math.sin(a) * r1);
+        ctx.lineTo(hx + Math.cos(a + bend) * r2, hy + Math.sin(a + bend) * r2);
+        ctx.stroke();
+      }
+    });
+  }
+
   function draw(f) {
     const rs = sim.renderState(f);
     const ex = EXAMPLES[exIdx];
@@ -2150,6 +2193,9 @@
     // effects that belong beneath the cargo: glyph footprints firing, ripples
     FX.draw('under', atomPx, armPx);
 
+    // pass 1 — every base plate and elbow pin, before any cargo or machinery
+    for (const arm of rs.arms) drawArmBase(arm, ...armPx[arm.id]);
+
     // bonds
     ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2; ctx.lineCap = 'round';
     for (const [i, j] of rs.bonds) {
@@ -2158,7 +2204,7 @@
     }
     ctx.lineCap = 'butt';
 
-    // atoms first, arms above — the claws grip in front of their cargo
+    // pass 2 — atoms, above the plates; the claws come back over them in pass 3
     for (const a of rs.atoms) {
       const [x, y] = atomPx[a.id];
       const E = ELEMS[a.elem] || { fill: '#999', label: '#2A2318' };
@@ -2178,42 +2224,8 @@
     // sparks, welds, ghosts — above the atoms, below the machinery
     FX.draw('over', atomPx, armPx);
 
-    for (const arm of rs.arms) {
-      const [bx, by] = P(arm.base[0], arm.base[1]);
-      arm.hands.forEach((h, gi) => {
-        const [hx, hy] = P(h.x, h.y);
-        ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(hx, hy); ctx.stroke();
-        // three-fold symmetric grabber head; its pose is the arm's own direction
-        ctx.beginPath(); ctx.arc(hx, hy, view.s * 0.13, 0, Math.PI * 2);
-        ctx.lineWidth = view.s * 0.1; ctx.stroke();
-        // the claw snaps shut on a grab and eases open on a release
-        const g = FX.grip(arm.id + ':' + gi, h.holding ? 1 : 0, frameDt);
-        const r1 = view.s * 0.17, r2 = view.s * (0.5 - 0.12 * g);
-        ctx.lineWidth = view.s * 0.11;
-        for (let k = 0; k < 3; k++) {
-          const a = h.ang + Math.PI / 3 + k * (Math.PI * 2 / 3);
-          const bend = 0.35 * g;
-          ctx.beginPath();
-          ctx.moveTo(hx + Math.cos(a) * r1, hy + Math.sin(a) * r1);
-          ctx.lineTo(hx + Math.cos(a + bend) * r2, hy + Math.sin(a + bend) * r2);
-          ctx.stroke();
-        }
-      });
-      // base: ground bases are solid, collidable plates; elbows are pins. Both are
-      // grid-aligned hexagons — the plate never turns with the arm it carries.
-      if (arm.elbow) {
-        hexPath(bx, by, view.s * PITCH * PIN_R);
-        ctx.fillStyle = '#C9B57E'; ctx.fill();
-        ctx.lineWidth = 1.4; ctx.strokeStyle = '#8A6A1E'; ctx.stroke();
-      } else {
-        hexPath(bx, by, view.s * PITCH * BASE_R);
-        ctx.fillStyle = arm.carried ? '#D9C58C' : '#C9B57E'; ctx.fill();
-        ctx.lineWidth = 1.8; ctx.strokeStyle = arm.carried ? '#8C3B2E' : '#8A6A1E'; ctx.stroke();
-        ctx.beginPath(); ctx.arc(bx, by, view.s * 0.1, 0, Math.PI * 2);
-        ctx.fillStyle = '#2A2318'; ctx.fill();
-      }
-    }
+    // pass 3 — every shaft and claw, on top of all plates, atoms and neighbours
+    for (const arm of rs.arms) drawArmLimbs(arm, ...armPx[arm.id]);
 
   }
 

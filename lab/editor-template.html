@@ -549,15 +549,13 @@
     }
   }
 
-  function drawArmShape(basePx, hands, elbow, selected, ghost, gkey) {
+  // arms are painted in two passes so one arm's reach never disappears beneath a
+  // neighbour's plate: every base first (board furniture, under the cargo), then every
+  // shaft and claw (moving machinery, over everything). A selected base keeps its own
+  // highlight on the base pass; the rotation handle stays above both.
+  function drawArmBase(basePx, elbow, selected, ghost) {
     const [bx, by] = basePx;
     ctx.globalAlpha = ghost ? 0.45 : 1;
-    hands.forEach((h, gi) => {
-      ctx.strokeStyle = selected ? '#A0762B' : '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(h.x, h.y); ctx.stroke();
-      const grip = gkey ? FX.grip(gkey + ':' + gi, h.holding ? 1 : 0, frameDt) : (h.holding ? 1 : 0);
-      drawClaw(h.x, h.y, h.ang, grip, selected ? '#A0762B' : '#8A6A1E');
-    });
     // ground bases are solid, collidable plates; elbows are pins. Both are grid-aligned
     // hexagons — the plate never turns with the arm it carries.
     if (elbow) {
@@ -572,6 +570,18 @@
       ctx.beginPath(); ctx.arc(bx, by, view.s * 0.1, 0, Math.PI * 2);
       ctx.fillStyle = '#2A2318'; ctx.fill();
     }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawArmLimbs(basePx, hands, selected, ghost, gkey) {
+    const [bx, by] = basePx;
+    ctx.globalAlpha = ghost ? 0.45 : 1;
+    hands.forEach((h, gi) => {
+      ctx.strokeStyle = selected ? '#A0762B' : '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(h.x, h.y); ctx.stroke();
+      const grip = gkey ? FX.grip(gkey + ':' + gi, h.holding ? 1 : 0, frameDt) : (h.holding ? 1 : 0);
+      drawClaw(h.x, h.y, h.ang, grip, selected ? '#A0762B' : '#8A6A1E');
+    });
     ctx.globalAlpha = 1;
   }
 
@@ -629,10 +639,15 @@
     }
     drawOutput(sel && sel.kind === 'output');
     const poses = initPoses();
+    const isSel = (arm) => !!(sel && sel.kind === 'arm' && sel.id === arm.id);
+    // pass 1 — all base plates and elbow pins
+    for (const arm of layout.arms) {
+      drawArmBase(Pc(poses[arm.id].pos), !!arm.mount.elbow, isSel(arm), false);
+    }
+    // pass 2 — all shafts and claws, above every plate
     for (const arm of layout.arms) {
       const p = poses[arm.id];
-      drawArmShape(Pc(p.pos), handsFor(p.pos, p.rot, arm), !!arm.mount.elbow,
-        sel && sel.kind === 'arm' && sel.id === arm.id, false);
+      drawArmLimbs(Pc(p.pos), handsFor(p.pos, p.rot, arm), isSel(arm), false);
     }
     // rotation handle for the selected rotatable piece
     if (sel && rotatable(sel) && (!drag || drag.kind === 'handle')) {
@@ -653,7 +668,8 @@
         const ghost = { grippers: drag.part.arm, len: 1, angle: 0 };
         const hit = shaftAt(hoverCell, null);
         const rot = hit && !baseAt(hoverCell) ? hit.rot : 0;
-        drawArmShape(Pc(hoverCell), handsFor(hoverCell, rot, ghost), !!hit, false, true);
+        drawArmBase(Pc(hoverCell), !!hit, false, true);
+        drawArmLimbs(Pc(hoverCell), handsFor(hoverCell, rot, ghost), false, true);
       } else if (drag.part.glyph) {
         ctx.globalAlpha = 0.55;
         drawGlyph({ type: drag.part.glyph, at: hoverCell, rot: 0 }, false);
@@ -675,6 +691,8 @@
     // materialisations, colour eases and ghosts
     FX.noteAtoms(rs.atoms);
     FX.draw('under', atomPx, armPx);
+    // pass 1 — every base plate and elbow pin, beneath the cargo
+    for (const arm of rs.arms) drawArmBase(armPx[arm.id], arm.elbow, false, false);
     ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2; ctx.lineCap = 'round';
     for (const [i, j] of rs.bonds) {
       if (!atomPx[i] || !atomPx[j]) continue;
@@ -697,10 +715,11 @@
       }
     }
     FX.draw('over', atomPx, armPx);
+    // pass 3 — every shaft and claw, on top of all plates, atoms and neighbours
     for (const arm of rs.arms) {
-      drawArmShape(P(arm.base[0], arm.base[1]),
+      drawArmLimbs(armPx[arm.id],
         arm.hands.map(h => { const [x, y] = P(h.x, h.y); return { x, y, ang: h.ang, holding: h.holding }; }),
-        arm.elbow, false, false, 'r' + arm.id);
+        false, false, 'r' + arm.id);
     }
   }
 
