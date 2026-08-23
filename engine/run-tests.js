@@ -240,6 +240,26 @@ for (const ex of EXAMPLES) {
   check(`codec: ${ex.key} round-trips (${s.length} chars)`, same
     && CODEC.encodeString(back) === s);
 }
+// ---- codec v2: full board layouts round-trip ----
+{
+  const sol = {
+    arms: [{ id: 'A', grippers: 2, len: 3, mount: { ground: [-4, 7] }, angle: 5,
+      tape: { delay: 2, ops: ['G', '+', 'P', 'D', 'W'] } }],
+    glyphs: [{ type: 'bonders', at: [0, 0], rot: 3 }, { type: 'animismus', at: [2, -5], rot: 5 },
+      { type: 'calcifiers', at: [-1, -1], rot: 0 }],
+    inputs: [{ ri: 0, at: [3, 3], rot: 4 }, { ri: 2, at: [-6, 0], rot: 1 }],
+    output: { at: [9, -9], rot: 2 },
+  };
+  const s = CODEC.encodeString(sol);
+  const back = CODEC.decodeString(s);
+  check('codec v2: layout round-trips',
+    JSON.stringify(back.glyphs) === JSON.stringify(sol.glyphs)
+    && JSON.stringify(back.inputs) === JSON.stringify(sol.inputs)
+    && JSON.stringify(back.output) === JSON.stringify(sol.output)
+    && CODEC.encodeString(back) === s,
+    s);
+  check('codec v2: arms-only still encodes as v1', CODEC.fromString(CODEC.encodeString({ arms: sol.arms }))[0] === 1);
+}
 {
   const bad = (fn) => { try { fn(); return false; } catch (e) { return /codec/.test(String(e)); } };
   check('codec: rejects op garbage', bad(() => CODEC.encodeMachine({ arms: [

@@ -20,13 +20,24 @@
  *
  * Share strings are base64url of those bytes. Arm ids are not serialized —
  * they are labels, not identity; decode regenerates them as a0, a1, …
+ *
+ * Version 2 appends the rest of the board — the player places everything:
+ *   varint  glyph count;   per glyph:   u8 type (see GLYPH_TYPES), zigzag q, zigzag r, u8 rot
+ *   varint  reagent count; per reagent: varint shape index, zigzag q, zigzag r, u8 rot
+ *   u8      product present (0/1);  if 1: zigzag q, zigzag r, u8 rot
+ * Glyph shapes are canonical (see SPEC §3), so a placement is fully described
+ * by its anchor cell and rotation. Reagent/product placements reference the
+ * puzzle's molecule shapes by index — the shapes themselves are the puzzle's,
+ * so a solution can never alter what is being asked for.
  */
 (function (root) {
   'use strict';
 
   const OPS = 'GD+-PQW';                       // 3-bit opcodes, in this order
   const GRIPS = [1, 2, 3, 6];
-  const VERSION = 1;
+  const GLYPH_TYPES = ['bonders', 'debonders', 'calcifiers', 'duplicators',
+    'projectors', 'purifiers', 'animismus', 'disposals'];
+  const VERSION = 2;
 
   function zigzag(n) { return n < 0 ? -2 * n - 1 : 2 * n; }
   function unzigzag(n) { return n & 1 ? -(n + 1) / 2 : n / 2; }
@@ -37,8 +48,9 @@
     const varint = (n) => { do { let b = n & 0x7f; n >>>= 7; if (n) b |= 0x80; push(b); } while (n); };
     const arms = machine.arms;
     const index = new Map(arms.map((a, i) => [a.id, i]));
+    const hasLayout = machine.glyphs || machine.inputs || machine.output;
 
-    push(VERSION);
+    push(hasLayout ? VERSION : 1);
     varint(arms.length);
     arms.forEach((a, i) => {
       const grip = GRIPS.indexOf(a.grippers || 1);
@@ -68,6 +80,24 @@
       }
       if (bits) push(acc);
     });
+    if (hasLayout) {
+      const glyphs = machine.glyphs || [];
+      varint(glyphs.length);
+      for (const g of glyphs) {
+        const t = GLYPH_TYPES.indexOf(g.type);
+        if (t < 0) throw new Error('codec: bad glyph type ' + g.type);
+        push(t); varint(zigzag(g.at[0])); varint(zigzag(g.at[1])); push(((g.rot || 0) % 6 + 6) % 6);
+      }
+      const inputs = machine.inputs || [];
+      varint(inputs.length);
+      for (const g of inputs) {
+        varint(g.ri || 0); varint(zigzag(g.at[0])); varint(zigzag(g.at[1])); push(((g.rot || 0) % 6 + 6) % 6);
+      }
+      if (machine.output) {
+        push(1); varint(zigzag(machine.output.at[0])); varint(zigzag(machine.output.at[1]));
+        push(((machine.output.rot || 0) % 6 + 6) % 6);
+      } else push(0);
+    }
     return Uint8Array.from(out);
   }
 
@@ -79,7 +109,8 @@
       do { b = u8(); n |= (b & 0x7f) << shift; shift += 7; } while (b & 0x80);
       return n >>> 0;
     };
-    if (u8() !== VERSION) throw new Error('codec: unknown version');
+    const version = u8();
+    if (version !== 1 && version !== VERSION) throw new Error('codec: unknown version');
     const count = varint();
     const arms = [];
     for (let i = 0; i < count; i++) {
@@ -110,8 +141,22 @@
       }
       arms.push({ id: 'a' + i, grippers, len, mount, angle, tape: { delay, ops } });
     }
+    const out = { arms };
+    if (version >= 2) {
+      const zz = () => unzigzag(varint());
+      const rot = () => { const r = u8(); if (r > 5) throw new Error('codec: bad rotation'); return r; };
+      out.glyphs = [];
+      for (let n = varint(); n > 0; n--) {
+        const t = u8();
+        if (t >= GLYPH_TYPES.length) throw new Error('codec: bad glyph type');
+        out.glyphs.push({ type: GLYPH_TYPES[t], at: [zz(), zz()], rot: rot() });
+      }
+      out.inputs = [];
+      for (let n = varint(); n > 0; n--) out.inputs.push({ ri: varint(), at: [zz(), zz()], rot: rot() });
+      if (u8()) out.output = { at: [zz(), zz()], rot: rot() };
+    }
     if (p !== bytes.length) throw new Error('codec: trailing bytes');
-    return { arms };
+    return out;
   }
 
   // -- base64url share strings --
@@ -143,7 +188,7 @@
   const encodeString = (machine) => toString(encodeMachine(machine));
   const decodeString = (s) => decodeMachine(fromString(s));
 
-  const CODEC = { encodeMachine, decodeMachine, toString, fromString, encodeString, decodeString, VERSION };
+  const CODEC = { encodeMachine, decodeMachine, toString, fromString, encodeString, decodeString, VERSION, GLYPH_TYPES };
   if (typeof module !== 'undefined' && module.exports) module.exports = CODEC;
   else root.GWCodec = CODEC;
 })(typeof self !== 'undefined' ? self : this);

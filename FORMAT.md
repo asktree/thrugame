@@ -1,4 +1,4 @@
-# GREAT WORK! — Machine Serialization Format v1
+# GREAT WORK! — Machine Serialization Format
 
 The canonical encoding of a submission: the bytes a player submits as calldata,
 and the share-string the solution editor emits. One format, both places — a
@@ -46,6 +46,29 @@ Opcodes: `G`=0 `D`=1 `↻`=2 `↺`=3 `↷`=4 `↶`=5 `·`=6.
 Arm **order is preserved** — submission order is the tournament tiebreak
 identity. Arm ids are labels, not identity, and are not serialized; decoding
 regenerates them (`a0`, `a1`, …).
+
+## Version 2: the whole board
+
+The player places everything — arms, glyphs, reagents, and the product. A v2
+solution appends three sections after the arms:
+
+```
+varint   glyph count
+per glyph:   u8 type, zigzag q, zigzag r, u8 rotation (0..5)
+varint   reagent count
+per reagent: varint shape index, zigzag q, zigzag r, u8 rotation
+u8       product present (0 or 1)
+if 1:        zigzag q, zigzag r, u8 rotation
+```
+
+Glyph types: bond=0, debond=1, calcification=2, duplication=3, projection=4,
+purification=5, animismus=6, disposal=7. Because glyph **shapes are canonical**
+(SPEC §3), a placement is completely described by its anchor cell and rotation.
+
+Reagent and product placements reference the **puzzle's** molecule shapes (by
+index, in puzzle order) — a solution chooses where they sit and how they're
+turned, never what they are. Version 1 payloads (arms only) still decode; a
+consumer supplies the puzzle's default board for them.
 
 ## Share strings
 

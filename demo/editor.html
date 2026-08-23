@@ -31,27 +31,33 @@
   .tab:hover { color: var(--ink); }
   .tab.on { background: var(--ink); color: var(--parch); border-color: var(--ink); }
 
-  .toolrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 14px; border: 1px solid var(--line); border-bottom: 0; background: var(--parch-3); margin-top: 8px; }
-  .toolrow .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 3px; }
-  .toolrow .hint { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .05em; margin-left: auto; }
-  button.ctl, .seg button {
+  .tray { display: flex; align-items: stretch; gap: 5px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line); border-bottom: 0; background: var(--parch-3); margin-top: 8px; }
+  .tray .seg-label { font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); letter-spacing: .1em; align-self: center; margin: 0 4px 0 2px; }
+  .part {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+    color: var(--ink); background: var(--parch); border: 1px solid var(--ink-dim);
+    padding: 5px 8px; cursor: grab; user-select: none; text-align: center; line-height: 1.35;
+  }
+  .part small { display: block; font-weight: 400; color: var(--ink-faint); font-size: 9px; }
+  .part:hover { background: var(--parch-2); border-color: var(--ink); }
+  .tray.droptarget { outline: 2px dashed var(--oxblood); outline-offset: -4px; }
+  .tray .hint { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .04em; margin-left: auto; align-self: center; text-align: right; line-height: 1.5; }
+  .tray .sep { width: 1px; background: var(--line); margin: 0 3px; }
+
+  button.ctl {
     font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
     color: var(--ink); background: var(--parch); border: 1px solid var(--ink-dim);
     padding: 6px 11px; cursor: pointer;
   }
-  button.ctl:hover, .seg button:hover { background: var(--ink); color: var(--parch); }
+  button.ctl:hover { background: var(--ink); color: var(--parch); }
   button.ctl.on { background: var(--ink); color: var(--parch); }
   button.ctl.warn { border-color: var(--oxblood); color: var(--oxblood); }
   button.ctl.warn:hover { background: var(--oxblood); color: var(--parch); }
-  .seg { display: flex; border: 1px solid var(--ink-dim); }
-  .seg button { border: 0; padding: 6px 10px; }
-  .seg button + button { border-left: 1px solid var(--ink-dim); }
-  .seg button.on { background: var(--ink); color: var(--parch); }
-  .seg-label { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .1em; }
+  button.ctl:disabled { opacity: .4; cursor: default; }
+  button.ctl:disabled:hover { background: var(--parch); color: var(--ink); }
 
   .stagebox { border: 1px solid var(--line); background: var(--parch-2); position: relative; }
-  canvas#field { display: block; width: 100%; height: auto; cursor: crosshair; }
-  canvas#field.tool-select { cursor: default; }
+  canvas#field { display: block; width: 100%; height: auto; }
   .stamp { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .4s; }
   .stamp.show { opacity: 1; }
   .stamp-inner {
@@ -76,7 +82,7 @@
 
   .tapes { border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 8px 14px 10px; }
   .oppal { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding-bottom: 7px; margin-bottom: 6px; border-bottom: 1px solid var(--line-soft); }
-  .oppal .seg-label { margin-right: 3px; }
+  .oppal .seg-label { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .1em; margin-right: 3px; }
   .oppal button { font-family: var(--mono); font-size: 13px; font-weight: 700; padding: 3px 9px; border: 1px solid var(--ink-dim); background: var(--parch); cursor: pointer; color: var(--ink); }
   .oppal button:hover { background: var(--ink); color: var(--parch); }
   .tape-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
@@ -92,6 +98,7 @@
   .tape-cells span.spent { opacity: .25; }
   .tape-cells span.on { background: var(--ink); color: var(--parch); border-color: var(--ink); opacity: 1; }
   .tape-cells span.cursor { border-color: var(--gold); box-shadow: 0 0 0 1.5px var(--gold); }
+  .tape-cells span.ghostcell { opacity: .4; border-style: dashed; }
 
   .sharebox { border: 1px solid var(--line); border-top: 0; background: var(--parch-2); padding: 9px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .sharebox input { flex: 1; min-width: 220px; font-family: var(--mono); font-size: 11px; padding: 6px 8px; border: 1px solid var(--line); background: var(--parch); color: var(--ink); }
@@ -107,29 +114,26 @@
 
   <div class="tabs" id="tabs"></div>
 
-  <div class="toolrow" id="editTools">
-    <span class="seg-label">TOOL</span>
-    <div class="seg" id="toolSeg">
-      <button data-tool="select" class="on">Select</button>
-      <button data-tool="arm">Arm</button>
-      <button data-tool="elbow">Elbow</button>
-    </div>
-    <span class="seg-label">GRIP</span>
-    <div class="seg" id="gripSeg">
-      <button data-g="1" class="on">1</button><button data-g="2">2</button><button data-g="3">3</button><button data-g="6">6</button>
-    </div>
-    <span class="seg-label">LEN</span>
-    <div class="seg" id="lenSeg">
-      <button data-l="1" class="on">1</button><button data-l="2">2</button><button data-l="3">3</button>
-    </div>
+  <div class="tray" id="tray">
+    <span class="seg-label">ARMS</span>
+    <div class="part" data-arm="1">ARM<small>20g</small></div>
+    <div class="part" data-arm="2">DUAL<small>24g</small></div>
+    <div class="part" data-arm="3">TRI<small>26g</small></div>
+    <div class="part" data-arm="6">HEX<small>30g</small></div>
     <div class="sep"></div>
-    <button class="ctl" id="btnRotL" title="rotate selected ( [ )">↺</button>
-    <button class="ctl" id="btnRotR" title="rotate selected ( ] )">↻</button>
-    <button class="ctl warn" id="btnDelete">Delete</button>
+    <span class="seg-label">GLYPHS</span>
+    <div class="part" data-glyph="bonders">BOND<small>10g</small></div>
+    <div class="part" data-glyph="debonders">DEBOND<small>15g</small></div>
+    <div class="part" data-glyph="calcifiers">CALCIFY<small>10g</small></div>
+    <div class="part" data-glyph="duplicators">DUPE<small>20g</small></div>
+    <div class="part" data-glyph="projectors">PROJECT<small>20g</small></div>
+    <div class="part" data-glyph="purifiers">PURIFY<small>20g</small></div>
+    <div class="part" data-glyph="animismus">ANIMA<small>20g</small></div>
+    <div class="part" data-glyph="disposals">DISPOSE<small>0g</small></div>
     <div class="sep"></div>
-    <button class="ctl" id="btnRef">Reference</button>
-    <button class="ctl warn" id="btnClear">Clear</button>
-    <span class="hint" id="toolHint">click the board to place · drag a base to move</span>
+    <span class="seg-label">REAGENTS</span>
+    <span id="reagentParts" style="display:contents"></span>
+    <span class="hint">drag parts onto the board · drag back here to remove<br>drag a gripper to aim &amp; lengthen · handles rotate · ctrl-z undoes</span>
   </div>
 
   <div class="stagebox">
@@ -147,6 +151,10 @@
       <button class="ctl" data-ms="140">4×</button>
       <button class="ctl" data-ms="0">MAX</button>
     </div>
+    <button class="ctl" id="btnUndo" title="ctrl-z">Undo</button>
+    <button class="ctl" id="btnRedo" title="ctrl-shift-z">Redo</button>
+    <button class="ctl" id="btnRef">Reference</button>
+    <button class="ctl warn" id="btnClear">Clear</button>
     <div class="hud">
       <span>CYCLE <b id="hTick">0</b></span>
       <span>COST <b id="hCost">—</b></span>
@@ -161,7 +169,7 @@
 
   <div class="sharebox">
     <button class="ctl" id="btnCopy">Copy code</button>
-    <input id="shareIn" placeholder="paste a solution code — e.g. leachworks.AQZK…" spellcheck="false">
+    <input id="shareIn" placeholder="paste a solution code — e.g. leachworks.AgZK…" spellcheck="false">
     <button class="ctl" id="btnImport">Import</button>
   </div>
 
@@ -813,13 +821,24 @@
  *
  * Share strings are base64url of those bytes. Arm ids are not serialized —
  * they are labels, not identity; decode regenerates them as a0, a1, …
+ *
+ * Version 2 appends the rest of the board — the player places everything:
+ *   varint  glyph count;   per glyph:   u8 type (see GLYPH_TYPES), zigzag q, zigzag r, u8 rot
+ *   varint  reagent count; per reagent: varint shape index, zigzag q, zigzag r, u8 rot
+ *   u8      product present (0/1);  if 1: zigzag q, zigzag r, u8 rot
+ * Glyph shapes are canonical (see SPEC §3), so a placement is fully described
+ * by its anchor cell and rotation. Reagent/product placements reference the
+ * puzzle's molecule shapes by index — the shapes themselves are the puzzle's,
+ * so a solution can never alter what is being asked for.
  */
 (function (root) {
   'use strict';
 
   const OPS = 'GD+-PQW';                       // 3-bit opcodes, in this order
   const GRIPS = [1, 2, 3, 6];
-  const VERSION = 1;
+  const GLYPH_TYPES = ['bonders', 'debonders', 'calcifiers', 'duplicators',
+    'projectors', 'purifiers', 'animismus', 'disposals'];
+  const VERSION = 2;
 
   function zigzag(n) { return n < 0 ? -2 * n - 1 : 2 * n; }
   function unzigzag(n) { return n & 1 ? -(n + 1) / 2 : n / 2; }
@@ -830,8 +849,9 @@
     const varint = (n) => { do { let b = n & 0x7f; n >>>= 7; if (n) b |= 0x80; push(b); } while (n); };
     const arms = machine.arms;
     const index = new Map(arms.map((a, i) => [a.id, i]));
+    const hasLayout = machine.glyphs || machine.inputs || machine.output;
 
-    push(VERSION);
+    push(hasLayout ? VERSION : 1);
     varint(arms.length);
     arms.forEach((a, i) => {
       const grip = GRIPS.indexOf(a.grippers || 1);
@@ -861,6 +881,24 @@
       }
       if (bits) push(acc);
     });
+    if (hasLayout) {
+      const glyphs = machine.glyphs || [];
+      varint(glyphs.length);
+      for (const g of glyphs) {
+        const t = GLYPH_TYPES.indexOf(g.type);
+        if (t < 0) throw new Error('codec: bad glyph type ' + g.type);
+        push(t); varint(zigzag(g.at[0])); varint(zigzag(g.at[1])); push(((g.rot || 0) % 6 + 6) % 6);
+      }
+      const inputs = machine.inputs || [];
+      varint(inputs.length);
+      for (const g of inputs) {
+        varint(g.ri || 0); varint(zigzag(g.at[0])); varint(zigzag(g.at[1])); push(((g.rot || 0) % 6 + 6) % 6);
+      }
+      if (machine.output) {
+        push(1); varint(zigzag(machine.output.at[0])); varint(zigzag(machine.output.at[1]));
+        push(((machine.output.rot || 0) % 6 + 6) % 6);
+      } else push(0);
+    }
     return Uint8Array.from(out);
   }
 
@@ -872,7 +910,8 @@
       do { b = u8(); n |= (b & 0x7f) << shift; shift += 7; } while (b & 0x80);
       return n >>> 0;
     };
-    if (u8() !== VERSION) throw new Error('codec: unknown version');
+    const version = u8();
+    if (version !== 1 && version !== VERSION) throw new Error('codec: unknown version');
     const count = varint();
     const arms = [];
     for (let i = 0; i < count; i++) {
@@ -903,8 +942,22 @@
       }
       arms.push({ id: 'a' + i, grippers, len, mount, angle, tape: { delay, ops } });
     }
+    const out = { arms };
+    if (version >= 2) {
+      const zz = () => unzigzag(varint());
+      const rot = () => { const r = u8(); if (r > 5) throw new Error('codec: bad rotation'); return r; };
+      out.glyphs = [];
+      for (let n = varint(); n > 0; n--) {
+        const t = u8();
+        if (t >= GLYPH_TYPES.length) throw new Error('codec: bad glyph type');
+        out.glyphs.push({ type: GLYPH_TYPES[t], at: [zz(), zz()], rot: rot() });
+      }
+      out.inputs = [];
+      for (let n = varint(); n > 0; n--) out.inputs.push({ ri: varint(), at: [zz(), zz()], rot: rot() });
+      if (u8()) out.output = { at: [zz(), zz()], rot: rot() };
+    }
     if (p !== bytes.length) throw new Error('codec: trailing bytes');
-    return { arms };
+    return out;
   }
 
   // -- base64url share strings --
@@ -936,7 +989,7 @@
   const encodeString = (machine) => toString(encodeMachine(machine));
   const decodeString = (s) => decodeMachine(fromString(s));
 
-  const CODEC = { encodeMachine, decodeMachine, toString, fromString, encodeString, decodeString, VERSION };
+  const CODEC = { encodeMachine, decodeMachine, toString, fromString, encodeString, decodeString, VERSION, GLYPH_TYPES };
   if (typeof module !== 'undefined' && module.exports) module.exports = CODEC;
   else root.GWCodec = CODEC;
 })(typeof self !== 'undefined' ? self : this);
@@ -1226,11 +1279,11 @@
     Wa: { fill: '#5B7EA6', label: '#F1E9D6' }, Vi: { fill: '#C97B8E', label: '#2A2318' },
     Mo: { fill: '#443C46', label: '#F1E9D6' },
   };
-  const SPECIAL_GLYPHS = [
-    ['debonders', 'DEBOND'], ['calcifiers', 'CALCIFY'], ['duplicators', 'DUPE'],
-    ['projectors', 'PROJECT'], ['purifiers', 'PURIFY'], ['animismus', 'ANIMA'],
-    ['disposals', 'DISPOSE'],
-  ];
+  const GLYPH_LABEL = {
+    bonders: 'BOND', debonders: 'DEBOND', calcifiers: 'CALCIFY', duplicators: 'DUPE',
+    projectors: 'PROJECT', purifiers: 'PURIFY', animismus: 'ANIMA', disposals: 'DISPOSE',
+  };
+  const SINGLE_CELL = { calcifiers: 1, disposals: 1 };
   const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·' };
   const PITCH = Math.sqrt(3);
   const CW = 980, CH = 560;
@@ -1240,32 +1293,95 @@
   canvas.width = CW * dpr; canvas.height = CH * dpr;
   canvas.style.aspectRatio = `${CW} / ${CH}`;
   const $ = (id) => document.getElementById(id);
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const mod6 = (n) => ((n % 6) + 6) % 6;
+  const eq = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
+  const addc = (a, b) => [a[0] + b[0], a[1] + b[1]];
+  const subc = (a, b) => [a[0] - b[0], a[1] - b[1]];
+
+  // ---------- puzzle bases: shapes + default layouts, derived from the examples ----------
+  function normalizeMol(g) {
+    const cells = g.cell ? [g.cell] : g.cells;
+    const elems = g.cell ? [g.elem] : g.elems;
+    return { rel: cells.map(c => subc(c, cells[0])), elems, bonds: g.bonds || [] };
+  }
+  function decomposeGlyphs(pz) {
+    const out = [];
+    for (const type in GLYPH_LABEL) {
+      for (const g of (pz[type] || [])) {
+        const cells = Array.isArray(g[0]) ? g : [g];
+        const rot = cells.length > 1 ? GW.DIRS.findIndex(d => eq(d, subc(cells[1], cells[0]))) : 0;
+        out.push({ type, at: cells[0].slice(), rot: Math.max(0, rot) });
+      }
+    }
+    return out;
+  }
+  // only real puzzles are editable — the fault demos (no product glyph) stay in the lab
+  const BASES = EXAMPLES.filter(ex => ex.puzzle.output).map(ex => {
+    const pz = ex.puzzle;
+    return {
+      key: ex.key, name: ex.name, caps: pz.caps,
+      reagentShapes: (pz.inputs || []).map(normalizeMol),
+      productShape: normalizeMol(pz.output),
+      defaultLayout: {
+        glyphs: decomposeGlyphs(pz),
+        inputs: (pz.inputs || []).map((g, i) => ({ ri: i, at: (g.cell ? g.cell : g.cells[0]).slice(), rot: 0 })),
+        output: { at: pz.output.cells[0].slice(), rot: 0 },
+      },
+      refArms: ex.machine.arms,
+    };
+  });
 
   // ---------- state ----------
-  let pIdx = 0;                       // puzzle index into EXAMPLES
-  let machine = { arms: [] };         // working machine (edit-mode truth)
-  let mode = 'edit';                  // 'edit' | 'run'
-  let sim = null;                     // run-mode simulation
+  let pIdx = 0;
+  let layout = { arms: [], glyphs: [], inputs: [], output: { at: [0, 0], rot: 0 } };
+  let mode = 'edit';
+  let sim = null;
   let view = { s: 40, ox: CW / 2, oy: CH / 2 };
-  let tool = 'select', cfg = { grippers: 1, len: 1 };
-  let selId = null;                   // selected arm id
-  let cursor = null;                  // tape cursor {armId, pos}
-  let hoverCell = null, elbowParent = null;
+  let sel = null;                      // {kind:'arm'|'glyph'|'input'|'output', id?|i?}
+  let cursor = null;                   // tape cursor {armId, pos}
+  let hoverCell = null, mousePx = null;
   let running = false, stepMs = 350, phase = 1, done = false;
-  let drag = null;                    // {armId, moved} | {pan:true, x, y}
+  let drag = null;
+  let undoStack = [], redoStack = [], dragSnap = null;
 
-  const puzzle = () => EXAMPLES[pIdx].puzzle;
-  const key = () => EXAMPLES[pIdx].key;
-  const armById = (id) => machine.arms.find(a => a.id === id);
-  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const base = () => BASES[pIdx];
+  const key = () => base().key;
+  const armById = (id) => layout.arms.find(a => a.id === id);
 
   // ---------- geometry ----------
   const P = (x, y) => [view.ox + view.s * x, view.oy + view.s * y];
   const Pc = (cell) => { const p = GW.toPx(cell); return P(p[0], p[1]); };
   const cellAt = (mx, my) => GW.fromPx((mx - view.ox) / view.s, (my - view.oy) / view.s);
-  const eq = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
 
-  // initial pose of every arm (edit-mode drawing + hit tests); mirrors engine.pose at t0
+  function glyphCells(g) {
+    const a = g.at, k = g.rot || 0;
+    if (SINGLE_CELL[g.type]) return [a];
+    const c = [a, addc(a, GW.DIRS[k])];
+    if (g.type === 'purifiers' || g.type === 'animismus') c.push(addc(a, GW.DIRS[mod6(k + 1)]));
+    if (g.type === 'animismus') c.push(addc(a, GW.DIRS[mod6(k + 5)]));
+    return c;
+  }
+  function molCells(shape, at, rot) { return shape.rel.map(rc => addc(at, GW.rotK(rc, rot || 0))); }
+  function inputCells(g) { return molCells(base().reagentShapes[g.ri], g.at, g.rot); }
+  function outputCells() { return molCells(base().productShape, layout.output.at, layout.output.rot); }
+
+  function matPuzzle() {
+    const pz = {};
+    if (base().caps) pz.caps = clone(base().caps);
+    for (const g of layout.glyphs) {
+      const cells = glyphCells(g);
+      (pz[g.type] = pz[g.type] || []).push(SINGLE_CELL[g.type] ? cells[0] : cells);
+    }
+    pz.inputs = layout.inputs.map(g => {
+      const sh = base().reagentShapes[g.ri];
+      return { cells: inputCells(g), elems: sh.elems.slice(), bonds: clone(sh.bonds) };
+    });
+    const ps = base().productShape;
+    pz.output = { cells: outputCells(), elems: ps.elems.slice(), bonds: clone(ps.bonds) };
+    return pz;
+  }
+
   function initPoses() {
     const out = {}, guard = new Set();
     const pose = (arm) => {
@@ -1278,45 +1394,73 @@
         if (!par) p = { pos: [0, 0], rot: 0 };
         else {
           const pp = pose(par);
-          const d = ((pp.rot + par.angle) % 6 + 6) % 6;
-          p = { pos: [pp.pos[0] + GW.DIRS[d][0] * arm.mount.elbow.at, pp.pos[1] + GW.DIRS[d][1] * arm.mount.elbow.at], rot: d };
+          const d = mod6(pp.rot + par.angle);
+          p = { pos: addc(pp.pos, [GW.DIRS[d][0] * arm.mount.elbow.at, GW.DIRS[d][1] * arm.mount.elbow.at]), rot: d };
         }
       } else p = { pos: arm.mount.ground.slice(), rot: 0 };
       out[arm.id] = p; return p;
     };
-    machine.arms.forEach(pose);
+    layout.arms.forEach(pose);
     return out;
   }
   const GRIPOFF = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
 
   function costOf() {
     let cost = 0;
-    for (const a of machine.arms) {
+    for (const a of layout.arms) {
       let depth = 0, cur = a, guard = 0;
       while (cur && cur.mount.elbow && guard++ < 20) { cur = armById(cur.mount.elbow.parent); depth++; }
       cost += GW.PRICE[a.grippers] + GW.ELBOW_STEP * depth;
     }
-    for (const fam in GW.GLYPH_PRICE) cost += (puzzle()[fam] || []).length * GW.GLYPH_PRICE[fam];
+    for (const g of layout.glyphs) cost += GW.GLYPH_PRICE[g.type];
     return cost;
   }
 
-  // validation preview: try building a sim; return null or the rejection reason
   function validate() {
-    if (!machine.arms.length) return 'place an arm to begin';
-    try { GW.createSim(puzzle(), machine); return null; }
+    if (!layout.arms.length) return 'drag an arm onto the board to begin';
+    try { GW.createSim(matPuzzle(), { arms: layout.arms }); return null; }
     catch (e) { return String(e.message || e).replace('invalid machine: ', ''); }
+  }
+
+  // ---------- undo ----------
+  const snapshot = () => JSON.stringify(layout);
+  function pushUndo(snap) {
+    undoStack.push(snap);
+    if (undoStack.length > 200) undoStack.shift();
+    redoStack = [];
+    syncUndoButtons();
+  }
+  function withUndo(fn) {
+    const snap = snapshot();
+    fn();
+    if (snapshot() !== snap) { pushUndo(snap); touched(); }
+  }
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(snapshot());
+    layout = JSON.parse(undoStack.pop());
+    sel = null; cursor = null;
+    syncUndoButtons(); touched();
+  }
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(snapshot());
+    layout = JSON.parse(redoStack.pop());
+    sel = null; cursor = null;
+    syncUndoButtons(); touched();
+  }
+  function syncUndoButtons() {
+    $('btnUndo').disabled = !undoStack.length;
+    $('btnRedo').disabled = !redoStack.length;
   }
 
   // ---------- view fitting ----------
   function fitView() {
     const cells = [];
-    const pz = puzzle();
-    for (const fam in GW.GLYPH_PRICE) for (const g of (pz[fam] || [])) {
-      for (const c of (Array.isArray(g[0]) ? g : [g])) cells.push(c);
-    }
-    for (const g of (pz.inputs || [])) (g.cell ? [g.cell] : g.cells).forEach(c => cells.push(c));
-    for (const c of ((pz.output && pz.output.cells) || [])) cells.push(c);
-    for (const a of machine.arms) if (a.mount.ground) cells.push(a.mount.ground);
+    for (const g of layout.glyphs) glyphCells(g).forEach(c => cells.push(c));
+    for (const g of layout.inputs) inputCells(g).forEach(c => cells.push(c));
+    outputCells().forEach(c => cells.push(c));
+    for (const a of layout.arms) if (a.mount.ground) cells.push(a.mount.ground);
     if (!cells.length) cells.push([0, 0]);
     const pts = cells.map(GW.toPx);
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
@@ -1336,99 +1480,98 @@
   }
 
   // ---------- drawing ----------
-  function drawBoard() {
+  function drawGrid() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#EAE0C9'; ctx.fillRect(0, 0, CW, CH);
     ctx.strokeStyle = 'rgba(160,140,95,0.18)'; ctx.lineWidth = 1;
-    for (let q = -16; q <= 16; q++) for (let r = -16; r <= 16; r++) {
+    const c0 = cellAt(0, 0), c1 = cellAt(CW, CH);
+    const qMin = Math.min(c0[0], c1[0]) - 8, qMax = Math.max(c0[0], c1[0]) + 8;
+    const rMin = Math.min(c0[1], c1[1]) - 4, rMax = Math.max(c0[1], c1[1]) + 4;
+    for (let q = qMin; q <= qMax; q++) for (let r = rMin; r <= rMax; r++) {
       const [x, y] = Pc([q, r]);
       if (x < -40 || x > CW + 40 || y < -40 || y > CH + 40) continue;
       hexPath(x, y, view.s * PITCH / 2 * 1.11); ctx.stroke();
     }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const pz = puzzle();
-    for (const [c1, c2] of (pz.bonders || [])) {
-      for (const c of [c1, c2]) {
-        const [x, y] = Pc(c);
-        hexPath(x, y, view.s * PITCH / 2 * 1.08);
-        ctx.fillStyle = 'rgba(160,118,43,0.16)'; ctx.fill();
-        ctx.strokeStyle = 'rgba(160,118,43,0.7)'; ctx.lineWidth = 1.4; ctx.stroke();
-      }
-      const [x1, y1] = Pc(c1), [x2, y2] = Pc(c2);
-      ctx.strokeStyle = 'rgba(160,118,43,0.85)'; ctx.lineWidth = 3;
+  }
+
+  function drawGlyph(g, selected) {
+    const cells = glyphCells(g);
+    const bond = g.type === 'bonders';
+    const col = bond ? '160,118,43' : '140,59,46';
+    for (const c of cells) {
+      const [x, y] = Pc(c);
+      hexPath(x, y, view.s * PITCH / 2 * 1.08);
+      ctx.fillStyle = `rgba(${col},${bond ? 0.16 : 0.12})`; ctx.fill();
+      ctx.strokeStyle = `rgba(${col},${selected ? 1 : 0.65})`; ctx.lineWidth = selected ? 2.2 : 1.4; ctx.stroke();
+    }
+    for (let i = 1; i < cells.length; i++) {
+      const [x1, y1] = Pc(cells[i - 1]), [x2, y2] = Pc(cells[i]);
+      ctx.strokeStyle = `rgba(${col},${bond ? 0.85 : 0.55})`; ctx.lineWidth = bond ? 3 : 2;
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
-    ctx.font = `700 9px 'Courier Prime', monospace`;
-    for (const [fam, label] of SPECIAL_GLYPHS) {
-      for (const g of (pz[fam] || [])) {
-        const cells = Array.isArray(g[0]) ? g : [g];
-        for (const c of cells) {
-          const [x, y] = Pc(c);
-          hexPath(x, y, view.s * PITCH / 2 * 1.08);
-          ctx.fillStyle = 'rgba(140,59,46,0.12)'; ctx.fill();
-          ctx.strokeStyle = 'rgba(140,59,46,0.6)'; ctx.lineWidth = 1.4; ctx.stroke();
-        }
-        for (let i = 1; i < cells.length; i++) {
-          const [x1, y1] = Pc(cells[i - 1]), [x2, y2] = Pc(cells[i]);
-          ctx.strokeStyle = 'rgba(140,59,46,0.55)'; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        }
-        const [lx, ly] = Pc(cells[0]);
-        ctx.fillStyle = 'rgba(140,59,46,0.8)';
-        ctx.fillText(label, lx, ly - view.s * 1.0);
-      }
-    }
-    ctx.font = `700 10px 'Courier Prime', monospace`;
-    for (const g of (pz.inputs || [])) {
-      const cells = g.cell ? [g.cell] : g.cells;
-      const elems = g.cell ? [g.elem] : g.elems;
-      ctx.setLineDash([3, 3]);
-      for (const [i, j] of (g.bonds || [])) {
-        const [x1, y1] = Pc(cells[i]), [x2, y2] = Pc(cells[j]);
-        ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = view.s * 0.12;
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      }
-      cells.forEach((c, i) => {
-        const [x, y] = Pc(c);
-        ctx.beginPath(); ctx.arc(x, y, view.s * 0.62, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(42,35,24,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
-        if (cells.length > 1) {
-          ctx.globalAlpha = 0.45; ctx.fillStyle = '#2A2318';
-          ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
-          ctx.fillText(elems[i], x, y);
-          ctx.globalAlpha = 1; ctx.font = `700 10px 'Courier Prime', monospace`;
-        }
-      });
-      ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(42,35,24,0.55)';
+    if (!bond) {
       const [lx, ly] = Pc(cells[0]);
-      ctx.fillText('IN·' + elems[0], lx, ly + view.s * 0.95);
-    }
-    const out = pz.output;
-    if (out) {
-      ctx.setLineDash([4, 4]);
-      for (const [i, j] of out.bonds) {
-        const [x1, y1] = Pc(out.cells[i]), [x2, y2] = Pc(out.cells[j]);
-        ctx.strokeStyle = '#33705E'; ctx.globalAlpha = 0.5; ctx.lineWidth = view.s * 0.14;
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.globalAlpha = 1;
-      }
-      out.cells.forEach((c, i) => {
-        const [x, y] = Pc(c);
-        ctx.beginPath(); ctx.arc(x, y, view.s * 0.55, 0, Math.PI * 2);
-        ctx.strokeStyle = '#33705E'; ctx.lineWidth = 1.3; ctx.stroke();
-        ctx.globalAlpha = 0.55; ctx.fillStyle = '#33705E';
-        ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
-        ctx.fillText(out.elems[i], x, y);
-        ctx.globalAlpha = 1; ctx.font = `700 10px 'Courier Prime', monospace`;
-      });
-      ctx.setLineDash([]);
-      const [x, y] = Pc(out.cells[0]);
-      ctx.fillStyle = '#33705E'; ctx.fillText('OUT', x, y - view.s * 1.0);
+      ctx.font = `700 9px 'Courier Prime', monospace`;
+      ctx.fillStyle = `rgba(${col},0.8)`;
+      ctx.fillText(GLYPH_LABEL[g.type], lx, ly - view.s * 1.0);
     }
   }
 
-  function drawArmShape(base, hands, elbow, selected, ghost) {
-    const [bx, by] = base;
+  function drawInput(g, selected) {
+    const cells = inputCells(g);
+    const sh = base().reagentShapes[g.ri];
+    ctx.setLineDash([3, 3]);
+    for (const [i, j] of sh.bonds) {
+      const [x1, y1] = Pc(cells[i]), [x2, y2] = Pc(cells[j]);
+      ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = view.s * 0.12;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    cells.forEach((c, i) => {
+      const [x, y] = Pc(c);
+      ctx.beginPath(); ctx.arc(x, y, view.s * 0.62, 0, Math.PI * 2);
+      ctx.strokeStyle = selected ? 'rgba(42,35,24,0.95)' : 'rgba(42,35,24,0.5)';
+      ctx.lineWidth = selected ? 2 : 1.2; ctx.stroke();
+      if (cells.length > 1) {
+        ctx.globalAlpha = 0.45; ctx.fillStyle = '#2A2318';
+        ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
+        ctx.fillText(sh.elems[i], x, y);
+        ctx.globalAlpha = 1;
+      }
+    });
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(42,35,24,0.55)';
+    ctx.font = `700 10px 'Courier Prime', monospace`;
+    const [lx, ly] = Pc(cells[0]);
+    ctx.fillText('IN·' + sh.elems[0], lx, ly + view.s * 0.95);
+  }
+
+  function drawOutput(selected) {
+    const cells = outputCells();
+    const sh = base().productShape;
+    ctx.setLineDash([4, 4]);
+    for (const [i, j] of sh.bonds) {
+      const [x1, y1] = Pc(cells[i]), [x2, y2] = Pc(cells[j]);
+      ctx.strokeStyle = '#33705E'; ctx.globalAlpha = 0.5; ctx.lineWidth = view.s * 0.14;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    cells.forEach((c, i) => {
+      const [x, y] = Pc(c);
+      ctx.beginPath(); ctx.arc(x, y, view.s * 0.55, 0, Math.PI * 2);
+      ctx.strokeStyle = '#33705E'; ctx.lineWidth = selected ? 2.2 : 1.3; ctx.stroke();
+      ctx.globalAlpha = 0.55; ctx.fillStyle = '#33705E';
+      ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
+      ctx.fillText(sh.elems[i], x, y);
+      ctx.globalAlpha = 1;
+    });
+    ctx.setLineDash([]);
+    const [x, y] = Pc(cells[0]);
+    ctx.font = `700 10px 'Courier Prime', monospace`;
+    ctx.fillStyle = '#33705E'; ctx.fillText('OUT', x, y - view.s * 1.0);
+  }
+
+  function drawArmShape(basePx, hands, elbow, selected, ghost) {
+    const [bx, by] = basePx;
     ctx.globalAlpha = ghost ? 0.45 : 1;
     for (const h of hands) {
       ctx.strokeStyle = selected ? '#A0762B' : '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
@@ -1458,38 +1601,95 @@
   }
 
   function handsFor(posePos, poseRot, arm) {
+    const [bx, by] = Pc(posePos);
     return GRIPOFF[arm.grippers].map(off => {
-      const d = ((poseRot + arm.angle + off) % 6 + 6) % 6;
-      const cell = [posePos[0] + GW.DIRS[d][0] * arm.len, posePos[1] + GW.DIRS[d][1] * arm.len];
+      const d = mod6(poseRot + arm.angle + off);
+      const cell = addc(posePos, [GW.DIRS[d][0] * arm.len, GW.DIRS[d][1] * arm.len]);
       const [hx, hy] = Pc(cell);
-      const [bx, by] = Pc(posePos);
-      return { x: hx, y: hy, ang: Math.atan2(hy - by, hx - bx) };
+      return { x: hx, y: hy, ang: Math.atan2(hy - by, hx - bx), off, cell };
     });
   }
 
+  function anchorOf(s) {
+    if (!s) return null;
+    if (s.kind === 'glyph') return layout.glyphs[s.i] && layout.glyphs[s.i].at;
+    if (s.kind === 'input') return layout.inputs[s.i] && layout.inputs[s.i].at;
+    if (s.kind === 'output') return layout.output.at;
+    return null;
+  }
+  function rotOf(s) {
+    if (s.kind === 'glyph') return layout.glyphs[s.i].rot || 0;
+    if (s.kind === 'input') return layout.inputs[s.i].rot || 0;
+    if (s.kind === 'output') return layout.output.rot || 0;
+    return 0;
+  }
+  function rotatable(s) {
+    if (!s) return false;
+    if (s.kind === 'glyph') return !SINGLE_CELL[layout.glyphs[s.i].type];
+    if (s.kind === 'input') return base().reagentShapes[layout.inputs[s.i].ri].rel.length > 1;
+    if (s.kind === 'output') return base().productShape.rel.length > 1;
+    return false;
+  }
+  function handlePx(s) {
+    const a = anchorOf(s); if (!a) return null;
+    const [ax, ay] = Pc(a);
+    const th = rotOf(s) * Math.PI / 3;
+    const r = view.s * PITCH * 1.45;
+    return [ax + r * Math.cos(th), ay + r * Math.sin(th), ax, ay];
+  }
+
   function drawEdit() {
-    drawBoard();
+    drawGrid();
+    for (let i = 0; i < layout.glyphs.length; i++) {
+      drawGlyph(layout.glyphs[i], sel && sel.kind === 'glyph' && sel.i === i);
+    }
+    for (let i = 0; i < layout.inputs.length; i++) {
+      drawInput(layout.inputs[i], sel && sel.kind === 'input' && sel.i === i);
+    }
+    drawOutput(sel && sel.kind === 'output');
     const poses = initPoses();
-    for (const arm of machine.arms) {
+    for (const arm of layout.arms) {
       const p = poses[arm.id];
-      drawArmShape(Pc(p.pos), handsFor(p.pos, p.rot, arm), !!arm.mount.elbow, arm.id === selId, false);
+      drawArmShape(Pc(p.pos), handsFor(p.pos, p.rot, arm), !!arm.mount.elbow,
+        sel && sel.kind === 'arm' && sel.id === arm.id, false);
     }
-    // placement ghost
-    if (hoverCell && tool === 'arm') {
-      const ghost = { grippers: cfg.grippers, len: cfg.len, angle: 0 };
-      drawArmShape(Pc(hoverCell), handsFor(hoverCell, 0, ghost), false, false, true);
+    // rotation handle for the selected rotatable piece
+    if (sel && rotatable(sel) && (!drag || drag.kind === 'handle')) {
+      const h = handlePx(sel);
+      if (h) {
+        ctx.strokeStyle = 'rgba(160,118,43,0.5)'; ctx.lineWidth = 1.2;
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(h[2], h[3]); ctx.lineTo(h[0], h[1]); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(h[0], h[1], view.s * 0.24, 0, Math.PI * 2);
+        ctx.fillStyle = '#F1E9D6'; ctx.fill();
+        ctx.strokeStyle = '#A0762B'; ctx.lineWidth = 2; ctx.stroke();
+      }
     }
-    if (hoverCell && tool === 'elbow') {
-      const hit = shaftAt(hoverCell);
-      if (hit) {
-        const ghost = { grippers: cfg.grippers, len: cfg.len, angle: 0 };
-        drawArmShape(Pc(hoverCell), handsFor(hoverCell, hit.rot, ghost), true, false, true);
+    // ghost for a new part being dragged in
+    if (drag && drag.kind === 'new' && hoverCell && mousePx && mousePx.overCanvas) {
+      if (drag.part.arm) {
+        const ghost = { grippers: drag.part.arm, len: 1, angle: 0 };
+        const hit = shaftAt(hoverCell, null);
+        const rot = hit && !baseAt(hoverCell) ? hit.rot : 0;
+        drawArmShape(Pc(hoverCell), handsFor(hoverCell, rot, ghost), !!hit, false, true);
+      } else if (drag.part.glyph) {
+        ctx.globalAlpha = 0.55;
+        drawGlyph({ type: drag.part.glyph, at: hoverCell, rot: 0 }, false);
+        ctx.globalAlpha = 1;
+      } else if (drag.part.input !== undefined) {
+        ctx.globalAlpha = 0.55;
+        drawInput({ ri: drag.part.input, at: hoverCell, rot: 0 }, false);
+        ctx.globalAlpha = 1;
       }
     }
   }
 
   function drawRun(f) {
-    drawBoard();
+    drawGrid();
+    for (const g of layout.glyphs) drawGlyph(g, false);
+    for (const g of layout.inputs) drawInput(g, false);
+    drawOutput(false);
     const rs = sim.renderState(f);
     const atomPx = {};
     for (const a of rs.atoms) atomPx[a.id] = P(a.x, a.y);
@@ -1519,20 +1719,52 @@
   // ---------- hit testing ----------
   function baseAt(cell) {
     const poses = initPoses();
-    for (const arm of machine.arms) if (eq(poses[arm.id].pos, cell)) return arm;
+    for (const arm of layout.arms) if (eq(poses[arm.id].pos, cell)) return arm;
     return null;
   }
-  function shaftAt(cell) {
-    // a shaft position of some arm: returns {arm, at, rot} for elbow attachment
+  function descendantsOf(id) {
+    const out = new Set([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const a of layout.arms) {
+        if (a.mount.elbow && out.has(a.mount.elbow.parent) && !out.has(a.id)) { out.add(a.id); grew = true; }
+      }
+    }
+    return out;
+  }
+  function shaftAt(cell, excludeId) {
+    const skip = excludeId ? descendantsOf(excludeId) : new Set();
     const poses = initPoses();
-    for (const arm of machine.arms) {
+    for (const arm of layout.arms) {
+      if (skip.has(arm.id)) continue;
       const p = poses[arm.id];
-      const d = ((p.rot + arm.angle) % 6 + 6) % 6;
+      const d = mod6(p.rot + arm.angle);
       for (let i = 1; i <= arm.len; i++) {
-        const c = [p.pos[0] + GW.DIRS[d][0] * i, p.pos[1] + GW.DIRS[d][1] * i];
+        const c = addc(p.pos, [GW.DIRS[d][0] * i, GW.DIRS[d][1] * i]);
         if (eq(c, cell)) return { arm, at: i, rot: d };
       }
     }
+    return null;
+  }
+  function handAt(mx, my) {
+    const poses = initPoses();
+    for (const arm of layout.arms) {
+      const p = poses[arm.id];
+      for (const h of handsFor(p.pos, p.rot, arm)) {
+        if (Math.hypot(mx - h.x, my - h.y) < view.s * 0.55) return { arm, off: h.off, pose: p };
+      }
+    }
+    return null;
+  }
+  function pieceAt(cell) {
+    for (let i = layout.glyphs.length - 1; i >= 0; i--) {
+      if (glyphCells(layout.glyphs[i]).some(c => eq(c, cell))) return { kind: 'glyph', i };
+    }
+    for (let i = layout.inputs.length - 1; i >= 0; i--) {
+      if (inputCells(layout.inputs[i]).some(c => eq(c, cell))) return { kind: 'input', i };
+    }
+    if (outputCells().some(c => eq(c, cell))) return { kind: 'output' };
     return null;
   }
 
@@ -1541,72 +1773,66 @@
   const freshId = () => { while (armById('a' + nextId)) nextId++; return 'a' + nextId; };
   function touched() { saveDraft(); refreshAll(); }
 
-  function placeArm(cell) {
-    if (baseAt(cell)) { setStatus('a base already sits there', 'bad'); return; }
-    machine.arms.push({ id: freshId(), grippers: cfg.grippers, len: cfg.len,
-      mount: { ground: [cell[0], cell[1]] }, angle: 0, tape: { delay: 0, ops: ['W'] } });
-    selId = machine.arms[machine.arms.length - 1].id;
-    cursor = { armId: selId, pos: 0 };
-    touched();
+  function mountFor(cell, excludeId) {
+    if (baseAt(cell)) return null;
+    const hit = shaftAt(cell, excludeId);
+    return hit ? { elbow: { parent: hit.arm.id, at: hit.at } } : { ground: [cell[0], cell[1]] };
   }
-  function placeElbow(cell) {
-    const hit = shaftAt(cell);
-    if (!hit) { setStatus('elbows attach to a point along an existing arm — click a shaft cell', 'bad'); return; }
-    machine.arms.push({ id: freshId(), grippers: cfg.grippers, len: cfg.len,
-      mount: { elbow: { parent: hit.arm.id, at: hit.at } }, angle: 0, tape: { delay: 0, ops: ['W'] } });
-    selId = machine.arms[machine.arms.length - 1].id;
-    cursor = { armId: selId, pos: 0 };
-    touched();
+  function deleteSelected() {
+    if (!sel) return;
+    withUndo(() => {
+      if (sel.kind === 'arm') {
+        const doomed = descendantsOf(sel.id);
+        layout.arms = layout.arms.filter(a => !doomed.has(a.id));
+        if (cursor && doomed.has(cursor.armId)) cursor = null;
+      } else if (sel.kind === 'glyph') layout.glyphs.splice(sel.i, 1);
+      else if (sel.kind === 'input') layout.inputs.splice(sel.i, 1);
+      sel = null;
+    });
   }
-  function deleteArm(id) {
-    const doomed = new Set([id]);
-    let grew = true;                    // children of a deleted arm go with it
-    while (grew) {
-      grew = false;
-      for (const a of machine.arms) {
-        if (a.mount.elbow && doomed.has(a.mount.elbow.parent) && !doomed.has(a.id)) { doomed.add(a.id); grew = true; }
-      }
-    }
-    machine.arms = machine.arms.filter(a => !doomed.has(a.id));
-    if (doomed.has(selId)) selId = null;
-    if (cursor && doomed.has(cursor.armId)) cursor = null;
-    touched();
-  }
-  function rotateArm(id, dk) {
-    const a = armById(id); if (!a) return;
-    a.angle = ((a.angle + dk) % 6 + 6) % 6;
-    touched();
+  function rotateSelected(dk) {
+    if (!sel) return;
+    withUndo(() => {
+      if (sel.kind === 'arm') { const a = armById(sel.id); if (a) a.angle = mod6(a.angle + dk); }
+      else if (sel.kind === 'glyph') layout.glyphs[sel.i].rot = mod6((layout.glyphs[sel.i].rot || 0) + dk);
+      else if (sel.kind === 'input') layout.inputs[sel.i].rot = mod6((layout.inputs[sel.i].rot || 0) + dk);
+      else if (sel.kind === 'output') layout.output.rot = mod6((layout.output.rot || 0) + dk);
+    });
   }
 
   // ---------- tape editing ----------
   function tapeOf(id) { return armById(id).tape; }
   function setOp(op) {
-    if (!cursor) { setStatus('select a tape cell first', 'bad'); return; }
-    const t = tapeOf(cursor.armId);
-    if (cursor.pos >= t.ops.length) t.ops.push(op);
-    else t.ops[cursor.pos] = op;
-    cursor.pos = Math.min(cursor.pos + 1, t.ops.length);
-    touched();
+    if (!cursor) { setStatus('select a tape cell first — click one below', 'bad'); return; }
+    withUndo(() => {
+      const t = tapeOf(cursor.armId);
+      if (cursor.pos >= t.ops.length) t.ops.push(op);
+      else t.ops[cursor.pos] = op;
+      cursor.pos = Math.min(cursor.pos + 1, t.ops.length);
+    });
   }
   function insOp() {
     if (!cursor) return;
-    const t = tapeOf(cursor.armId);
-    t.ops.splice(Math.min(cursor.pos, t.ops.length), 0, 'W');
-    touched();
+    withUndo(() => {
+      const t = tapeOf(cursor.armId);
+      t.ops.splice(Math.min(cursor.pos, t.ops.length), 0, 'W');
+    });
   }
   function delOp() {
     if (!cursor) return;
-    const t = tapeOf(cursor.armId);
-    if (t.ops.length <= 1) return;
-    t.ops.splice(Math.min(cursor.pos, t.ops.length - 1), 1);
-    cursor.pos = Math.min(cursor.pos, t.ops.length - 1);
-    touched();
+    withUndo(() => {
+      const t = tapeOf(cursor.armId);
+      if (t.ops.length <= 1) return;
+      t.ops.splice(Math.min(cursor.pos, t.ops.length - 1), 1);
+      cursor.pos = Math.min(cursor.pos, t.ops.length - 1);
+    });
   }
   function bumpDelay(d) {
-    if (!cursor) { setStatus('select a tape cell first', 'bad'); return; }
-    const t = tapeOf(cursor.armId);
-    t.delay = Math.max(0, (t.delay || 0) + d);
-    touched();
+    if (!cursor) { setStatus('select a tape cell first — click one below', 'bad'); return; }
+    withUndo(() => {
+      const t = tapeOf(cursor.armId);
+      t.delay = Math.max(0, (t.delay || 0) + d);
+    });
   }
 
   // ---------- tapes panel ----------
@@ -1623,17 +1849,18 @@
         pal.appendChild(b);
       }
       const mk = (txt, title, fn) => { const b = document.createElement('button'); b.textContent = txt; b.title = title; b.addEventListener('click', fn); pal.appendChild(b); };
-      mk('+cell', 'insert a cell at the cursor', insOp);
-      mk('−cell', 'remove the cell at the cursor', delOp);
+      mk('insert', 'insert a wait cell at the cursor (lengthens the loop)', insOp);
+      mk('remove', 'remove the cell at the cursor (shortens the loop)', delOp);
       mk('»+', 'add a first-pass delay block', () => bumpDelay(1));
       mk('»−', 'remove a delay block', () => bumpDelay(-1));
       host.appendChild(pal);
     }
-    const arms = mode === 'run' ? sim.state.arms : machine.arms;
+    const arms = mode === 'run' ? sim.state.arms : layout.arms;
     for (const arm of arms) {
-      const row = document.createElement('div'); row.className = 'tape-row' + (arm.id === selId && mode === 'edit' ? ' sel' : '');
+      const row = document.createElement('div');
+      row.className = 'tape-row' + (mode === 'edit' && sel && sel.kind === 'arm' && sel.id === arm.id ? ' sel' : '');
       const lab = document.createElement('span'); lab.className = 'tape-label'; lab.textContent = 'ARM ' + arm.id;
-      lab.addEventListener('click', () => { if (mode === 'edit') { selId = arm.id; refreshAll(); } });
+      lab.addEventListener('click', () => { if (mode === 'edit') { sel = { kind: 'arm', id: arm.id }; refreshAll(); } });
       const cells = document.createElement('div'); cells.className = 'tape-cells';
       for (let i = 0; i < arm.tape.delay; i++) {
         const sp = document.createElement('span'); sp.className = 'delay'; sp.textContent = '»'; cells.appendChild(sp);
@@ -1642,18 +1869,23 @@
         const sp = document.createElement('span'); sp.textContent = GLYPH[op];
         if (mode === 'edit') {
           if (cursor && cursor.armId === arm.id && cursor.pos === i) sp.classList.add('cursor');
-          sp.addEventListener('click', () => { selId = arm.id; cursor = { armId: arm.id, pos: i }; refreshAll(); });
+          sp.addEventListener('click', () => { sel = { kind: 'arm', id: arm.id }; cursor = { armId: arm.id, pos: i }; refreshAll(); });
         }
         cells.appendChild(sp);
       });
       if (mode === 'edit') {
-        const add = document.createElement('span'); add.textContent = '+'; add.style.opacity = '.5';
-        add.addEventListener('click', () => { selId = arm.id; cursor = { armId: arm.id, pos: arm.tape.ops.length }; insOp(); });
+        const add = document.createElement('span'); add.textContent = '+'; add.className = 'ghostcell';
+        add.title = 'append a cell';
+        add.addEventListener('click', () => {
+          sel = { kind: 'arm', id: arm.id };
+          cursor = { armId: arm.id, pos: arm.tape.ops.length };
+          insOp();
+        });
         cells.appendChild(add);
       }
       row.appendChild(lab); row.appendChild(cells); host.appendChild(row);
     }
-    if (!arms.length) host.innerHTML += `<div class="tape-row"><span class="tape-label" style="width:auto">no arms yet — pick the ARM tool and click the board</span></div>`;
+    if (!arms.length) host.innerHTML += `<div class="tape-row"><span class="tape-label" style="width:auto">no arms yet — drag one from the tray onto the board</span></div>`;
   }
   function updateRunTapes() {
     const t = sim.state.tick;
@@ -1684,7 +1916,7 @@
       $('hCost').textContent = costOf() + 'g';
       $('hArea').textContent = '—';
       $('hSum').textContent = '—';
-      $('hProd').textContent = '0/' + ((puzzle().caps && puzzle().caps.goal) || GW.DEFAULT_CAPS.goal);
+      $('hProd').textContent = '0/' + ((base().caps && base().caps.goal) || GW.DEFAULT_CAPS.goal);
     }
   }
   function stamp() {
@@ -1704,14 +1936,29 @@
   }
 
   // ---------- persistence / sharing ----------
-  function code() { return key() + '.' + CODEC.encodeString(machine); }
+  function asMachine() {
+    return { arms: layout.arms, glyphs: layout.glyphs, inputs: layout.inputs, output: layout.output };
+  }
+  function code() { return key() + '.' + CODEC.encodeString(asMachine()); }
   function saveDraft() {
-    try { localStorage.setItem('gw-draft-' + key(), CODEC.encodeString(machine)); } catch (e) {}
+    try { localStorage.setItem('gw-draft-' + key(), CODEC.encodeString(asMachine())); } catch (e) {}
+  }
+  function layoutFrom(decoded) {
+    const b = base();
+    const lay = {
+      arms: decoded.arms || [],
+      glyphs: decoded.glyphs || clone(b.defaultLayout.glyphs),
+      inputs: decoded.inputs || clone(b.defaultLayout.inputs),
+      output: decoded.output ? { at: decoded.output.at, rot: decoded.output.rot } : clone(b.defaultLayout.output),
+    };
+    lay.inputs = lay.inputs.filter(g => g.ri < b.reagentShapes.length);
+    lay.arms.forEach(a => { a.tape = a.tape || {}; a.tape.delay = a.tape.delay || 0; a.tape.ops = a.tape.ops || ['W']; });
+    return lay;
   }
   function loadDraft() {
     try {
       const s = localStorage.getItem('gw-draft-' + key());
-      if (s) return CODEC.decodeString(s);
+      if (s) return layoutFrom(CODEC.decodeString(s));
     } catch (e) {}
     return null;
   }
@@ -1719,16 +1966,17 @@
     const dot = str.indexOf('.');
     if (dot < 0) { setStatus('codes look like <puzzle>.<data>', 'bad'); return false; }
     const k = str.slice(0, dot), data = str.slice(dot + 1).trim();
-    const idx = EXAMPLES.findIndex(e => e.key === k);
+    const idx = BASES.findIndex(b => b.key === k);
     if (idx < 0) { setStatus('unknown puzzle “' + k + '”', 'bad'); return false; }
-    let m;
-    try { m = CODEC.decodeString(data); } catch (e) { setStatus(String(e.message || e), 'bad'); return false; }
+    let decoded;
+    try { decoded = CODEC.decodeString(data); } catch (e) { setStatus(String(e.message || e), 'bad'); return false; }
     pIdx = idx;
-    machine = m; selId = null; cursor = null;
+    layout = layoutFrom(decoded);
+    sel = null; cursor = null; undoStack = []; redoStack = []; syncUndoButtons();
     enterEdit();
     document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', i === pIdx));
-    fitView(); touched();
-    setStatus('imported ' + machine.arms.length + ' arm(s) into ' + EXAMPLES[idx].name, 'good');
+    buildReagentTray(); fitView(); touched();
+    setStatus('imported ' + layout.arms.length + ' arm(s) into ' + BASES[idx].name, 'good');
     return true;
   }
 
@@ -1737,19 +1985,19 @@
     mode = 'edit'; sim = null; running = false; done = false;
     $('btnMode').textContent = '▶ Test';
     $('btnPlay').disabled = true; $('btnStep').disabled = true;
-    $('editTools').style.display = '';
+    $('tray').style.display = '';
     stamp();
   }
   function enterRun() {
     const bad = validate();
     if (bad) { setStatus('cannot test: ' + bad, 'bad'); return; }
     mode = 'run';
-    sim = GW.createSim(puzzle(), clone(machine));
+    sim = GW.createSim(matPuzzle(), clone({ arms: layout.arms }));
     running = true; done = false; phase = 1;
     $('btnMode').textContent = '✎ Edit';
     $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
     $('btnStep').disabled = false;
-    $('editTools').style.display = 'none';
+    $('tray').style.display = 'none';
     buildTapes(); updateRunTapes(); hud(); stamp();
     setStatus('testing — the verifier is watching every sweep');
   }
@@ -1758,53 +2006,179 @@
     buildTapes(); hud();
     if (mode === 'edit') {
       const bad = validate();
-      setStatus(bad ? `<span class="bad">✗ ${bad}</span>` : `<span class="good">✓ layout legal</span> · ${machine.arms.length} arm(s) · code ${code().length} chars`);
+      setStatus(bad ? `<span class="bad">✗ ${bad}</span>` : `<span class="good">✓ layout legal</span> · ${layout.arms.length} arm(s), ${layout.glyphs.length} glyph(s) · code ${code().length} chars`);
     }
   }
 
-  // ---------- canvas input ----------
-  const mousePos = (ev) => {
+  // ---------- pointer input ----------
+  const mouse = (ev) => {
     const r = canvas.getBoundingClientRect();
     return [(ev.clientX - r.left) * (CW / r.width), (ev.clientY - r.top) * (CH / r.height)];
   };
+  const overCanvas = (ev) => {
+    const r = canvas.getBoundingClientRect();
+    return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+  };
+  const overTray = (ev) => {
+    const r = $('tray').getBoundingClientRect();
+    return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+  };
+  const bearing6 = (fromPx, mx, my) => mod6(Math.round(Math.atan2(my - fromPx[1], mx - fromPx[0]) / (Math.PI / 3)));
+
   canvas.addEventListener('mousedown', (ev) => {
     if (mode !== 'edit') return;
-    const [mx, my] = mousePos(ev);
+    const [mx, my] = mouse(ev);
     const cell = cellAt(mx, my);
-    if (tool === 'select') {
-      const arm = baseAt(cell);
-      if (arm) { selId = arm.id; cursor = { armId: arm.id, pos: 0 }; drag = { armId: arm.id, moved: false }; refreshAll(); }
-      else { selId = null; drag = { pan: true, x: mx, y: my }; refreshAll(); }
-    }
-  });
-  canvas.addEventListener('mousemove', (ev) => {
-    const [mx, my] = mousePos(ev);
-    hoverCell = cellAt(mx, my);
-    if (drag && drag.pan) {
-      view.ox += mx - drag.x; view.oy += my - drag.y;
-      drag.x = mx; drag.y = my;
-    } else if (drag && drag.armId) {
-      const arm = armById(drag.armId);
-      if (arm && arm.mount.ground && !eq(arm.mount.ground, hoverCell) && !baseAt(hoverCell)) {
-        arm.mount.ground = [hoverCell[0], hoverCell[1]];
-        drag.moved = true;
+
+    // 1) rotation handle of the current selection
+    if (sel && rotatable(sel)) {
+      const h = handlePx(sel);
+      if (h && Math.hypot(mx - h[0], my - h[1]) < view.s * 0.45) {
+        drag = { kind: 'handle', snap: snapshot() };
+        return;
       }
     }
+    // 2) arm hands (aim & lengthen)
+    const hand = handAt(mx, my);
+    if (hand) {
+      sel = { kind: 'arm', id: hand.arm.id };
+      cursor = { armId: hand.arm.id, pos: 0 };
+      drag = { kind: 'hand', armId: hand.arm.id, off: hand.off, snap: snapshot() };
+      refreshAll(); return;
+    }
+    // 3) arm bases
+    const arm = baseAt(cell);
+    if (arm) {
+      sel = { kind: 'arm', id: arm.id };
+      cursor = { armId: arm.id, pos: 0 };
+      drag = { kind: 'base', armId: arm.id, snap: snapshot(), moved: false };
+      refreshAll(); return;
+    }
+    // 4) glyph / input / output bodies
+    const piece = pieceAt(cell);
+    if (piece) {
+      sel = piece;
+      const a = anchorOf(piece);
+      drag = { kind: piece.kind, i: piece.i, grab: subc(a, cell), snap: snapshot(), moved: false };
+      refreshAll(); return;
+    }
+    // 5) pan
+    sel = null; cursor = null;
+    drag = { kind: 'pan', x: mx, y: my };
+    refreshAll();
   });
-  window.addEventListener('mouseup', () => {
-    if (drag && drag.armId && drag.moved) touched();
-    drag = null;
+
+  window.addEventListener('mousemove', (ev) => {
+    const [mx, my] = mouse(ev);
+    mousePx = { x: mx, y: my, overCanvas: overCanvas(ev) };
+    hoverCell = cellAt(mx, my);
+    $('tray').classList.toggle('droptarget',
+      !!(drag && drag.kind !== 'pan' && drag.kind !== 'new' && drag.kind !== 'handle' && drag.kind !== 'hand' && overTray(ev)));
+    if (!drag) return;
+    if (drag.kind === 'pan') {
+      view.ox += mx - drag.x; view.oy += my - drag.y;
+      drag.x = mx; drag.y = my;
+    } else if (drag.kind === 'hand') {
+      const a = armById(drag.armId); if (!a) return;
+      const poses = initPoses();
+      const p = poses[drag.armId];
+      const [bx, by] = Pc(p.pos);
+      const k = bearing6([bx, by], mx, my);
+      a.angle = mod6(k - p.rot - drag.off);
+      const dist = Math.hypot(mx - bx, my - by) / (view.s * PITCH);
+      a.len = Math.max(1, Math.min(3, Math.round(dist)));
+      for (const c of layout.arms) {
+        if (c.mount.elbow && c.mount.elbow.parent === a.id && c.mount.elbow.at > a.len) c.mount.elbow.at = a.len;
+      }
+    } else if (drag.kind === 'base') {
+      const a = armById(drag.armId); if (!a) return;
+      const m = mountFor(hoverCell, drag.armId);
+      if (m && !(a.mount.ground && m.ground && eq(a.mount.ground, m.ground))) { a.mount = m; drag.moved = true; }
+    } else if (drag.kind === 'glyph' || drag.kind === 'input' || drag.kind === 'output') {
+      const target = addc(hoverCell, drag.grab);
+      const obj = drag.kind === 'glyph' ? layout.glyphs[drag.i]
+        : drag.kind === 'input' ? layout.inputs[drag.i] : layout.output;
+      if (obj && !eq(obj.at, target)) { obj.at = target; drag.moved = true; }
+    } else if (drag.kind === 'handle') {
+      const a = anchorOf(sel); if (!a) return;
+      const k = bearing6(Pc(a), mx, my);
+      if (sel.kind === 'glyph') layout.glyphs[sel.i].rot = k;
+      else if (sel.kind === 'input') layout.inputs[sel.i].rot = k;
+      else if (sel.kind === 'output') layout.output.rot = k;
+    }
   });
-  canvas.addEventListener('click', (ev) => {
+
+  window.addEventListener('mouseup', (ev) => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    $('tray').classList.remove('droptarget');
     if (mode !== 'edit') return;
-    const [mx, my] = mousePos(ev);
-    const cell = cellAt(mx, my);
-    if (tool === 'arm') placeArm(cell);
-    else if (tool === 'elbow') placeElbow(cell);
+    if (d.kind === 'new') {
+      if (mousePx && mousePx.overCanvas && hoverCell) {
+        withUndo(() => {
+          if (d.part.arm) {
+            const m = mountFor(hoverCell, null);
+            if (!m) { setStatus('a base already sits there', 'bad'); return; }
+            const id = freshId();
+            layout.arms.push({ id, grippers: d.part.arm, len: 1, mount: m, angle: 0, tape: { delay: 0, ops: ['W'] } });
+            sel = { kind: 'arm', id }; cursor = { armId: id, pos: 0 };
+          } else if (d.part.glyph) {
+            layout.glyphs.push({ type: d.part.glyph, at: hoverCell.slice(), rot: 0 });
+            sel = { kind: 'glyph', i: layout.glyphs.length - 1 };
+          } else if (d.part.input !== undefined) {
+            layout.inputs.push({ ri: d.part.input, at: hoverCell.slice(), rot: 0 });
+            sel = { kind: 'input', i: layout.inputs.length - 1 };
+          }
+        });
+      }
+      refreshAll(); return;
+    }
+    // drop on the tray = remove (output snaps back instead)
+    if (overTray(ev) && (d.kind === 'base' || d.kind === 'glyph' || d.kind === 'input' || d.kind === 'output')) {
+      if (d.kind === 'output') {
+        layout = JSON.parse(d.snap); touched();
+        setStatus('the product glyph is part of the puzzle — it can move, not vanish', 'bad');
+      } else {
+        layout = JSON.parse(d.snap);
+        if (d.kind === 'base') sel = { kind: 'arm', id: d.armId };
+        deleteSelected();
+      }
+      return;
+    }
+    if (d.snap !== undefined && snapshot() !== d.snap) { pushUndo(d.snap); touched(); }
   });
+
+  // tray part dragging
+  document.querySelectorAll('#tray .part').forEach(el => {
+    el.addEventListener('mousedown', (ev) => {
+      if (mode !== 'edit') return;
+      ev.preventDefault();
+      const part = el.dataset.arm ? { arm: +el.dataset.arm }
+        : el.dataset.glyph ? { glyph: el.dataset.glyph }
+        : { input: +el.dataset.input };
+      drag = { kind: 'new', part };
+    });
+  });
+  function buildReagentTray() {
+    const host = $('reagentParts');
+    host.innerHTML = '';
+    base().reagentShapes.forEach((sh, i) => {
+      const el = document.createElement('div');
+      el.className = 'part'; el.dataset.input = i;
+      el.innerHTML = (sh.elems.length > 1 ? sh.elems[0] + '·' + (sh.elems.length - 1) : sh.elems[0]) + '<small>free</small>';
+      el.title = 'reagent: ' + sh.elems.join('-');
+      el.addEventListener('mousedown', (ev) => {
+        if (mode !== 'edit') return;
+        ev.preventDefault();
+        drag = { kind: 'new', part: { input: i } };
+      });
+      host.appendChild(el);
+    });
+  }
+
   canvas.addEventListener('wheel', (ev) => {
     ev.preventDefault();
-    const [mx, my] = mousePos(ev);
+    const [mx, my] = mouse(ev);
     const k = ev.deltaY < 0 ? 1.12 : 1 / 1.12;
     const s2 = Math.max(10, Math.min(64, view.s * k));
     view.ox = mx - (mx - view.ox) * (s2 / view.s);
@@ -1813,43 +2187,17 @@
   }, { passive: false });
 
   window.addEventListener('keydown', (ev) => {
-    if (mode !== 'edit') return;
     if (ev.target.tagName === 'INPUT') return;
-    if (ev.key === '[') rotateArm(selId, -1);
-    else if (ev.key === ']') rotateArm(selId, 1);
-    else if (ev.key === 'Delete' || ev.key === 'Backspace') { if (selId) { deleteArm(selId); ev.preventDefault(); } }
-    else if (ev.key === 'Escape') { selId = null; tool = 'select'; syncToolSeg(); refreshAll(); }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') {
+      ev.preventDefault(); ev.shiftKey ? redo() : undo(); return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
+    if (mode !== 'edit') return;
+    if (ev.key === '[') rotateSelected(-1);
+    else if (ev.key === ']') rotateSelected(1);
+    else if (ev.key === 'Delete' || ev.key === 'Backspace') { if (sel) { deleteSelected(); ev.preventDefault(); } }
+    else if (ev.key === 'Escape') { sel = null; cursor = null; refreshAll(); }
   });
-
-  // ---------- toolbar ----------
-  function syncToolSeg() {
-    document.querySelectorAll('#toolSeg button').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
-    canvas.classList.toggle('tool-select', tool === 'select');
-    $('toolHint').textContent = tool === 'arm' ? 'click an empty cell to plant a base'
-      : tool === 'elbow' ? 'click a shaft cell of an existing arm'
-      : 'click a base to select · drag to move · [ ] rotate · empty space pans';
-  }
-  document.querySelectorAll('#toolSeg button').forEach(b => b.addEventListener('click', () => { tool = b.dataset.tool; syncToolSeg(); }));
-  document.querySelectorAll('#gripSeg button').forEach(b => b.addEventListener('click', () => {
-    cfg.grippers = +b.dataset.g;
-    document.querySelectorAll('#gripSeg button').forEach(x => x.classList.toggle('on', x === b));
-    if (selId && armById(selId)) { armById(selId).grippers = cfg.grippers; touched(); }
-  }));
-  document.querySelectorAll('#lenSeg button').forEach(b => b.addEventListener('click', () => {
-    cfg.len = +b.dataset.l;
-    document.querySelectorAll('#lenSeg button').forEach(x => x.classList.toggle('on', x === b));
-    if (selId && armById(selId)) { armById(selId).len = cfg.len; touched(); }
-  }));
-  $('btnRotL').addEventListener('click', () => rotateArm(selId, -1));
-  $('btnRotR').addEventListener('click', () => rotateArm(selId, 1));
-  $('btnDelete').addEventListener('click', () => { if (selId) deleteArm(selId); });
-  $('btnRef').addEventListener('click', () => {
-    machine = clone(EXAMPLES[pIdx].machine);
-    machine.arms.forEach(a => { a.tape = a.tape || {}; a.tape.delay = a.tape.delay || 0; });
-    selId = null; cursor = null; fitView(); touched();
-    setStatus('reference solution loaded', 'good');
-  });
-  $('btnClear').addEventListener('click', () => { machine = { arms: [] }; selId = null; cursor = null; touched(); });
 
   // ---------- run controls ----------
   $('btnMode').addEventListener('click', () => { mode === 'edit' ? enterRun() : (enterEdit(), refreshAll()); });
@@ -1867,6 +2215,18 @@
     stepMs = +b.dataset.ms;
     document.querySelectorAll('.speed .ctl').forEach(x => x.classList.toggle('on', x === b));
   }));
+  $('btnUndo').addEventListener('click', undo);
+  $('btnRedo').addEventListener('click', redo);
+  $('btnRef').addEventListener('click', () => withUndo(() => {
+    layout = layoutFrom({ arms: clone(base().refArms) });
+    sel = null; cursor = null; fitView();
+    setStatus('reference solution loaded', 'good');
+  }));
+  $('btnClear').addEventListener('click', () => withUndo(() => {
+    layout = layoutFrom({ arms: [] });
+    layout.glyphs = [];
+    sel = null; cursor = null;
+  }));
 
   // ---------- share ----------
   $('btnCopy').addEventListener('click', () => {
@@ -1879,24 +2239,21 @@
   $('btnImport').addEventListener('click', () => importCode($('shareIn').value.trim()));
 
   // ---------- puzzles ----------
-  function selectPuzzle(i, keepMachine) {
+  function selectPuzzle(i) {
     pIdx = i;
     document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
-    if (!keepMachine) {
-      machine = loadDraft() || clone(EXAMPLES[i].machine);
-      machine.arms.forEach(a => { a.tape = a.tape || {}; a.tape.delay = a.tape.delay || 0; });
-    }
-    selId = null; cursor = null;
-    enterEdit(); fitView(); refreshAll(); hud();
+    layout = loadDraft() || layoutFrom({ arms: clone(base().refArms) });
+    sel = null; cursor = null; undoStack = []; redoStack = []; syncUndoButtons();
+    enterEdit(); buildReagentTray(); fitView(); refreshAll(); hud();
     try { history.replaceState(null, '', '#' + key()); } catch (e) {}
   }
   const tabs = $('tabs');
-  EXAMPLES.forEach((ex, i) => {
-    const b = document.createElement('button');
-    b.className = 'tab' + (i === 0 ? ' on' : '');
-    b.textContent = ex.name;
-    b.addEventListener('click', () => selectPuzzle(i));
-    tabs.appendChild(b);
+  BASES.forEach((b, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'tab' + (i === 0 ? ' on' : '');
+    btn.textContent = b.name;
+    btn.addEventListener('click', () => selectPuzzle(i));
+    tabs.appendChild(btn);
   });
 
   // ---------- boot ----------
@@ -1905,12 +2262,15 @@
   if (hash) {
     if (hash.includes('.')) booted = importCode(hash);
     else {
-      const i = EXAMPLES.findIndex(e => e.key === hash);
+      const i = BASES.findIndex(b => b.key === hash);
       if (i >= 0) { selectPuzzle(i); booted = true; }
     }
   }
   if (!booted) selectPuzzle(0);
-  syncToolSeg();
+  syncUndoButtons();
+
+  // test/debug hook: lets automated checks aim at exact cells
+  window.__gwDebug = () => ({ view: clone(view), layout: clone(layout), sel: clone(sel || null), mode });
 
   // ---------- frame loop ----------
   let last = performance.now();
