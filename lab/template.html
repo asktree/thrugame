@@ -135,10 +135,27 @@
   const EXAMPLES = window.GW_EXAMPLES;
   const ELEMS = {
     Pb: { fill: '#4A4640', label: '#F1E9D6' },
+    Sn: { fill: '#9A968C', label: '#2A2318' },
+    Fe: { fill: '#6E5F52', label: '#F1E9D6' },
+    Cu: { fill: '#A0622B', label: '#F1E9D6' },
+    Ag: { fill: '#D6D2CB', label: '#2A2318' },
+    Au: { fill: '#C9A227', label: '#2A2318' },
     Hg: { fill: '#BDB9AF', label: '#2A2318' },
     Sa: { fill: '#F6F1E2', label: '#2A2318' },
     S:  { fill: '#D9A93A', label: '#2A2318' },
+    Ai: { fill: '#CBD8DC', label: '#2A2318' },
+    Ea: { fill: '#7A6E4F', label: '#F1E9D6' },
+    Fi: { fill: '#C25436', label: '#F1E9D6' },
+    Wa: { fill: '#5B7EA6', label: '#F1E9D6' },
+    Vi: { fill: '#C97B8E', label: '#2A2318' },
+    Mo: { fill: '#443C46', label: '#F1E9D6' },
   };
+  // transmutation glyph families beyond the bonder: [field, label]
+  const SPECIAL_GLYPHS = [
+    ['debonders', 'DEBOND'], ['calcifiers', 'CALCIFY'], ['duplicators', 'DUPE'],
+    ['projectors', 'PROJECT'], ['purifiers', 'PURIFY'], ['animismus', 'ANIMA'],
+    ['disposals', 'DISPOSE'],
+  ];
   const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·' };
   const CW = 980, CH = 560;
   const canvas = document.getElementById('field');
@@ -201,6 +218,27 @@
       const [x1, y1] = Pc(c1), [x2, y2] = Pc(c2);
       ctx.strokeStyle = 'rgba(160,118,43,0.85)'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    // transmutation glyphs (oxblood tint, labeled)
+    ctx.font = `700 9px 'Courier Prime', monospace`;
+    for (const [fam, label] of SPECIAL_GLYPHS) {
+      for (const g of (ex.puzzle[fam] || [])) {
+        const cells = Array.isArray(g[0]) ? g : [g];
+        for (const c of cells) {
+          const [x, y] = Pc(c);
+          hexPath(x, y, view.s * PITCH / 2 * 1.08);
+          ctx.fillStyle = 'rgba(140,59,46,0.12)'; ctx.fill();
+          ctx.strokeStyle = 'rgba(140,59,46,0.6)'; ctx.lineWidth = 1.4; ctx.stroke();
+        }
+        for (let i = 1; i < cells.length; i++) {
+          const [x1, y1] = Pc(cells[i - 1]), [x2, y2] = Pc(cells[i]);
+          ctx.strokeStyle = 'rgba(140,59,46,0.55)'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        }
+        const [lx, ly] = Pc(cells[0]);
+        ctx.fillStyle = 'rgba(140,59,46,0.8)';
+        ctx.fillText(label, lx, ly - view.s * 1.0);
+      }
     }
     ctx.font = `700 10px 'Courier Prime', monospace`;
     for (const g of (ex.puzzle.inputs || [])) {
@@ -325,6 +363,7 @@
     const rows = st.events.slice(-7).map(e => {
       if (e.type === 'bond') return `<div><span class="t">c${e.tick}</span>bond formed</div>`;
       if (e.type === 'product') return `<div><span class="t">c${e.tick}</span><span class="good">product ${e.n}/${st.caps.goal} verified</span></div>`;
+      if (e.type === 'note') return `<div><span class="t">c${e.tick}</span>${e.msg}</div>`;
       if (e.type === 'complete') return `<div><span class="t">c${e.tick}</span><span class="good">COMPLETE — metrics sealed</span></div>`;
       return '';
     });

@@ -1,11 +1,11 @@
 # GREAT WORK! — Game Specification
 
-**Version 0.2 (draft) · game rules only — implementation details live elsewhere**
+**Version 0.3 (draft) · game rules only — implementation details live elsewhere**
 
 Great Work! is an open optimization puzzle. (The name is meant to be read as a compliment.) A puzzle asks for a product molecule to be
 manufactured from reagents; a solution is a **machine** — parts placed on a hex grid,
 each running a short looping instruction tape. The rules engine simulates the machine
-deterministically. A submission either produces six products without faulting — and has
+deterministically. A submission either produces ten products without faulting — and has
 its metrics sealed to the permanent record — or it is rejected. There are no judges and
 no partial credit.
 
@@ -19,12 +19,15 @@ centers. All rotation is in steps of 60°.
 
 ## 2. Atoms, molecules, bonds
 
-- **Atoms** are discs centered on cells. Each has an element (the element roster is
-  defined per puzzle). Atom radius is **0.35 × cell pitch** (so atoms resting on
-  adjacent cells do not touch).
+- **Atoms** are discs centered on cells. Atom radius is **0.35 × cell pitch** (so
+  atoms resting on adjacent cells do not touch).
+- The element roster is adopted from Opus Magnum's campaign: the four **cardinals**
+  (air, earth, fire, water), **salt**, **quicksilver**, the six **metals** on the
+  promotion ladder **lead → tin → iron → copper → silver → gold**, and **vitae** and
+  **mors**. Puzzles state which elements they use.
 - A **bond** joins two atoms on adjacent cells. Bonded atoms form a **molecule**, which
-  is perfectly rigid: it translates and rotates only as a whole.
-- Bonds are created by glyphs (§4). Bonds are permanent (no debonding in v0.1).
+  is perfectly rigid: it translates and rotates only as a whole. Bonds are created and
+  destroyed by glyphs (§4).
 
 ## 3. Parts and prices
 
@@ -34,10 +37,21 @@ centers. All rotation is in steps of 60°.
 | Arm, dual gripper | 24g | two grippers, 180° apart |
 | Arm, tri gripper | 26g | three grippers, 120° apart |
 | Arm, hex gripper | 30g | six grippers, 60° apart |
-| Elbow attachment | +5g | mounts an arm on another arm (§5) |
-| Bond glyph | 10g | two fixed adjacent cells; bonds whatever pair rests on them |
+| Elbow attachment | +5g × order | an arm on an arm costs +5g; an arm on *that* arm +10g; fourth order +15g — articulation compounds (§5) |
+| Bond glyph | 10g | two adjacent cells; bonds whatever pair rests on them |
+| Debond glyph | 15g | two adjacent cells; removes the bond between the atoms on them |
+| Calcification glyph | 10g | one cell; a cardinal atom resting on it becomes salt |
+| Duplication glyph | 20g | cardinal cell + salt cell; the salt becomes a copy of the cardinal |
+| Projection glyph | 20g | metal cell + quicksilver cell; consumes the quicksilver, promotes the metal one rung |
+| Purification glyph | 20g | two metal cells + one out cell; two equal metals become one of the next rung |
+| Animismus glyph | 20g | two salt cells + two out cells; two salt become one vitae and one mors |
+| Disposal glyph | 0g | one cell; destroys whatever atom rests on it |
 | Reagent glyph (input) | free | spawns its element whenever its cell is empty |
 | Product glyph (output) | free | consumes a completed product (§7) |
+
+Glyph behavior and prices mirror Opus Magnum's campaign. Multi-bonding and triplex
+bonding are adopted in principle but deferred (§14) — they are the only glyphs that
+introduce new geometry or a new bond type.
 
 - Arm **length** is chosen at build time, 1–3 cells, at no cost.
 - Every arm has a **base**. A base either anchors to a board cell (**ground base**) or
@@ -48,8 +62,8 @@ centers. All rotation is in steps of 60°.
 
 - Anything that anchors to the board, and anything grabbable, **occupies its cell and
   collides**: ground bases and all arm bases, including while being carried.
-- **Elbow joints do not occupy or collide** — that exemption is part of what the +5g
-  buys.
+- **Elbow joints do not occupy or collide** — that exemption is part of what the
+  elbow surcharge buys.
 - Arm shafts and grippers never collide. Atoms always collide.
 - Glyph cells do not collide (they are floor markings, not objects).
 
@@ -57,8 +71,9 @@ centers. All rotation is in steps of 60°.
 
 - **Reagent glyph**: at the start of every tick, if its cell is empty, a fresh atom of
   its element appears there.
-- **Bond glyph**: at the end of every tick, if both of its cells hold atoms and those
-  atoms are not already bonded to each other, they bond.
+- **Transmutation glyphs** (bond, debond, calcification, duplication, projection,
+  purification, animismus, disposal) act at the end of every tick, whenever the atoms
+  resting on their cells satisfy their rule — held or not.
 - **Product glyph**: a set of cells with a required element in each and required bonds
   between them — the target molecule, fully specified, in a fixed pose. At the end of a
   tick, if a molecule exactly matches (right elements on the right cells, right bonds,
@@ -76,7 +91,7 @@ Tracks are deliberately omitted: base-grabbing covers relocation.
 
 Two roads to articulation, deliberately priced apart:
 
-- **Elbow** (+5g): permanent weld; the joint doesn't collide; no gripper is spent.
+- **Elbow** (+5g × order): permanent weld; the joint doesn't collide; no gripper is spent. Depth compounds: each further order of attachment costs 5g more than the last.
 - **Grab a base** (no surcharge): any gripper may grab any arm's base (§8); the carried
   base still collides, the gripper is occupied while carrying, and the arrangement can
   be changed mid-run.
@@ -147,7 +162,7 @@ with the fault and tick number. Faults:
   tick that are not identical. (Covers double-grab conflicts, torn molecules, and every
   tug-of-war.)
 - **Grab cycle** — the grab graph ceases to be a forest.
-- **Exhaustion** — the cycle cap (§12) is reached before six products.
+- **Exhaustion** — the cycle cap (§12) is reached before ten products.
 
 There is no undefined behavior. Anything not permitted is a fault; anything that
 faults is rejected; everything else is legal.
@@ -155,7 +170,7 @@ faults is rejected; everything else is legal.
 ## 11. Verification and metrics
 
 A submission is the full machine: parts, placements, tapes. The rules engine runs it
-until **six products** are consumed or a fault occurs. On success, three metrics are
+until **ten products** are consumed or a fault occurs. On success, three metrics are
 sealed:
 
 - **Cost** — the sum of part prices.
@@ -187,7 +202,7 @@ any cap overrides, and optionally a **prize escrow**:
 
 - **Pistons** (runtime-variable arm length) — likely 40g if adopted; interacts with the
   sweep rule but not with the tree model.
-- Additional glyph types: debonding, multi-bond/triplex, transmutation.
+- Multi-bonding geometry and triplex bonds (the two deferred Opus glyph mechanics).
 - Multi-product puzzles and molecule outputs larger than one glyph pose.
 - Exact sample-instant arithmetic (fixed-point trig table) — specified in the engine
   document, not here; the rule is §9, the table is implementation.

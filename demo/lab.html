@@ -168,10 +168,15 @@
   // ---------- constants ----------
   const OFFSETS = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
   const PRICE = { 1: 20, 2: 24, 3: 26, 6: 30 };
-  const ELBOW_PRICE = 5, BONDER_PRICE = 10;
+  const ELBOW_STEP = 5; // elbow surcharge compounds: 5g per order of attachment
+  // transmutation roster adopted from Opus Magnum's campaign
+  const METALS = ['Pb', 'Sn', 'Fe', 'Cu', 'Ag', 'Au'];
+  const CARDINALS = ['Ai', 'Ea', 'Fi', 'Wa'];
+  const GLYPH_PRICE = { bonders: 10, debonders: 15, calcifiers: 10, duplicators: 20,
+    projectors: 20, purifiers: 20, animismus: 20, disposals: 0 };
   const RADIUS = 0.35, K_SAMPLES = 12;
   const OPS = 'GD+-PQW';
-  const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 6 };
+  const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 10 };
 
   // ---------- simulation ----------
   function createSim(puzzle, machine) {
@@ -207,9 +212,14 @@
       arm.holds = OFFSETS[arm.grippers].map(() => null);
       byId[arm.id] = arm;
       S.arms.push(arm);
-      S.cost += PRICE[arm.grippers] + (a.mount.elbow ? ELBOW_PRICE : 0);
     }
-    S.cost += (puzzle.bonders || []).length * BONDER_PRICE;
+    // pricing: elbow surcharge scales with attachment order (2nd order +5, 3rd +10, ...)
+    for (const arm of S.arms) {
+      let depth = 0, cur = arm;
+      while (cur.mount.elbow) { cur = byId[cur.mount.elbow.parent]; depth++; }
+      S.cost += PRICE[arm.grippers] + ELBOW_STEP * depth;
+    }
+    for (const fam in GLYPH_PRICE) S.cost += (puzzle[fam] || []).length * GLYPH_PRICE[fam];
 
     // -- validation --
     function reject(msg) { throw new Error('invalid machine: ' + msg); }
@@ -240,7 +250,9 @@
     }
 
     for (const g of (puzzle.inputs || [])) S.area.add(cellKey(g.cell));
-    for (const b of (puzzle.bonders || [])) { S.area.add(cellKey(b[0])); S.area.add(cellKey(b[1])); }
+    for (const fam in GLYPH_PRICE) for (const g of (puzzle[fam] || [])) {
+      for (const c of (Array.isArray(g[0]) ? g : [g])) S.area.add(cellKey(c));
+    }
     for (const c of ((puzzle.output && puzzle.output.cells) || [])) S.area.add(cellKey(c));
 
     const atomAt = (cell) => S.atoms.find(a => eq(a.cell, cell));
@@ -522,10 +534,61 @@
       }
       if (S.fault) return S;
 
-      // 4. bonds
+      // 4. glyphs — every transmutation acts on whatever rests on its cells (held or not)
       for (const [c1, c2] of (puzzle.bonders || [])) {
         const a1 = atomAt(c1), a2 = atomAt(c2);
         if (a1 && a2 && !a1.bonds.has(a2.id)) { a1.bonds.add(a2.id); a2.bonds.add(a1.id); ev({ type: 'bond', a: a1.id, b: a2.id }); }
+      }
+      for (const [c1, c2] of (puzzle.debonders || [])) {
+        const a1 = atomAt(c1), a2 = atomAt(c2);
+        if (a1 && a2 && a1.bonds.has(a2.id)) { a1.bonds.delete(a2.id); a2.bonds.delete(a1.id); ev({ type: 'note', msg: 'bond severed' }); }
+      }
+      for (const g of (puzzle.calcifiers || [])) {
+        const a = atomAt(g);
+        if (a && CARDINALS.includes(a.elem)) { a.elem = 'Sa'; ev({ type: 'note', msg: 'calcified to salt' }); }
+      }
+      for (const [ce, cs] of (puzzle.duplicators || [])) {
+        const src = atomAt(ce), dst = atomAt(cs);
+        if (src && dst && CARDINALS.includes(src.elem) && dst.elem === 'Sa') { dst.elem = src.elem; ev({ type: 'note', msg: 'duplicated ' + src.elem }); }
+      }
+      const kill = new Set();
+      for (const [cm, cq] of (puzzle.projectors || [])) {
+        const m = atomAt(cm), q = atomAt(cq);
+        const rung = m ? METALS.indexOf(m.elem) : -1;
+        if (m && q && q.elem === 'Hg' && rung >= 0 && rung < METALS.length - 1 && !kill.has(q.id)) {
+          kill.add(q.id); m.elem = METALS[rung + 1];
+          ev({ type: 'note', msg: 'projection → ' + m.elem });
+        }
+      }
+      for (const [ca, cb, co] of (puzzle.purifiers || [])) {
+        const a = atomAt(ca), b = atomAt(cb);
+        const rung = a ? METALS.indexOf(a.elem) : -1;
+        if (a && b && a !== b && a.elem === b.elem && rung >= 0 && rung < METALS.length - 1
+            && !atomAt(co) && !kill.has(a.id) && !kill.has(b.id)) {
+          kill.add(a.id); kill.add(b.id);
+          S.atoms.push({ id: S.nextAtom++, cell: co.slice(), elem: METALS[rung + 1], bonds: new Set() });
+          ev({ type: 'note', msg: 'purified → ' + METALS[rung + 1] });
+        }
+      }
+      for (const [ca, cb, cv, cm] of (puzzle.animismus || [])) {
+        const a = atomAt(ca), b = atomAt(cb);
+        if (a && b && a !== b && a.elem === 'Sa' && b.elem === 'Sa' && !atomAt(cv) && !atomAt(cm)
+            && !kill.has(a.id) && !kill.has(b.id)) {
+          kill.add(a.id); kill.add(b.id);
+          S.atoms.push({ id: S.nextAtom++, cell: cv.slice(), elem: 'Vi', bonds: new Set() });
+          S.atoms.push({ id: S.nextAtom++, cell: cm.slice(), elem: 'Mo', bonds: new Set() });
+          ev({ type: 'note', msg: 'animismus → vitae + mors' });
+        }
+      }
+      for (const g of (puzzle.disposals || [])) {
+        const a = atomAt(g);
+        if (a) { kill.add(a.id); ev({ type: 'note', msg: 'disposed ' + a.elem }); }
+      }
+      if (kill.size) {
+        S.atoms = S.atoms.filter(a => !kill.has(a.id));
+        for (const a of S.atoms) for (const id of [...a.bonds]) if (kill.has(id)) a.bonds.delete(id);
+        for (const arm of S.arms) arm.holds = arm.holds.map(h =>
+          (h && h.kind === 'atom' && kill.has(h.id)) ? null : h);
       }
 
       // 5. output
@@ -623,7 +686,7 @@
       key: 'courier',
       name: 'The Courier',
       blurb: 'One arm, no elbows: grab, bond, deliver, repeat. The floor every builder starts from.',
-      expect: { cycles: 94 },
+      expect: { cycles: 158 },
       puzzle: {
         inputs: [{ cell: [1, -1], elem: 'Pb' }, { cell: [1, 0], elem: 'Hg' }],
         bonders: [[[-1, 0], [0, -1]]],
@@ -640,7 +703,7 @@
       key: 'ferris',
       name: 'The Ferris',
       blurb: 'An elbow arm rides its parent between two worlds: Pb-side and Hg-side share one child tape. The bonder doubles as the product glyph, so the compound vanishes the instant it forms.',
-      expect: { cycles: 47 },
+      expect: { cycles: 79 },
       puzzle: {
         inputs: [{ cell: [2, -1], elem: 'Pb' }, { cell: [0, 2], elem: 'Hg' }],
         bonders: [[[2, 0], [1, 1]]],
@@ -659,7 +722,7 @@
       key: 'crane',
       name: 'The Crane',
       blurb: 'A worker arm runs one six-step loop forever. The crane relocates it — mid-loop, tapes still ticking — so the same coordinate-free tape ferries lead in one place and quicksilver in another.',
-      expect: { cycles: 93 },
+      expect: { cycles: 157 },
       puzzle: {
         inputs: [{ cell: [3, -1], elem: 'Pb' }, { cell: [3, 2], elem: 'Hg' }],
         bonders: [[[1, 1], [1, 2]]],
@@ -671,6 +734,61 @@
             tape: { ops: ['G', '+', '+', '+', 'D', '-', '-', '-'] } },
           { id: 'C', grippers: 1, len: 2, mount: { ground: [0, 2] }, angle: 5,
             tape: { delay: 5, ops: ['G', '+', 'D', 'W', 'W', 'W', 'W', 'W', 'G', '-', 'D', 'W', 'W', 'W', 'W', 'W'] } },
+        ],
+      },
+    },
+    {
+      key: 'beadwheel',
+      name: 'The Bead Wheel',
+      blurb: 'Tria Prima: salt, quicksilver, sulfur in one chain. The wheel carries the growing molecule around its ring while the feeder threads beads onto it — passing within a whisker of a fault, legally.',
+      expect: { cycles: 139 },
+      puzzle: {
+        inputs: [{ cell: [-1, 0], elem: 'Sa' }, { cell: [1, -2], elem: 'Hg' }, { cell: [-1, -2], elem: 'S' }],
+        bonders: [[[0, -1], [1, -1]]],
+        output: { cells: [[-1, 1], [0, 1], [1, 0]], elems: ['Sa', 'Hg', 'S'], bonds: [[0, 1], [1, 2]] },
+      },
+      machine: {
+        arms: [
+          { id: 'W', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 3,
+            tape: { ops: ['G', '+', '+', 'W', '+', 'W', 'W', 'W', 'W', 'W', '+', '+', 'D', '+'] } },
+          { id: 'F', grippers: 1, len: 1, mount: { ground: [0, -2] }, angle: 0,
+            tape: { delay: 1, ops: ['G', 'W', '+', 'D', '+', '+', 'G', '-', '-', 'D', '-', 'W', 'W', 'W'] } },
+        ],
+      },
+    },
+    {
+      key: 'goldladder',
+      name: 'The Gold Ladder',
+      blurb: 'Lead to tin to iron to copper to silver to gold: a dual-gripper shuttle feeds quicksilver to the projection glyph — one hand delivering while the other reloads — and the courier extracts the finished gold.',
+      expect: { cycles: 308 },
+      puzzle: {
+        inputs: [{ cell: [-1, 0], elem: 'Pb' }, { cell: [3, -3], elem: 'Hg' }],
+        projectors: [[[1, 0], [1, -1]]],
+        output: { cells: [[0, 1]], elems: ['Au'], bonds: [] },
+      },
+      machine: {
+        arms: [
+          { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 3,
+            tape: { ops: ['G', '-', '-', '-', 'D',
+                          'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W',
+                          'G', '+', 'D', '+', '+'] } },
+          { id: 'S', grippers: 2, len: 1, mount: { ground: [2, -2] }, angle: 5,
+            tape: { delay: 1,
+                    ops: ['G', '+', '+', '+', 'D', 'G', '+', '+', '+', 'D', 'G', '+', '+', '+', 'D',
+                          'G', '+', '+', '+', 'D', 'G', '+', '+', '+', 'D', 'W', 'W', 'W', 'W', 'W', 'W'] } },
+        ],
+      },
+    },
+    {
+      key: 'ouroboros',
+      name: 'The Ouroboros',
+      blurb: 'Two arms grab each other\'s bases in the same instant. The grab graph must remain a forest — the serpent that eats its own tail is rejected on the spot.',
+      expect: { fault: 'grab-cycle' },
+      puzzle: {},
+      machine: {
+        arms: [
+          { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0, tape: { ops: ['G', 'W', 'W'] } },
+          { id: 'B', grippers: 1, len: 1, mount: { ground: [1, 0] }, angle: 3, tape: { ops: ['G', 'W', 'W'] } },
         ],
       },
     },
@@ -705,10 +823,27 @@
   const EXAMPLES = window.GW_EXAMPLES;
   const ELEMS = {
     Pb: { fill: '#4A4640', label: '#F1E9D6' },
+    Sn: { fill: '#9A968C', label: '#2A2318' },
+    Fe: { fill: '#6E5F52', label: '#F1E9D6' },
+    Cu: { fill: '#A0622B', label: '#F1E9D6' },
+    Ag: { fill: '#D6D2CB', label: '#2A2318' },
+    Au: { fill: '#C9A227', label: '#2A2318' },
     Hg: { fill: '#BDB9AF', label: '#2A2318' },
     Sa: { fill: '#F6F1E2', label: '#2A2318' },
     S:  { fill: '#D9A93A', label: '#2A2318' },
+    Ai: { fill: '#CBD8DC', label: '#2A2318' },
+    Ea: { fill: '#7A6E4F', label: '#F1E9D6' },
+    Fi: { fill: '#C25436', label: '#F1E9D6' },
+    Wa: { fill: '#5B7EA6', label: '#F1E9D6' },
+    Vi: { fill: '#C97B8E', label: '#2A2318' },
+    Mo: { fill: '#443C46', label: '#F1E9D6' },
   };
+  // transmutation glyph families beyond the bonder: [field, label]
+  const SPECIAL_GLYPHS = [
+    ['debonders', 'DEBOND'], ['calcifiers', 'CALCIFY'], ['duplicators', 'DUPE'],
+    ['projectors', 'PROJECT'], ['purifiers', 'PURIFY'], ['animismus', 'ANIMA'],
+    ['disposals', 'DISPOSE'],
+  ];
   const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·' };
   const CW = 980, CH = 560;
   const canvas = document.getElementById('field');
@@ -771,6 +906,27 @@
       const [x1, y1] = Pc(c1), [x2, y2] = Pc(c2);
       ctx.strokeStyle = 'rgba(160,118,43,0.85)'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    // transmutation glyphs (oxblood tint, labeled)
+    ctx.font = `700 9px 'Courier Prime', monospace`;
+    for (const [fam, label] of SPECIAL_GLYPHS) {
+      for (const g of (ex.puzzle[fam] || [])) {
+        const cells = Array.isArray(g[0]) ? g : [g];
+        for (const c of cells) {
+          const [x, y] = Pc(c);
+          hexPath(x, y, view.s * PITCH / 2 * 1.08);
+          ctx.fillStyle = 'rgba(140,59,46,0.12)'; ctx.fill();
+          ctx.strokeStyle = 'rgba(140,59,46,0.6)'; ctx.lineWidth = 1.4; ctx.stroke();
+        }
+        for (let i = 1; i < cells.length; i++) {
+          const [x1, y1] = Pc(cells[i - 1]), [x2, y2] = Pc(cells[i]);
+          ctx.strokeStyle = 'rgba(140,59,46,0.55)'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        }
+        const [lx, ly] = Pc(cells[0]);
+        ctx.fillStyle = 'rgba(140,59,46,0.8)';
+        ctx.fillText(label, lx, ly - view.s * 1.0);
+      }
     }
     ctx.font = `700 10px 'Courier Prime', monospace`;
     for (const g of (ex.puzzle.inputs || [])) {
@@ -895,6 +1051,7 @@
     const rows = st.events.slice(-7).map(e => {
       if (e.type === 'bond') return `<div><span class="t">c${e.tick}</span>bond formed</div>`;
       if (e.type === 'product') return `<div><span class="t">c${e.tick}</span><span class="good">product ${e.n}/${st.caps.goal} verified</span></div>`;
+      if (e.type === 'note') return `<div><span class="t">c${e.tick}</span>${e.msg}</div>`;
       if (e.type === 'complete') return `<div><span class="t">c${e.tick}</span><span class="good">COMPLETE — metrics sealed</span></div>`;
       return '';
     });

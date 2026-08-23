@@ -42,10 +42,15 @@
   // ---------- constants ----------
   const OFFSETS = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
   const PRICE = { 1: 20, 2: 24, 3: 26, 6: 30 };
-  const ELBOW_PRICE = 5, BONDER_PRICE = 10;
+  const ELBOW_STEP = 5; // elbow surcharge compounds: 5g per order of attachment
+  // transmutation roster adopted from Opus Magnum's campaign
+  const METALS = ['Pb', 'Sn', 'Fe', 'Cu', 'Ag', 'Au'];
+  const CARDINALS = ['Ai', 'Ea', 'Fi', 'Wa'];
+  const GLYPH_PRICE = { bonders: 10, debonders: 15, calcifiers: 10, duplicators: 20,
+    projectors: 20, purifiers: 20, animismus: 20, disposals: 0 };
   const RADIUS = 0.35, K_SAMPLES = 12;
   const OPS = 'GD+-PQW';
-  const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 6 };
+  const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 10 };
 
   // ---------- simulation ----------
   function createSim(puzzle, machine) {
@@ -81,9 +86,14 @@
       arm.holds = OFFSETS[arm.grippers].map(() => null);
       byId[arm.id] = arm;
       S.arms.push(arm);
-      S.cost += PRICE[arm.grippers] + (a.mount.elbow ? ELBOW_PRICE : 0);
     }
-    S.cost += (puzzle.bonders || []).length * BONDER_PRICE;
+    // pricing: elbow surcharge scales with attachment order (2nd order +5, 3rd +10, ...)
+    for (const arm of S.arms) {
+      let depth = 0, cur = arm;
+      while (cur.mount.elbow) { cur = byId[cur.mount.elbow.parent]; depth++; }
+      S.cost += PRICE[arm.grippers] + ELBOW_STEP * depth;
+    }
+    for (const fam in GLYPH_PRICE) S.cost += (puzzle[fam] || []).length * GLYPH_PRICE[fam];
 
     // -- validation --
     function reject(msg) { throw new Error('invalid machine: ' + msg); }
@@ -114,7 +124,9 @@
     }
 
     for (const g of (puzzle.inputs || [])) S.area.add(cellKey(g.cell));
-    for (const b of (puzzle.bonders || [])) { S.area.add(cellKey(b[0])); S.area.add(cellKey(b[1])); }
+    for (const fam in GLYPH_PRICE) for (const g of (puzzle[fam] || [])) {
+      for (const c of (Array.isArray(g[0]) ? g : [g])) S.area.add(cellKey(c));
+    }
     for (const c of ((puzzle.output && puzzle.output.cells) || [])) S.area.add(cellKey(c));
 
     const atomAt = (cell) => S.atoms.find(a => eq(a.cell, cell));
@@ -396,10 +408,61 @@
       }
       if (S.fault) return S;
 
-      // 4. bonds
+      // 4. glyphs — every transmutation acts on whatever rests on its cells (held or not)
       for (const [c1, c2] of (puzzle.bonders || [])) {
         const a1 = atomAt(c1), a2 = atomAt(c2);
         if (a1 && a2 && !a1.bonds.has(a2.id)) { a1.bonds.add(a2.id); a2.bonds.add(a1.id); ev({ type: 'bond', a: a1.id, b: a2.id }); }
+      }
+      for (const [c1, c2] of (puzzle.debonders || [])) {
+        const a1 = atomAt(c1), a2 = atomAt(c2);
+        if (a1 && a2 && a1.bonds.has(a2.id)) { a1.bonds.delete(a2.id); a2.bonds.delete(a1.id); ev({ type: 'note', msg: 'bond severed' }); }
+      }
+      for (const g of (puzzle.calcifiers || [])) {
+        const a = atomAt(g);
+        if (a && CARDINALS.includes(a.elem)) { a.elem = 'Sa'; ev({ type: 'note', msg: 'calcified to salt' }); }
+      }
+      for (const [ce, cs] of (puzzle.duplicators || [])) {
+        const src = atomAt(ce), dst = atomAt(cs);
+        if (src && dst && CARDINALS.includes(src.elem) && dst.elem === 'Sa') { dst.elem = src.elem; ev({ type: 'note', msg: 'duplicated ' + src.elem }); }
+      }
+      const kill = new Set();
+      for (const [cm, cq] of (puzzle.projectors || [])) {
+        const m = atomAt(cm), q = atomAt(cq);
+        const rung = m ? METALS.indexOf(m.elem) : -1;
+        if (m && q && q.elem === 'Hg' && rung >= 0 && rung < METALS.length - 1 && !kill.has(q.id)) {
+          kill.add(q.id); m.elem = METALS[rung + 1];
+          ev({ type: 'note', msg: 'projection → ' + m.elem });
+        }
+      }
+      for (const [ca, cb, co] of (puzzle.purifiers || [])) {
+        const a = atomAt(ca), b = atomAt(cb);
+        const rung = a ? METALS.indexOf(a.elem) : -1;
+        if (a && b && a !== b && a.elem === b.elem && rung >= 0 && rung < METALS.length - 1
+            && !atomAt(co) && !kill.has(a.id) && !kill.has(b.id)) {
+          kill.add(a.id); kill.add(b.id);
+          S.atoms.push({ id: S.nextAtom++, cell: co.slice(), elem: METALS[rung + 1], bonds: new Set() });
+          ev({ type: 'note', msg: 'purified → ' + METALS[rung + 1] });
+        }
+      }
+      for (const [ca, cb, cv, cm] of (puzzle.animismus || [])) {
+        const a = atomAt(ca), b = atomAt(cb);
+        if (a && b && a !== b && a.elem === 'Sa' && b.elem === 'Sa' && !atomAt(cv) && !atomAt(cm)
+            && !kill.has(a.id) && !kill.has(b.id)) {
+          kill.add(a.id); kill.add(b.id);
+          S.atoms.push({ id: S.nextAtom++, cell: cv.slice(), elem: 'Vi', bonds: new Set() });
+          S.atoms.push({ id: S.nextAtom++, cell: cm.slice(), elem: 'Mo', bonds: new Set() });
+          ev({ type: 'note', msg: 'animismus → vitae + mors' });
+        }
+      }
+      for (const g of (puzzle.disposals || [])) {
+        const a = atomAt(g);
+        if (a) { kill.add(a.id); ev({ type: 'note', msg: 'disposed ' + a.elem }); }
+      }
+      if (kill.size) {
+        S.atoms = S.atoms.filter(a => !kill.has(a.id));
+        for (const a of S.atoms) for (const id of [...a.bonds]) if (kill.has(id)) a.bonds.delete(id);
+        for (const arm of S.arms) arm.holds = arm.holds.map(h =>
+          (h && h.kind === 'atom' && kill.has(h.id)) ? null : h);
       }
 
       // 5. output

@@ -121,5 +121,51 @@ for (const ex of EXAMPLES) {
     JSON.stringify(sim.state.fault));
 }
 
+
+// ---- transmutation glyph pack (one tick, static atoms) ----
+{
+  const puzzle = {
+    atoms: [
+      { cell: [0, 0], elem: 'Fi' },
+      { cell: [2, 0], elem: 'Wa' }, { cell: [3, 0], elem: 'Sa' },
+      { cell: [5, 0], elem: 'Pb' }, { cell: [6, 0], elem: 'Hg' },
+      { cell: [8, 0], elem: 'Cu' }, { cell: [9, 0], elem: 'Cu' },
+      { cell: [12, 0], elem: 'Sa' }, { cell: [13, 0], elem: 'Sa' },
+      { cell: [16, 0], elem: 'Au' },
+      { cell: [18, 0], elem: 'Ea' }, { cell: [19, 0], elem: 'Ea' },
+    ],
+    calcifiers: [[0, 0]],
+    duplicators: [[[2, 0], [3, 0]]],
+    projectors: [[[5, 0], [6, 0]]],
+    purifiers: [[[8, 0], [9, 0], [10, 0]]],
+    animismus: [[[12, 0], [13, 0], [14, 0], [15, 0]]],
+    disposals: [[16, 0]],
+    bonders: [[[18, 0], [19, 0]]],
+    debonders: [[[18, 0], [19, 0]]],
+  };
+  const machine = { arms: [{ id: 'A', grippers: 1, len: 1, mount: { ground: [0, 5] }, angle: 0, tape: { ops: ['W'] } }] };
+  const sim = GW.createSim(puzzle, machine); sim.step();
+  const at = (c) => sim.state.atoms.find(a => a.cell[0] === c[0] && a.cell[1] === c[1]);
+  check('calcification: cardinal to salt', at([0, 0]).elem === 'Sa');
+  check('duplication: salt copies cardinal', at([3, 0]).elem === 'Wa' && at([2, 0]).elem === 'Wa');
+  check('projection: consumes Hg, promotes Pb to Sn', at([5, 0]).elem === 'Sn' && !at([6, 0]));
+  check('purification: two Cu become Ag', !at([8, 0]) && !at([9, 0]) && at([10, 0]).elem === 'Ag');
+  check('animismus: two salt become vitae and mors', at([14, 0]).elem === 'Vi' && at([15, 0]).elem === 'Mo');
+  check('disposal: atom destroyed', !at([16, 0]));
+  check('debond: bond severed same tick it forms', at([18, 0]).bonds.size === 0);
+  check('no fault in glyph pack', !sim.state.fault, JSON.stringify(sim.state.fault));
+}
+
+// ---- elbow pricing compounds with order ----
+{
+  const machine = { arms: [
+    { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0, tape: { ops: ['W'] } },
+    { id: 'B', grippers: 1, len: 1, mount: { elbow: { parent: 'A', at: 1 } }, angle: 0, tape: { ops: ['W'] } },
+    { id: 'C', grippers: 1, len: 1, mount: { elbow: { parent: 'B', at: 1 } }, angle: 0, tape: { ops: ['W'] } },
+  ] };
+  const sim = GW.createSim({}, machine);
+  check('pricing: 20 + (20+5) + (20+10) = 75', sim.metrics().cost === 75, 'got ' + sim.metrics().cost);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
