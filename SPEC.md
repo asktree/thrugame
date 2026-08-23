@@ -132,6 +132,12 @@ carried, turned, or re-planted.
 | `·` | WAIT | hold for one tick |
 | `»` | DELAY | start-of-tape only; holds one tick on the first pass, then vanishes from the loop |
 
+There is no repeat instruction in the rules. Editors may offer an Opus-Magnum-style
+**repeat marker** as authoring sugar — it expands, at edit time, into a copy of the
+ops since the previous repeat block (consecutive markers copy that same segment) —
+but what is submitted, encoded, and simulated is always the expanded tape. The
+engine and the wire format know nothing of it.
+
 ## 7. The tick
 
 Each tick, in order:

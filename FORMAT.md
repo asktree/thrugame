@@ -19,7 +19,8 @@ Ours differs where the games differ:
   mounting. Parents are referenced by index and must precede their children,
   so a valid byte string can never encode a mounting cycle.
 - No tracks, no instruction letters for repeat/reset, no part names — our part
-  vocabulary fits in one flags byte.
+  vocabulary fits in one flags byte. (The editor's repeat marker is authoring
+  sugar: it expands to concrete ops before encoding, so the wire never carries it.)
 
 ## Layout
 

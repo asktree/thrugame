@@ -87,8 +87,9 @@
   .oppal button { font-family: var(--mono); font-size: 13px; font-weight: 700; padding: 3px 9px; border: 1px solid var(--ink-dim); background: var(--parch); cursor: pointer; color: var(--ink); }
   .oppal button:hover { background: var(--ink); color: var(--parch); }
   .tape-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
-  .tape-label { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); width: 58px; flex: none; cursor: pointer; }
+  .tape-label { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); min-width: 58px; flex: none; cursor: pointer; }
   .tape-row.sel .tape-label { color: var(--gold); }
+  .tape-label .over { color: var(--oxblood); }
   .tape-cells { display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
   .tape-cells::-webkit-scrollbar { display: none; }
   .tape-cells span {
@@ -205,7 +206,7 @@
     projectors: 'PROJECT', purifiers: 'PURIFY', animismus: 'ANIMA', disposals: 'DISPOSE',
   };
   const SINGLE_CELL = { calcifiers: 1, disposals: 1 };
-  const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·' };
+  const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·', R: '⟲' };
   const PITCH = Math.sqrt(3);
   const CW = 980, CH = 560;
   const canvas = document.getElementById('field');
@@ -346,7 +347,7 @@
 
   function validate() {
     if (!layout.arms.length) return 'drag an arm onto the board to begin';
-    try { GW.createSim(matPuzzle(), { arms: layout.arms }); return null; }
+    try { GW.createSim(matPuzzle(), { arms: machineArms() }); return null; }
     catch (e) { return String(e.message || e).replace('invalid machine: ', ''); }
   }
 
@@ -751,6 +752,40 @@
     });
   }
 
+  // ---------- repeat expansion (editor middleware) ----------
+  // 'R' lives only in the editor's tapes: a repeat copies the segment from the end of the
+  // previous repeat-block up to here, consecutive R's each copy that same frozen segment,
+  // and the origin then advances past the copies. The engine and codec only ever see ops.
+  const EXPAND_CAP = 512;
+  function expandTape(src) {
+    const ops = [], cells = [];
+    let segStart = 0, i = 0;
+    while (i < src.length) {
+      if (src[i] !== 'R') {
+        cells.push({ src: i, op: src[i], ghost: false, engine: ops.length });
+        ops.push(src[i]); i++;
+      } else {
+        const seg = ops.slice(segStart);                 // frozen once per run of consecutive R's
+        while (i < src.length && src[i] === 'R') {
+          cells.push({ src: i, op: '⟲', ghost: false, engine: null });
+          // runaway guard: separated R's double the tape, and past this every copy is already
+          // far over the engine's ceiling — keep walking the source so every cell stays editable
+          if (ops.length < EXPAND_CAP) {
+            for (const op of seg) { cells.push({ src: null, op, ghost: true, engine: ops.length }); ops.push(op); }
+          }
+          i++;
+        }
+        segStart = ops.length;
+      }
+    }
+    return { ops, cells };
+  }
+  const expandedOps = (t) => { const o = expandTape(t.ops || ['W']).ops; return o.length ? o : ['W']; };
+  const tapeCap = () => (base().caps && base().caps.tapeLen) || GW.DEFAULT_CAPS.tapeLen;
+  // every handoff to the engine or the codec goes through this
+  const machineArms = () => layout.arms.map(a =>
+    Object.assign({}, a, { tape: { delay: a.tape.delay || 0, ops: expandedOps(a.tape) } }));
+
   // ---------- tape editing ----------
   function tapeOf(id) { return armById(id).tape; }
   function setOp(op) {
@@ -793,11 +828,12 @@
     if (mode === 'edit') {
       const pal = document.createElement('div'); pal.className = 'oppal';
       pal.innerHTML = `<span class="seg-label">SET OP</span>`;
-      const OP_KEYS = { G: 'g', D: 'd', '+': 'q', '-': 'w', P: 'e', Q: 'r', W: 't' };
-      for (const op of ['G', 'D', '+', '-', 'P', 'Q', 'W']) {
+      const OP_KEYS = { G: 'g', D: 'd', '+': 'q', '-': 'w', P: 'e', Q: 'r', W: 't', R: 'y' };
+      for (const op of ['G', 'D', '+', '-', 'P', 'Q', 'W', 'R']) {
         const b = document.createElement('button');
         b.innerHTML = GLYPH[op] + ' <span style="opacity:.45;font-size:9px">' + OP_KEYS[op] + '</span>';
-        b.title = { G: 'grab', D: 'release', '+': 'turn cw', '-': 'turn ccw', P: 'pivot cw', Q: 'pivot ccw', W: 'wait' }[op]
+        b.title = { G: 'grab', D: 'release', '+': 'turn cw', '-': 'turn ccw', P: 'pivot cw', Q: 'pivot ccw', W: 'wait',
+          R: 'repeat the run since the last repeat' }[op]
           + ' — key ' + OP_KEYS[op];
         b.addEventListener('click', () => setOp(op));
         pal.appendChild(b);
@@ -815,15 +851,25 @@
       row.className = 'tape-row' + (mode === 'edit' && sel && sel.kind === 'arm' && sel.id === arm.id ? ' sel' : '');
       const lab = document.createElement('span'); lab.className = 'tape-label'; lab.textContent = 'ARM ' + arm.id;
       lab.addEventListener('click', () => { if (mode === 'edit') { sel = { kind: 'arm', id: arm.id }; refreshAll(); } });
+      // in run mode the sim holds the expanded tape; the markers live on the layout's copy
+      const src = ((mode === 'run' ? armById(arm.id) : null) || arm).tape.ops;
+      const ex = expandTape(src);
+      const total = (arm.tape.delay || 0) + Math.max(1, ex.ops.length);
+      if (total > tapeCap()) {
+        const over = document.createElement('span'); over.className = 'over';
+        over.textContent = ' ' + total + '/' + tapeCap(); lab.appendChild(over);
+      }
       const cells = document.createElement('div'); cells.className = 'tape-cells';
       for (let i = 0; i < arm.tape.delay; i++) {
         const sp = document.createElement('span'); sp.className = 'delay'; sp.textContent = '»'; cells.appendChild(sp);
       }
-      arm.tape.ops.forEach((op, i) => {
-        const sp = document.createElement('span'); sp.textContent = GLYPH[op];
-        if (mode === 'edit') {
-          if (cursor && cursor.armId === arm.id && cursor.pos === i) sp.classList.add('cursor');
-          sp.addEventListener('click', () => { sel = { kind: 'arm', id: arm.id }; cursor = { armId: arm.id, pos: i }; refreshAll(); });
+      ex.cells.forEach(c => {
+        const sp = document.createElement('span'); sp.textContent = GLYPH[c.op] || c.op;
+        if (c.engine !== null) sp.dataset.eng = c.engine;
+        if (c.ghost) sp.classList.add('ghostcell');
+        else if (mode === 'edit') {
+          if (cursor && cursor.armId === arm.id && cursor.pos === c.src) sp.classList.add('cursor');
+          sp.addEventListener('click', () => { sel = { kind: 'arm', id: arm.id }; cursor = { armId: arm.id, pos: c.src }; refreshAll(); });
         }
         cells.appendChild(sp);
       });
@@ -850,8 +896,10 @@
       for (let i = 0; i < cells.length; i++) cells[i].classList.remove('on');
       if (t === 0) return;
       for (let i = 0; i < arm.tape.delay; i++) cells[i].classList.toggle('spent', t > i);
-      const idx = t <= arm.tape.delay ? t - 1 : arm.tape.delay + (t - arm.tape.delay - 1) % arm.tape.ops.length;
-      if (!sim.state.fault && sim.state.cycles === null && cells[idx]) cells[idx].classList.add('on');
+      // the sim runs the expanded tape, so past the delay the live cell is found by engine index
+      const cur = t <= arm.tape.delay ? cells[t - 1]
+        : row.querySelector('.tape-cells [data-eng="' + (t - arm.tape.delay - 1) % arm.tape.ops.length + '"]');
+      if (!sim.state.fault && sim.state.cycles === null && cur) cur.classList.add('on');
     });
   }
 
@@ -891,7 +939,7 @@
 
   // ---------- persistence / sharing ----------
   function asMachine() {
-    return { arms: layout.arms, glyphs: layout.glyphs, inputs: layout.inputs, output: layout.output };
+    return { arms: machineArms(), glyphs: layout.glyphs, inputs: layout.inputs, output: layout.output };
   }
   function code() { return key() + '.' + CODEC.encodeString(asMachine()); }
   function saveDraft() {
@@ -948,7 +996,7 @@
     const bad = validate();
     if (bad) { setStatus('cannot test: ' + bad, 'bad'); return; }
     mode = 'run';
-    sim = GW.createSim(matPuzzle(), clone({ arms: layout.arms }));
+    sim = GW.createSim(matPuzzle(), clone({ arms: machineArms() }));
     running = true; done = false; phase = 1;
     $('btnMode').textContent = '✎ Edit';
     $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
@@ -1167,7 +1215,7 @@
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
     if (mode !== 'edit') return;
-    const KEY_OPS = { g: 'G', d: 'D', q: '+', w: '-', e: 'P', r: 'Q', t: 'W' };
+    const KEY_OPS = { g: 'G', d: 'D', q: '+', w: '-', e: 'P', r: 'Q', t: 'W', y: 'R' };
     if (!ev.altKey && KEY_OPS[ev.key.toLowerCase()] && cursor) { setOp(KEY_OPS[ev.key.toLowerCase()]); ev.preventDefault(); return; }
     if (ev.key === '[') rotateSelected(-1);
     else if (ev.key === ']') rotateSelected(1);
@@ -1246,7 +1294,10 @@
   syncUndoButtons();
 
   // test/debug hook: lets automated checks aim at exact cells
-  window.__gwDebug = () => ({ view: clone(view), layout: clone(layout), sel: clone(sel || null), mode });
+  window.__gwDebug = () => ({
+    view: clone(view), layout: clone(layout), sel: clone(sel || null), mode,
+    machine: clone(asMachine()), code: code(), expand: expandTape,
+  });
 
   // ---------- frame loop ----------
   let last = performance.now();
