@@ -780,6 +780,45 @@
       },
     },
     {
+      key: 'leachworks',
+      name: 'The Leaching Works',
+      blurb: 'One reagent, three transmutations deep: water is calcified into salt, salt pairs are transmuted by animismus into vitae and mors — which spawn directly onto the product glyph — and five bonders knit a branched six-atom compound around them. Six arms, one factory.',
+      expect: { cycles: 233 },
+      puzzle: {
+        inputs: [
+          { cell: [2, -4], elem: 'Wa' }, { cell: [0, -3], elem: 'Wa' }, { cell: [3, -3], elem: 'Wa' },
+          { cell: [0, 3], elem: 'Wa' }, { cell: [-3, 1], elem: 'Wa' },
+        ],
+        calcifiers: [[1, -3], [-1, 2], [-3, 2]],
+        animismus: [[[1, -1], [0, 1], [0, 0], [1, 0]]],
+        bonders: [
+          [[0, 0], [1, 0]], [[0, 0], [0, -1]], [[0, 0], [-1, 1]],
+          [[1, 0], [2, -1]], [[1, 0], [1, 1]],
+        ],
+        output: {
+          cells: [[0, 0], [1, 0], [0, -1], [2, -1], [-1, 1], [1, 1]],
+          elems: ['Vi', 'Mo', 'Wa', 'Wa', 'Sa', 'Sa'],
+          bonds: [[0, 1], [0, 2], [0, 4], [1, 3], [1, 5]],
+        },
+      },
+      machine: {
+        arms: [
+          { id: 'K', grippers: 1, len: 1, mount: { ground: [2, -3] }, angle: 4,
+            tape: { ops: ['G','-','D','G','-','D','+','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'D', grippers: 1, len: 1, mount: { ground: [2, -2] }, angle: 3,
+            tape: { delay: 6, ops: ['G','-','D','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'E', grippers: 1, len: 1, mount: { ground: [0, -2] }, angle: 4,
+            tape: { ops: ['G','-','-','-','D','+','+','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'F', grippers: 1, len: 1, mount: { ground: [3, -2] }, angle: 4,
+            tape: { ops: ['G','+','+','+','+','D','-','-','-','-','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'M', grippers: 1, len: 1, mount: { ground: [0, 2] }, angle: 1,
+            tape: { ops: ['G','+','+','D','G','+','+','D','+','+','G','+','+','D','G','+','D','-','-','-','W','W','W','W'] } },
+          { id: 'S', grippers: 1, len: 1, mount: { ground: [-2, 1] }, angle: 3,
+            tape: { ops: ['G','-','D','G','-','-','D','+','+','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+        ],
+      },
+    },
+    {
       key: 'ouroboros',
       name: 'The Ouroboros',
       blurb: 'Two arms grab each other\'s bases in the same instant. The grab graph must remain a forest — the serpent that eats its own tail is rejected on the spot.',
