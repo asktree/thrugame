@@ -1396,13 +1396,17 @@
         const [hx, hy] = P(h.x, h.y);
         ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(hx, hy); ctx.stroke();
-        const open = h.holding ? 0.16 : 0.5;
-        for (const side of [-1, 1]) {
-          const ca = h.ang + side * (Math.PI / 2) * open;
-          ctx.lineWidth = view.s * 0.11;
+        // three-fold symmetric grabber head; its pose is the arm's own direction
+        ctx.beginPath(); ctx.arc(hx, hy, view.s * 0.13, 0, Math.PI * 2);
+        ctx.lineWidth = view.s * 0.1; ctx.stroke();
+        const r1 = view.s * 0.17, r2 = view.s * (h.holding ? 0.38 : 0.5);
+        ctx.lineWidth = view.s * 0.11;
+        for (let k = 0; k < 3; k++) {
+          const a = h.ang + k * (Math.PI * 2 / 3);
+          const bend = h.holding ? 0.35 : 0;
           ctx.beginPath();
-          ctx.moveTo(hx - Math.cos(h.ang) * view.s * 0.2, hy - Math.sin(h.ang) * view.s * 0.2);
-          ctx.lineTo(hx + Math.cos(ca) * view.s * 0.42, hy + Math.sin(ca) * view.s * 0.42);
+          ctx.moveTo(hx + Math.cos(a) * r1, hy + Math.sin(a) * r1);
+          ctx.lineTo(hx + Math.cos(a + bend) * r2, hy + Math.sin(a + bend) * r2);
           ctx.stroke();
         }
       }

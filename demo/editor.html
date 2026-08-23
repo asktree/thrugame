@@ -130,7 +130,7 @@
     <div class="part" data-glyph="purifiers">PURIFY<small>20g</small></div>
     <div class="part" data-glyph="animismus">ANIMA<small>20g</small></div>
     <div class="part" data-glyph="disposals">DISPOSE<small>0g</small></div>
-    <span class="hint">drag parts onto the board · drag back here to remove · reagents are the puzzle's fixed pool<br>drag a gripper to aim &amp; lengthen · handles rotate · ctrl-z undoes</span>
+    <span class="hint">drag parts onto the board · drag back here to remove · reagents are the puzzle's fixed pool<br>the handle aims, lengthens &amp; rotates · click a stack again for what's underneath · ctrl-z undoes</span>
   </div>
 
   <div class="stagebox">
@@ -1583,20 +1583,31 @@
     ctx.fillStyle = '#33705E'; ctx.fillText('OUT', x, y - view.s * 1.0);
   }
 
+  function drawClaw(x, y, ang, holding, color) {
+    // three-fold symmetric grabber head, like the game it honors: the claw's pose
+    // is the arm's own direction, so 60-degree turns alternate its two states
+    ctx.strokeStyle = color; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(x, y, view.s * 0.13, 0, Math.PI * 2);
+    ctx.lineWidth = view.s * 0.1; ctx.stroke();
+    const r1 = view.s * 0.17, r2 = view.s * (holding ? 0.38 : 0.5);
+    ctx.lineWidth = view.s * 0.11;
+    for (let k = 0; k < 3; k++) {
+      const a = ang + k * (Math.PI * 2 / 3);
+      const bend = holding ? 0.35 : 0;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1);
+      ctx.lineTo(x + Math.cos(a + bend) * r2, y + Math.sin(a + bend) * r2);
+      ctx.stroke();
+    }
+  }
+
   function drawArmShape(basePx, hands, elbow, selected, ghost) {
     const [bx, by] = basePx;
     ctx.globalAlpha = ghost ? 0.45 : 1;
     for (const h of hands) {
       ctx.strokeStyle = selected ? '#A0762B' : '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(h.x, h.y); ctx.stroke();
-      for (const side of [-1, 1]) {
-        const ca = h.ang + side * (Math.PI / 2) * 0.5;
-        ctx.lineWidth = view.s * 0.11;
-        ctx.beginPath();
-        ctx.moveTo(h.x - Math.cos(h.ang) * view.s * 0.2, h.y - Math.sin(h.ang) * view.s * 0.2);
-        ctx.lineTo(h.x + Math.cos(ca) * view.s * 0.42, h.y + Math.sin(ca) * view.s * 0.42);
-        ctx.stroke();
-      }
+      drawClaw(h.x, h.y, h.ang, !!h.holding, selected ? '#A0762B' : '#8A6A1E');
     }
     if (elbow) {
       ctx.beginPath(); ctx.arc(bx, by, view.s * 0.16, 0, Math.PI * 2);
@@ -1647,7 +1658,7 @@
       const arm = armById(s.id);
       const p = initPoses()[arm.id];
       th = mod6(p.rot + arm.angle) * Math.PI / 3;
-      r = view.s * PITCH * (arm.len + 0.7);
+      r = view.s * PITCH * arm.len + view.s * PITCH * 0.35;
     } else {
       const rot = s.kind === 'glyph' ? (layout.glyphs[s.i].rot || 0)
         : s.kind === 'input' ? (layout.inputs[s.i].rot || 0) : (layout.output.rot || 0);
@@ -1715,7 +1726,7 @@
     }
     for (const arm of rs.arms) {
       drawArmShape(P(arm.base[0], arm.base[1]),
-        arm.hands.map(h => { const [x, y] = P(h.x, h.y); return { x, y, ang: h.ang }; }),
+        arm.hands.map(h => { const [x, y] = P(h.x, h.y); return { x, y, ang: h.ang, holding: h.holding }; }),
         arm.elbow, false, false);
     }
     for (const a of rs.atoms) {
@@ -1762,28 +1773,24 @@
     }
     return null;
   }
-  function handAt(mx, my) {
-    const poses = initPoses();
-    for (const arm of layout.arms) {
-      const p = poses[arm.id];
-      for (const h of handsFor(p.pos, p.rot, arm)) {
-        if (Math.hypot(mx - h.x, my - h.y) < view.s * 0.55) return { arm, off: h.off, pose: p };
-      }
-    }
-    return null;
-  }
-  function pieceAt(cell) {
+  // everything under a cell, top to bottom — stationary clicks cycle through it
+  function stackAt(cell) {
+    const out = [];
+    const arm = baseAt(cell);
+    if (arm) out.push({ kind: 'arm', id: arm.id });
     for (let i = layout.glyphs.length - 1; i >= 0; i--) {
       const g = layout.glyphs[i];
       const idx = glyphFootprint(g).findIndex(c => eq(c, cell));
-      if (idx >= 0) return { kind: 'glyph', i, end: TWO_CELL[g.type] ? idx : undefined };
+      if (idx >= 0) out.push({ kind: 'glyph', i, end: TWO_CELL[g.type] ? idx : undefined });
     }
     for (let i = layout.inputs.length - 1; i >= 0; i--) {
-      if (inputCells(layout.inputs[i]).some(c => eq(c, cell))) return { kind: 'input', i };
+      if (inputCells(layout.inputs[i]).some(c => eq(c, cell))) out.push({ kind: 'input', i });
     }
-    if (outputCells().some(c => eq(c, cell))) return { kind: 'output' };
-    return null;
+    if (outputCells().some(c => eq(c, cell))) out.push({ kind: 'output' });
+    return out;
   }
+  const sameSel = (c, s) => !!s && c.kind === s.kind
+    && (c.kind === 'arm' ? c.id === s.id : c.kind === 'output' ? true : c.i === s.i);
 
   // ---------- edit ops ----------
   let nextId = 0;
@@ -2063,31 +2070,22 @@
         return;
       }
     }
-    // 2) arm hands (aim & lengthen)
-    const hand = handAt(mx, my);
-    if (hand) {
-      sel = { kind: 'arm', id: hand.arm.id };
-      cursor = { armId: hand.arm.id, pos: 0 };
-      drag = { kind: 'hand', armId: hand.arm.id, off: hand.off, snap: snapshot() };
+    // 2) the stack of pieces under the cursor — drag the selected one, or the top one
+    const stack = stackAt(cell);
+    if (stack.length) {
+      const idx = stack.findIndex(c => sameSel(c, sel));
+      const pick = idx >= 0 ? stack[idx] : stack[0];
+      sel = { kind: pick.kind, id: pick.id, i: pick.i };
+      const common = { snap: snapshot(), moved: false, stack, wasSelected: idx >= 0 };
+      if (pick.kind === 'arm') {
+        cursor = { armId: pick.id, pos: 0 };
+        drag = Object.assign({ kind: 'base', armId: pick.id }, common);
+      } else {
+        drag = Object.assign({ kind: pick.kind, i: pick.i, end: pick.end, grab: subc(anchorOf(pick), cell) }, common);
+      }
       refreshAll(); return;
     }
-    // 3) arm bases
-    const arm = baseAt(cell);
-    if (arm) {
-      sel = { kind: 'arm', id: arm.id };
-      cursor = { armId: arm.id, pos: 0 };
-      drag = { kind: 'base', armId: arm.id, snap: snapshot(), moved: false };
-      refreshAll(); return;
-    }
-    // 4) glyph / input / output bodies
-    const piece = pieceAt(cell);
-    if (piece) {
-      sel = { kind: piece.kind, i: piece.i };
-      const a = anchorOf(piece);
-      drag = { kind: piece.kind, i: piece.i, end: piece.end, grab: subc(a, cell), snap: snapshot(), moved: false };
-      refreshAll(); return;
-    }
-    // 5) pan
+    // 3) pan
     sel = null; cursor = null;
     drag = { kind: 'pan', x: mx, y: my };
     refreshAll();
@@ -2098,23 +2096,11 @@
     mousePx = { x: mx, y: my, overCanvas: overCanvas(ev) };
     hoverCell = cellAt(mx, my);
     $('tray').classList.toggle('droptarget',
-      !!(drag && drag.kind !== 'pan' && drag.kind !== 'new' && drag.kind !== 'handle' && drag.kind !== 'hand' && overTray(ev)));
+      !!(drag && drag.kind !== 'pan' && drag.kind !== 'new' && drag.kind !== 'handle' && overTray(ev)));
     if (!drag) return;
     if (drag.kind === 'pan') {
       view.ox += mx - drag.x; view.oy += my - drag.y;
       drag.x = mx; drag.y = my;
-    } else if (drag.kind === 'hand') {
-      const a = armById(drag.armId); if (!a) return;
-      const poses = initPoses();
-      const p = poses[drag.armId];
-      const [bx, by] = Pc(p.pos);
-      const k = bearing6([bx, by], mx, my);
-      a.angle = mod6(k - p.rot - drag.off);
-      const dist = Math.hypot(mx - bx, my - by) / (view.s * PITCH);
-      a.len = Math.max(1, Math.min(3, Math.round(dist)));
-      for (const c of layout.arms) {
-        if (c.mount.elbow && c.mount.elbow.parent === a.id && c.mount.elbow.at > a.len) c.mount.elbow.at = a.len;
-      }
     } else if (drag.kind === 'base') {
       const a = armById(drag.armId); if (!a) return;
       const m = mountFor(hoverCell, drag.armId);
@@ -2144,7 +2130,15 @@
       const k = bearing6(Pc(a), mx, my);
       if (sel.kind === 'arm') {
         const arm = armById(sel.id);
-        if (arm) arm.angle = mod6(k - initPoses()[arm.id].rot);
+        if (arm) {
+          const p = initPoses()[arm.id];
+          arm.angle = mod6(k - p.rot);
+          const [bx, by] = Pc(p.pos);
+          arm.len = Math.max(1, Math.min(3, Math.round(Math.hypot(mx - bx, my - by) / (view.s * PITCH))));
+          for (const c of layout.arms) {
+            if (c.mount.elbow && c.mount.elbow.parent === arm.id && c.mount.elbow.at > arm.len) c.mount.elbow.at = arm.len;
+          }
+        }
       } else if (sel.kind === 'glyph') layout.glyphs[sel.i].rot = k;
       else if (sel.kind === 'input') layout.inputs[sel.i].rot = k;
       else if (sel.kind === 'output') layout.output.rot = k;
@@ -2186,6 +2180,13 @@
       return;
     }
     if (d.snap !== undefined && snapshot() !== d.snap) { pushUndo(d.snap); touched(); }
+    else if (d.stack && d.stack.length > 1 && d.wasSelected && !d.moved) {
+      const idx = d.stack.findIndex(c => sameSel(c, sel));
+      const nxt = d.stack[(idx + 1) % d.stack.length];
+      sel = { kind: nxt.kind, id: nxt.id, i: nxt.i };
+      cursor = nxt.kind === 'arm' ? { armId: nxt.id, pos: 0 } : cursor;
+      refreshAll();
+    }
   });
 
   // tray part dragging
