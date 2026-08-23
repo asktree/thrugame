@@ -137,8 +137,8 @@ for (const ex of EXAMPLES) {
     calcifiers: [[0, 0]],
     duplicators: [[[2, 0], [3, 0]]],
     projectors: [[[5, 0], [6, 0]]],
-    purifiers: [[[8, 0], [9, 0], [10, 0]]],
-    animismus: [[[12, 0], [13, 0], [14, 0], [15, 0]]],
+    purifiers: [[[8, 0], [9, 0], [8, 1]]],
+    animismus: [[[12, 0], [13, 0], [12, 1], [13, -1]]],
     disposals: [[16, 0]],
     bonders: [[[18, 0], [19, 0]]],
   };
@@ -148,8 +148,8 @@ for (const ex of EXAMPLES) {
   check('calcification: cardinal to salt', at([0, 0]).elem === 'Sa');
   check('duplication: salt copies cardinal', at([3, 0]).elem === 'Wa' && at([2, 0]).elem === 'Wa');
   check('projection: consumes Hg, promotes Pb to Sn', at([5, 0]).elem === 'Sn' && !at([6, 0]));
-  check('purification: two Cu become Ag', !at([8, 0]) && !at([9, 0]) && at([10, 0]).elem === 'Ag');
-  check('animismus: two salt become vitae and mors', at([14, 0]).elem === 'Vi' && at([15, 0]).elem === 'Mo');
+  check('purification: two Cu become Ag', !at([8, 0]) && !at([9, 0]) && at([8, 1]).elem === 'Ag');
+  check('animismus: two salt become vitae and mors', at([12, 1]).elem === 'Vi' && at([13, -1]).elem === 'Mo');
   check('disposal: atom destroyed', !at([16, 0]));
   check('bond glyph joins the pair', at([18, 0]).bonds.size === 1);
   check('no fault in glyph pack', !sim.state.fault, JSON.stringify(sim.state.fault));
@@ -191,6 +191,41 @@ for (const ex of EXAMPLES) {
     rejects({ calcifiers: [[5, 5]] }, { arms }));
   check('layout: disjoint glyphs accepted',
     !rejects({ bonders: [[[0, 0], [1, 0]]], calcifiers: [[3, 0]] }, { arms }));
+}
+
+// ---- glyph shapes are fixed: translation + rotation only ----
+{
+  const arms = [{ id: 'A', grippers: 1, len: 1, mount: { ground: [5, 5] }, angle: 0, tape: { ops: ['W'] } }];
+  const rejects = (puzzle) => {
+    try { GW.createSim(puzzle, { arms }); return false; } catch (e) { return /shape|adjacent/.test(String(e)); }
+  };
+  check('shape: straight-line purifier rejected', rejects({ purifiers: [[[0, 0], [1, 0], [2, 0]]] }));
+  check('shape: straight-line animismus rejected', rejects({ animismus: [[[0, 0], [1, 0], [2, 0], [3, 0]]] }));
+  check('shape: mirrored animismus rejected', rejects({ animismus: [[[0, 0], [1, 0], [1, -1], [0, 1]]] }));
+  check('shape: non-adjacent bonder rejected', rejects({ bonders: [[[0, 0], [2, 0]]] }));
+  check('shape: rotated animismus accepted',
+    !rejects({ animismus: [[[0, 0], [0, 1], [-1, 1], [1, 0]]] })); // k=1 orientation
+}
+
+// ---- molecule reagents: spawn pre-bonded, refill only when the footprint clears ----
+{
+  const puzzle = {
+    inputs: [{ cells: [[0, 0], [1, 0]], elems: ['Fe', 'Sa'], bonds: [[0, 1]] }],
+  };
+  const machine = { arms: [
+    { id: 'A', grippers: 1, len: 2, mount: { ground: [0, -2] }, angle: 1,
+      tape: { ops: ['G', '+', 'W', 'W', 'D', 'W'] } },
+  ] };
+  const sim = GW.createSim(puzzle, machine);
+  sim.step();
+  const m0 = sim.state.atoms;
+  check('molecule reagent: spawns bonded pair', m0.length === 2 && m0[0].bonds.size === 1);
+  sim.step(); // arm grabbed the Fe end at t1, turn moves the whole molecule away
+  check('molecule reagent: half-clear footprint does not respawn',
+    sim.state.atoms.length === 2, `atoms=${sim.state.atoms.length}`);
+  sim.step();
+  check('molecule reagent: respawns when both cells clear', sim.state.atoms.length === 4,
+    `atoms=${sim.state.atoms.length}`);
 }
 
 // ---- elbow pricing compounds with order ----

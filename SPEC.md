@@ -45,13 +45,18 @@ centers. All rotation is in steps of 60°.
 | Projection glyph | 20g | metal cell + quicksilver cell; consumes the quicksilver, promotes the metal one rung |
 | Purification glyph | 20g | two metal cells + one out cell; two equal metals become one of the next rung |
 | Animismus glyph | 20g | two salt cells + two out cells; two salt become one vitae and one mors |
-| Disposal glyph | 0g | one cell; destroys whatever atom rests on it |
-| Reagent glyph (input) | free | spawns its element whenever its cell is empty |
+| Disposal glyph | 0g | a cell plus its whole surrounding ring (seven cells); destroys a lone, unheld atom resting on the center |
+| Reagent glyph (input) | free | spawns its molecule whenever its footprint is empty |
 | Product glyph (output) | free | consumes a completed product (§7) |
 
-Glyph behavior and prices mirror Opus Magnum's campaign. Multi-bonding and triplex
-bonding are adopted in principle but deferred (§14) — they are the only glyphs that
-introduce new geometry or a new bond type.
+Glyph behavior, prices, and **shapes** mirror Opus Magnum's campaign. Every glyph is a
+fixed shape, placed by translation and rotation only — never mirrored. The two-cell
+glyphs (bond, debond, duplication, projection) are adjacent pairs; purification is two
+adjacent inputs with the output on the flank; animismus is two adjacent salts with the
+vitae output flanking one side and the mors output the other. A submission whose glyph
+does not match its canonical shape is rejected before simulation. Multi-bonding and
+triplex bonding are adopted in principle but deferred (§14) — they are the only glyphs
+that introduce new geometry or a new bond type.
 
 - Arm **length** is chosen at build time, 1–3 cells, at no cost.
 - Every arm has a **base**. A base either anchors to a board cell (**ground base**) or
@@ -77,11 +82,14 @@ simulation begins.
 
 ## 4. Glyphs
 
-- **Reagent glyph**: at the start of every tick, if its cell is empty, a fresh atom of
-  its element appears there.
+- **Reagent glyph**: a whole molecule — one atom or many, with bonds. At the start of
+  every tick, if every cell of its footprint is empty, a fresh copy spawns.
 - **Transmutation glyphs** (bond, debond, calcification, duplication, projection,
   purification, animismus, disposal) act at the end of every tick, whenever the atoms
-  resting on their cells satisfy their rule — held or not.
+  resting on their cells satisfy their rule. Bonding, debonding, calcification, and
+  duplication work on held atoms; the **converting** glyphs cannot see bonded or held
+  atoms — projection's quicksilver, purification's metals, animismus's salts, and
+  disposal's victim must all be loose, exactly as in Opus Magnum.
 - **Product glyph**: a set of cells with a required element in each and required bonds
   between them — the target molecule, fully specified, in a fixed pose. At the end of a
   tick, if a molecule exactly matches (right elements on the right cells, right bonds,

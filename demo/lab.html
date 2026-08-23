@@ -181,6 +181,11 @@
   // ---------- simulation ----------
   function createSim(puzzle, machine) {
     const caps = Object.assign({}, DEFAULT_CAPS, puzzle.caps || {});
+    // reagents may be single atoms ({cell, elem}) or whole molecules ({cells, elems, bonds});
+    // a molecule reagent respawns whenever every one of its cells is empty
+    const INPUTS = (puzzle.inputs || []).map(g => g.cell
+      ? { cells: [g.cell], elems: [g.elem], bonds: [] }
+      : { cells: g.cells, elems: g.elems, bonds: g.bonds || [] });
     const S = {
       puzzle, caps,
       tick: 0,
@@ -244,6 +249,32 @@
       }
     }
 
+    // -- glyph shapes are fixed: placement is translation + rotation only (no mirroring) --
+    // canonical footprints mirror Opus Magnum's: every two-cell glyph is an adjacent pair;
+    // purification is inputs a, a+d with output a+rot(d); animismus is salts a, a+d with
+    // vitae out a+rot(d) and mors out a+rot⁻¹(d); disposal is a cell plus its whole ring.
+    const dirIndex = (v) => DIRS.findIndex(d => d[0] === v[0] && d[1] === v[1]);
+    const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+    {
+      const pair = (fam, g) => {
+        if (g.length !== 2 || dirIndex(sub(g[1], g[0])) < 0) reject(fam + ' glyph must be two adjacent cells');
+      };
+      for (const fam of ['bonders', 'debonders', 'duplicators', 'projectors']) {
+        for (const g of (puzzle[fam] || [])) pair(fam, g);
+      }
+      for (const g of (puzzle.purifiers || [])) {
+        const k = g.length === 3 ? dirIndex(sub(g[1], g[0])) : -1;
+        if (k < 0 || dirIndex(sub(g[2], g[0])) !== mod6(k + 1)) reject('purifier glyph shape is fixed');
+      }
+      for (const g of (puzzle.animismus || [])) {
+        const k = g.length === 4 ? dirIndex(sub(g[1], g[0])) : -1;
+        if (k < 0 || dirIndex(sub(g[2], g[0])) !== mod6(k + 1) || dirIndex(sub(g[3], g[0])) !== mod6(k + 5)) {
+          reject('animismus glyph shape is fixed');
+        }
+      }
+    }
+    const disposalFootprint = (c) => [c, ...DIRS.map(d => add(c, d))];
+
     // -- layout validation: glyphs may not overlap each other; bases may not sit on glyphs --
     {
       const glyphCells = new Set();
@@ -253,9 +284,10 @@
         glyphCells.add(k);
       };
       for (const fam in GLYPH_PRICE) for (const g of (puzzle[fam] || [])) {
+        if (fam === 'disposals') { disposalFootprint(g).forEach(claim); continue; }
         for (const c of (Array.isArray(g[0]) ? g : [g])) claim(c);
       }
-      for (const g of (puzzle.inputs || [])) claim(g.cell);
+      for (const g of INPUTS) g.cells.forEach(claim);
       for (const c of ((puzzle.output && puzzle.output.cells) || [])) claim(c);
       for (const arm of S.arms) {
         if (!arm.mount.elbow && glyphCells.has(cellKey(arm.mount.ground))) {
@@ -269,8 +301,9 @@
       S.atoms.push({ id: S.nextAtom++, cell: a.cell.slice(), elem: a.elem, bonds: new Set() });
     }
 
-    for (const g of (puzzle.inputs || [])) S.area.add(cellKey(g.cell));
+    for (const g of INPUTS) for (const c of g.cells) S.area.add(cellKey(c));
     for (const fam in GLYPH_PRICE) for (const g of (puzzle[fam] || [])) {
+      if (fam === 'disposals') { disposalFootprint(g).forEach(c => S.area.add(cellKey(c))); continue; }
       for (const c of (Array.isArray(g[0]) ? g : [g])) S.area.add(cellKey(c));
     }
     for (const c of ((puzzle.output && puzzle.output.cells) || [])) S.area.add(cellKey(c));
@@ -375,9 +408,15 @@
       S.tick++;
       const ev = (e) => S.events.push(Object.assign({ tick: S.tick }, e));
 
-      // 1. spawn
-      for (const g of (puzzle.inputs || [])) {
-        if (!atomAt(g.cell)) S.atoms.push({ id: S.nextAtom++, cell: g.cell.slice(), elem: g.elem, bonds: new Set() });
+      // 1. spawn — a reagent refills only when its whole footprint is empty
+      for (const g of INPUTS) {
+        if (g.cells.every(c => !atomAt(c))) {
+          const born = g.cells.map((c, i) => {
+            const a = { id: S.nextAtom++, cell: c.slice(), elem: g.elems[i], bonds: new Set() };
+            S.atoms.push(a); return a;
+          });
+          for (const [i, j] of g.bonds) { born[i].bonds.add(born[j].id); born[j].bonds.add(born[i].id); }
+        }
       }
       if (S.atoms.length > caps.atoms) { S.fault = { kind: 'exhaustion', tick: S.tick, detail: 'atom cap' }; return S; }
 
@@ -572,8 +611,13 @@
         if (src && dst && CARDINALS.includes(src.elem) && dst.elem === 'Sa') { dst.elem = src.elem; ev({ type: 'note', msg: 'duplicated ' + src.elem }); }
       }
       const kill = new Set();
+      // conversion glyphs can't see bonded or held atoms (matches Opus Magnum)
+      const gripped = new Set();
+      for (const arm of S.arms) for (const h of arm.holds) if (h && h.kind === 'atom') gripped.add(h.id);
+      const loose = (a) => a && a.bonds.size === 0 && !gripped.has(a.id);
       for (const [cm, cq] of (puzzle.projectors || [])) {
-        const m = atomAt(cm), q = atomAt(cq);
+        const m = atomAt(cm), q0 = atomAt(cq);
+        const q = loose(q0) ? q0 : null;
         const rung = m ? METALS.indexOf(m.elem) : -1;
         if (m && q && q.elem === 'Hg' && rung >= 0 && rung < METALS.length - 1 && !kill.has(q.id)) {
           kill.add(q.id); m.elem = METALS[rung + 1];
@@ -581,7 +625,8 @@
         }
       }
       for (const [ca, cb, co] of (puzzle.purifiers || [])) {
-        const a = atomAt(ca), b = atomAt(cb);
+        const a0 = atomAt(ca), b0 = atomAt(cb);
+        const a = loose(a0) ? a0 : null, b = loose(b0) ? b0 : null;
         const rung = a ? METALS.indexOf(a.elem) : -1;
         if (a && b && a !== b && a.elem === b.elem && rung >= 0 && rung < METALS.length - 1
             && !atomAt(co) && !kill.has(a.id) && !kill.has(b.id)) {
@@ -591,7 +636,8 @@
         }
       }
       for (const [ca, cb, cv, cm] of (puzzle.animismus || [])) {
-        const a = atomAt(ca), b = atomAt(cb);
+        const a0 = atomAt(ca), b0 = atomAt(cb);
+        const a = loose(a0) ? a0 : null, b = loose(b0) ? b0 : null;
         if (a && b && a !== b && a.elem === 'Sa' && b.elem === 'Sa' && !atomAt(cv) && !atomAt(cm)
             && !kill.has(a.id) && !kill.has(b.id)) {
           kill.add(a.id); kill.add(b.id);
@@ -602,7 +648,7 @@
       }
       for (const g of (puzzle.disposals || [])) {
         const a = atomAt(g);
-        if (a) { kill.add(a.id); ev({ type: 'note', msg: 'disposed ' + a.elem }); }
+        if (loose(a)) { kill.add(a.id); ev({ type: 'note', msg: 'disposed ' + a.elem }); }
       }
       if (kill.size) {
         S.atoms = S.atoms.filter(a => !kill.has(a.id));
@@ -806,33 +852,125 @@
     {
       key: 'leachworks',
       name: 'The Leaching Works',
-      blurb: 'Water alone becomes salt, mors, vitae, salt — bonded in a chain. Three calcifiers and an animismus glyph feed a rocking wheel that drags the growing chain back and forth across a single bonder, then lays the finished compound around its own hub, where the product glyph waits. Five arms, one product every twenty ticks.',
-      expect: { cycles: 217 },
+      blurb: 'Water alone becomes a chain of salt, salt, mors, and vitae. Four waters calcify in transit; an animismus glyph — its shape fixed, like every glyph — turns a salt pair into vitae and mors; and a rocking wheel drags the growing chain back and forth across a single bonder before laying the finished compound around its own hub. Six arms, one product every twenty ticks.',
+      expect: { cycles: 199 },
       puzzle: {
         inputs: [
-          { cell: [-3, 0], elem: 'Wa' }, { cell: [0, -4], elem: 'Wa' }, { cell: [5, -1], elem: 'Wa' },
+          { cell: [-3, 0], elem: 'Wa' }, { cell: [1, -3], elem: 'Wa' },
+          { cell: [4, 0], elem: 'Wa' }, { cell: [4, -5], elem: 'Wa' },
         ],
-        calcifiers: [[-1, -1], [1, -3], [4, -2]],
-        animismus: [[[3, -1], [3, 0], [2, -2], [2, -3]]],
+        calcifiers: [[-1, -1], [0, -2], [4, -2], [4, -4]],
+        animismus: [[[2, -2], [3, -3], [3, -2], [2, -3]]],
         bonders: [[[0, -1], [1, -1]]],
         output: {
           cells: [[1, 0], [0, 1], [-1, 1], [-1, 0]],
-          elems: ['Sa', 'Mo', 'Vi', 'Sa'],
+          elems: ['Sa', 'Sa', 'Mo', 'Vi'],
           bonds: [[0, 1], [1, 2], [2, 3]],
         },
       },
       machine: {
         arms: [
           { id: 'W', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 3,
-            tape: { delay: 20, ops: ['G','+','-','W','W','W','-','W','W','W','W','W','W','W','-','-','D','+','+','+'] } },
+            tape: { delay: 5, ops: ['G','+','-','W','W','W','W','W','-','W','W','-','-','D','+','+','+','W','W','W'] } },
           { id: 'H', grippers: 1, len: 1, mount: { ground: [-2, 0] }, angle: 3,
-            tape: { delay: 15, ops: ['G','+','+','+','D','-','-','-','W','W','W','W','W','W','W','W','W','W','W','W'] } },
-          { id: 'N', grippers: 1, len: 1, mount: { ground: [0, -3] }, angle: 4,
-            tape: { delay: 23, ops: ['G','+','+','D','-','-','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
-          { id: 'P', grippers: 1, len: 1, mount: { ground: [4, -1] }, angle: 0,
-            tape: { ops: ['G','-','-','D','G','-','-','D','-','-','G','-','-','D','G','-','D','-','-','-'] } },
-          { id: 'F', grippers: 1, len: 1, mount: { ground: [1, -2] }, angle: 5,
-            tape: { delay: 17, ops: ['G','-','-','-','-','D','-','G','+','D','+','+','+','G','+','+','+','D','-','-'] } },
+            tape: { ops: ['G','+','+','+','D','-','-','-','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'F', grippers: 1, len: 1, mount: { ground: [1, -2] }, angle: 4,
+            tape: { delay: 3, ops: ['G','-','-','-','D','-','-','G','+','+','D','-','-','-','W','W','W','W','W','W'] } },
+          { id: 'V', grippers: 1, len: 1, mount: { ground: [2, -1] }, angle: 5,
+            tape: { delay: 13, ops: ['G','-','-','D','+','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'P', grippers: 1, len: 2, mount: { ground: [2, 0] }, angle: 0,
+            tape: { delay: 4, ops: ['G','-','-','D','+','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+          { id: 'Q', grippers: 1, len: 1, mount: { ground: [3, -4] }, angle: 5,
+            tape: { delay: 5, ops: ['G','+','+','D','-','-','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+        ],
+      },
+    },
+    {
+      key: 'airshipfuel',
+      name: 'Airship Fuel',
+      blurb: 'Imported from Opus Magnum (chapter one). Fire alone becomes a zigzag of salt and flame. A dimer factory bonds salt to fire — the salt calcified in transit — and two joiner arms pose the halves over a second bonder: one pivot for the left half, two for the right, because the zigzag bends both ways.',
+      expect: { cycles: 180 },
+      puzzle: {
+        inputs: [
+          { cell: [3, 2], elem: 'Fi' }, { cell: [5, 0], elem: 'Fi' }, { cell: [0, -3], elem: 'Fi' },
+        ],
+        calcifiers: [[3, 1]],
+        bonders: [[[2, 1], [3, 0]], [[0, 0], [1, 0]]],
+        output: { cells: [[-3, 4], [-3, 3], [-2, 2], [-2, 1]], elems: ['Sa', 'Fi', 'Fi', 'Sa'],
+                  bonds: [[0, 1], [1, 2], [2, 3]] },
+      },
+      machine: {
+        arms: [
+          { id: 'S', grippers: 1, len: 1, mount: { ground: [2, 2] }, angle: 0,
+            tape: { ops: ['G','-','-','D','+','+','W','W','W','G','-','-','D','+','+','W','W','W'] } },
+          { id: 'F', grippers: 1, len: 2, mount: { ground: [5, -2] }, angle: 1,
+            tape: { delay: 1, ops: ['G','+','D','-','W','W','W','W','W','G','+','D','-','W','W','W','W','W'] } },
+          { id: 'J', grippers: 1, len: 3, mount: { ground: [0, 3] }, angle: 5,
+            tape: { delay: 3, ops: ['G','-','P','W','W','W','W','W','W','W','W','W','W','-','D','+','+','W'] } },
+          { id: 'K', grippers: 1, len: 2, mount: { ground: [1, 2] }, angle: 5,
+            tape: { delay: 12, ops: ['G','Q','Q','-','D','+','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+        ],
+      },
+    },
+    {
+      key: 'surrenderflare',
+      name: 'Surrender Flare',
+      blurb: 'Imported from Opus Magnum (chapter two). An iron core sealed inside six salt petals must come out copper — but the projection glyph cannot reach a surrounded core. So: sever one petal, walk the open flower around the wheel past the quicksilver, pivot the core onto a bonder, and let the porter hand the petal back. The porter then carries the whole flower to the product glyph.',
+      expect: { cycles: 180 },
+      puzzle: {
+        inputs: [
+          { cells: [[2, -2], [3, -2], [2, -1], [1, -1], [1, -2], [2, -3], [3, -3]],
+            elems: ['Fe', 'Sa', 'Sa', 'Sa', 'Sa', 'Sa', 'Sa'],
+            bonds: [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]] },
+          { cell: [3, 2], elem: 'Hg' },
+        ],
+        debonders: [[[0, -2], [-1, -2]]],
+        projectors: [[[0, 2], [1, 2]]],
+        bonders: [[[-1, -1], [-2, -1]]],
+        output: { cells: [[-4, -1], [-3, -1], [-4, 0], [-5, 0], [-5, -1], [-4, -2], [-3, -2]],
+                  elems: ['Cu', 'Sa', 'Sa', 'Sa', 'Sa', 'Sa', 'Sa'],
+                  bonds: [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]] },
+      },
+      machine: {
+        arms: [
+          { id: 'M', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 5,
+            tape: { ops: ['G','-','W','W','+','+','+','W','W','W','+','P','+','W','D','+','+','W'] } },
+          { id: 'P', grippers: 1, len: 1, mount: { ground: [-2, -2] }, angle: 0,
+            tape: { delay: 3, ops: ['G','-','W','W','W','W','W','-','-','-','-','W','+','+','D','-','-','-'] } },
+          { id: 'Q', grippers: 1, len: 2, mount: { ground: [1, 4] }, angle: 5,
+            tape: { delay: 7, ops: ['G','-','D','+','W','W','W','W','W','W','W','W','W','W','W','W','W','W'] } },
+        ],
+      },
+    },
+    {
+      key: 'ablativecrystal',
+      name: 'Ablative Crystal',
+      blurb: 'Imported from Opus Magnum (journal III) — and still unsolved here. Two silver-core flowers must become one thirteen-atom crystal: a gold core, a ring of six fire, six salt at the points, twenty-four bonds. The reference machine below is an empty gesture; it idles until the cycle cap rejects it. The first machine to seal this record earns the name Great Work.',
+      expect: { fault: 'exhaustion' },
+      puzzle: {
+        caps: { cycles: 120 },
+        inputs: [
+          { cells: [[4, 0], [5, 0], [4, 1], [3, 1], [3, 0], [4, -1], [5, -1]],
+            elems: ['Ag', 'Sa', 'Fi', 'Sa', 'Fi', 'Sa', 'Fi'],
+            bonds: [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]] },
+        ],
+        purifiers: [[[0, -3], [1, -3], [0, -2]]],
+        bonders: [[[-1, 3], [0, 3]]],
+        debonders: [[[2, 2], [3, 2]]],
+        output: {
+          cells: [[-4, 0], [-3, 0], [-4, 1], [-5, 1], [-5, 0], [-4, -1], [-3, -1],
+                  [-3, 1], [-5, 2], [-6, 1], [-5, -1], [-3, -2], [-2, -1]],
+          elems: ['Au', 'Fi', 'Fi', 'Fi', 'Fi', 'Fi', 'Fi',
+                  'Sa', 'Sa', 'Sa', 'Sa', 'Sa', 'Sa'],
+          bonds: [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6],
+                  [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1],
+                  [1, 7], [2, 7], [2, 8], [3, 8], [3, 9], [4, 9],
+                  [4, 10], [5, 10], [5, 11], [6, 11], [6, 12], [1, 12]],
+        },
+      },
+      machine: {
+        arms: [
+          { id: 'A', grippers: 1, len: 1, mount: { ground: [0, 5] }, angle: 0, tape: { ops: ['W'] } },
         ],
       },
     },
@@ -987,13 +1125,29 @@
     }
     ctx.font = `700 10px 'Courier Prime', monospace`;
     for (const g of (ex.puzzle.inputs || [])) {
-      const [x, y] = Pc(g.cell);
+      const cells = g.cell ? [g.cell] : g.cells;
+      const elems = g.cell ? [g.elem] : g.elems;
       ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.arc(x, y, view.s * 0.62, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(42,35,24,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+      for (const [i, j] of (g.bonds || [])) {
+        const [x1, y1] = Pc(cells[i]), [x2, y2] = Pc(cells[j]);
+        ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = view.s * 0.12;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      cells.forEach((c, i) => {
+        const [x, y] = Pc(c);
+        ctx.beginPath(); ctx.arc(x, y, view.s * 0.62, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(42,35,24,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+        if (cells.length > 1) {
+          ctx.globalAlpha = 0.45; ctx.fillStyle = '#2A2318';
+          ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
+          ctx.fillText(elems[i], x, y);
+          ctx.globalAlpha = 1; ctx.font = `700 10px 'Courier Prime', monospace`;
+        }
+      });
       ctx.setLineDash([]);
       ctx.fillStyle = 'rgba(42,35,24,0.55)';
-      ctx.fillText('IN·' + g.elem, x, y + view.s * 0.95);
+      const [lx, ly] = Pc(cells[0]);
+      ctx.fillText('IN·' + elems[0], lx, ly + view.s * 0.95);
     }
     const out = ex.puzzle.output;
     if (out) {

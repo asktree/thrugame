@@ -55,6 +55,11 @@
   // ---------- simulation ----------
   function createSim(puzzle, machine) {
     const caps = Object.assign({}, DEFAULT_CAPS, puzzle.caps || {});
+    // reagents may be single atoms ({cell, elem}) or whole molecules ({cells, elems, bonds});
+    // a molecule reagent respawns whenever every one of its cells is empty
+    const INPUTS = (puzzle.inputs || []).map(g => g.cell
+      ? { cells: [g.cell], elems: [g.elem], bonds: [] }
+      : { cells: g.cells, elems: g.elems, bonds: g.bonds || [] });
     const S = {
       puzzle, caps,
       tick: 0,
@@ -118,6 +123,32 @@
       }
     }
 
+    // -- glyph shapes are fixed: placement is translation + rotation only (no mirroring) --
+    // canonical footprints mirror Opus Magnum's: every two-cell glyph is an adjacent pair;
+    // purification is inputs a, a+d with output a+rot(d); animismus is salts a, a+d with
+    // vitae out a+rot(d) and mors out a+rot⁻¹(d); disposal is a cell plus its whole ring.
+    const dirIndex = (v) => DIRS.findIndex(d => d[0] === v[0] && d[1] === v[1]);
+    const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+    {
+      const pair = (fam, g) => {
+        if (g.length !== 2 || dirIndex(sub(g[1], g[0])) < 0) reject(fam + ' glyph must be two adjacent cells');
+      };
+      for (const fam of ['bonders', 'debonders', 'duplicators', 'projectors']) {
+        for (const g of (puzzle[fam] || [])) pair(fam, g);
+      }
+      for (const g of (puzzle.purifiers || [])) {
+        const k = g.length === 3 ? dirIndex(sub(g[1], g[0])) : -1;
+        if (k < 0 || dirIndex(sub(g[2], g[0])) !== mod6(k + 1)) reject('purifier glyph shape is fixed');
+      }
+      for (const g of (puzzle.animismus || [])) {
+        const k = g.length === 4 ? dirIndex(sub(g[1], g[0])) : -1;
+        if (k < 0 || dirIndex(sub(g[2], g[0])) !== mod6(k + 1) || dirIndex(sub(g[3], g[0])) !== mod6(k + 5)) {
+          reject('animismus glyph shape is fixed');
+        }
+      }
+    }
+    const disposalFootprint = (c) => [c, ...DIRS.map(d => add(c, d))];
+
     // -- layout validation: glyphs may not overlap each other; bases may not sit on glyphs --
     {
       const glyphCells = new Set();
@@ -127,9 +158,10 @@
         glyphCells.add(k);
       };
       for (const fam in GLYPH_PRICE) for (const g of (puzzle[fam] || [])) {
+        if (fam === 'disposals') { disposalFootprint(g).forEach(claim); continue; }
         for (const c of (Array.isArray(g[0]) ? g : [g])) claim(c);
       }
-      for (const g of (puzzle.inputs || [])) claim(g.cell);
+      for (const g of INPUTS) g.cells.forEach(claim);
       for (const c of ((puzzle.output && puzzle.output.cells) || [])) claim(c);
       for (const arm of S.arms) {
         if (!arm.mount.elbow && glyphCells.has(cellKey(arm.mount.ground))) {
@@ -143,8 +175,9 @@
       S.atoms.push({ id: S.nextAtom++, cell: a.cell.slice(), elem: a.elem, bonds: new Set() });
     }
 
-    for (const g of (puzzle.inputs || [])) S.area.add(cellKey(g.cell));
+    for (const g of INPUTS) for (const c of g.cells) S.area.add(cellKey(c));
     for (const fam in GLYPH_PRICE) for (const g of (puzzle[fam] || [])) {
+      if (fam === 'disposals') { disposalFootprint(g).forEach(c => S.area.add(cellKey(c))); continue; }
       for (const c of (Array.isArray(g[0]) ? g : [g])) S.area.add(cellKey(c));
     }
     for (const c of ((puzzle.output && puzzle.output.cells) || [])) S.area.add(cellKey(c));
@@ -249,9 +282,15 @@
       S.tick++;
       const ev = (e) => S.events.push(Object.assign({ tick: S.tick }, e));
 
-      // 1. spawn
-      for (const g of (puzzle.inputs || [])) {
-        if (!atomAt(g.cell)) S.atoms.push({ id: S.nextAtom++, cell: g.cell.slice(), elem: g.elem, bonds: new Set() });
+      // 1. spawn — a reagent refills only when its whole footprint is empty
+      for (const g of INPUTS) {
+        if (g.cells.every(c => !atomAt(c))) {
+          const born = g.cells.map((c, i) => {
+            const a = { id: S.nextAtom++, cell: c.slice(), elem: g.elems[i], bonds: new Set() };
+            S.atoms.push(a); return a;
+          });
+          for (const [i, j] of g.bonds) { born[i].bonds.add(born[j].id); born[j].bonds.add(born[i].id); }
+        }
       }
       if (S.atoms.length > caps.atoms) { S.fault = { kind: 'exhaustion', tick: S.tick, detail: 'atom cap' }; return S; }
 
@@ -446,8 +485,13 @@
         if (src && dst && CARDINALS.includes(src.elem) && dst.elem === 'Sa') { dst.elem = src.elem; ev({ type: 'note', msg: 'duplicated ' + src.elem }); }
       }
       const kill = new Set();
+      // conversion glyphs can't see bonded or held atoms (matches Opus Magnum)
+      const gripped = new Set();
+      for (const arm of S.arms) for (const h of arm.holds) if (h && h.kind === 'atom') gripped.add(h.id);
+      const loose = (a) => a && a.bonds.size === 0 && !gripped.has(a.id);
       for (const [cm, cq] of (puzzle.projectors || [])) {
-        const m = atomAt(cm), q = atomAt(cq);
+        const m = atomAt(cm), q0 = atomAt(cq);
+        const q = loose(q0) ? q0 : null;
         const rung = m ? METALS.indexOf(m.elem) : -1;
         if (m && q && q.elem === 'Hg' && rung >= 0 && rung < METALS.length - 1 && !kill.has(q.id)) {
           kill.add(q.id); m.elem = METALS[rung + 1];
@@ -455,7 +499,8 @@
         }
       }
       for (const [ca, cb, co] of (puzzle.purifiers || [])) {
-        const a = atomAt(ca), b = atomAt(cb);
+        const a0 = atomAt(ca), b0 = atomAt(cb);
+        const a = loose(a0) ? a0 : null, b = loose(b0) ? b0 : null;
         const rung = a ? METALS.indexOf(a.elem) : -1;
         if (a && b && a !== b && a.elem === b.elem && rung >= 0 && rung < METALS.length - 1
             && !atomAt(co) && !kill.has(a.id) && !kill.has(b.id)) {
@@ -465,7 +510,8 @@
         }
       }
       for (const [ca, cb, cv, cm] of (puzzle.animismus || [])) {
-        const a = atomAt(ca), b = atomAt(cb);
+        const a0 = atomAt(ca), b0 = atomAt(cb);
+        const a = loose(a0) ? a0 : null, b = loose(b0) ? b0 : null;
         if (a && b && a !== b && a.elem === 'Sa' && b.elem === 'Sa' && !atomAt(cv) && !atomAt(cm)
             && !kill.has(a.id) && !kill.has(b.id)) {
           kill.add(a.id); kill.add(b.id);
@@ -476,7 +522,7 @@
       }
       for (const g of (puzzle.disposals || [])) {
         const a = atomAt(g);
-        if (a) { kill.add(a.id); ev({ type: 'note', msg: 'disposed ' + a.elem }); }
+        if (loose(a)) { kill.add(a.id); ev({ type: 'note', msg: 'disposed ' + a.elem }); }
       }
       if (kill.size) {
         S.atoms = S.atoms.filter(a => !kill.has(a.id));
