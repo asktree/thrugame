@@ -2234,6 +2234,10 @@
     view = { s, ox: CW / 2 - s * (minX + maxX) / 2, oy: CH / 2 - s * (minY + maxY) / 2 };
   }
 
+  // arm bases are hex fixtures bolted to the board, not discs: vertex radius as a
+  // fraction of the cell pitch, sized to sit just inside the field line of its cell.
+  const BASE_R = 0.52, PIN_R = 0.105;
+
   function hexPath(x, y, r) {
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
@@ -2372,12 +2376,14 @@
       const grip = gkey ? FX.grip(gkey + ':' + gi, h.holding ? 1 : 0, frameDt) : (h.holding ? 1 : 0);
       drawClaw(h.x, h.y, h.ang, grip, selected ? '#A0762B' : '#8A6A1E');
     });
+    // ground bases are solid, collidable plates; elbows are pins. Both are grid-aligned
+    // hexagons — the plate never turns with the arm it carries.
     if (elbow) {
-      ctx.beginPath(); ctx.arc(bx, by, view.s * 0.16, 0, Math.PI * 2);
+      hexPath(bx, by, view.s * PITCH * PIN_R);
       ctx.fillStyle = '#C9B57E'; ctx.fill();
       ctx.lineWidth = 1.4; ctx.strokeStyle = '#8A6A1E'; ctx.stroke();
     } else {
-      ctx.beginPath(); ctx.arc(bx, by, view.s * 0.35 * PITCH, 0, Math.PI * 2);
+      hexPath(bx, by, view.s * PITCH * BASE_R);
       ctx.fillStyle = '#C9B57E'; ctx.fill();
       ctx.lineWidth = selected ? 2.6 : 1.8;
       ctx.strokeStyle = selected ? '#A0762B' : '#8A6A1E'; ctx.stroke();

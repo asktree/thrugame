@@ -205,6 +205,9 @@
   const P = (x, y) => [view.ox + view.s * x, view.oy + view.s * y];
   const Pc = (cell) => { const p = GW.toPx(cell); return P(p[0], p[1]); };
   const PITCH = Math.sqrt(3);
+  // arm bases are hex fixtures bolted to the board, not discs: vertex radius as a
+  // fraction of the cell pitch, sized to sit just inside the field line of its cell.
+  const BASE_R = 0.52, PIN_R = 0.105;
 
   function hexPath(x, y, r) {
     ctx.beginPath();
@@ -379,13 +382,14 @@
           ctx.stroke();
         }
       });
-      // base: ground bases are solid, collidable plates; elbows are pins
+      // base: ground bases are solid, collidable plates; elbows are pins. Both are
+      // grid-aligned hexagons — the plate never turns with the arm it carries.
       if (arm.elbow) {
-        ctx.beginPath(); ctx.arc(bx, by, view.s * 0.16, 0, Math.PI * 2);
+        hexPath(bx, by, view.s * PITCH * PIN_R);
         ctx.fillStyle = '#C9B57E'; ctx.fill();
         ctx.lineWidth = 1.4; ctx.strokeStyle = '#8A6A1E'; ctx.stroke();
       } else {
-        ctx.beginPath(); ctx.arc(bx, by, view.s * 0.35 * PITCH, 0, Math.PI * 2);
+        hexPath(bx, by, view.s * PITCH * BASE_R);
         ctx.fillStyle = arm.carried ? '#D9C58C' : '#C9B57E'; ctx.fill();
         ctx.lineWidth = 1.8; ctx.strokeStyle = arm.carried ? '#8C3B2E' : '#8A6A1E'; ctx.stroke();
         ctx.beginPath(); ctx.arc(bx, by, view.s * 0.1, 0, Math.PI * 2);
