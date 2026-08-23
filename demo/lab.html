@@ -1308,6 +1308,14 @@
     for (const [fam, label] of SPECIAL_GLYPHS) {
       for (const g of (ex.puzzle[fam] || [])) {
         const cells = Array.isArray(g[0]) ? g : [g];
+        if (fam === 'disposals') {
+          for (const d of GW.DIRS) {
+            const [x, y] = Pc([cells[0][0] + d[0], cells[0][1] + d[1]]);
+            hexPath(x, y, view.s * PITCH / 2 * 1.08);
+            ctx.fillStyle = 'rgba(140,59,46,0.07)'; ctx.fill();
+            ctx.strokeStyle = 'rgba(140,59,46,0.3)'; ctx.lineWidth = 1.2; ctx.stroke();
+          }
+        }
         for (const c of cells) {
           const [x, y] = Pc(c);
           hexPath(x, y, view.s * PITCH / 2 * 1.08);

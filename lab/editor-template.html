@@ -130,10 +130,7 @@
     <div class="part" data-glyph="purifiers">PURIFY<small>20g</small></div>
     <div class="part" data-glyph="animismus">ANIMA<small>20g</small></div>
     <div class="part" data-glyph="disposals">DISPOSE<small>0g</small></div>
-    <div class="sep"></div>
-    <span class="seg-label">REAGENTS</span>
-    <span id="reagentParts" style="display:contents"></span>
-    <span class="hint">drag parts onto the board · drag back here to remove<br>drag a gripper to aim &amp; lengthen · handles rotate · ctrl-z undoes</span>
+    <span class="hint">drag parts onto the board · drag back here to remove · reagents are the puzzle's fixed pool<br>drag a gripper to aim &amp; lengthen · handles rotate · ctrl-z undoes</span>
   </div>
 
   <div class="stagebox">
@@ -277,6 +274,8 @@
   const Pc = (cell) => { const p = GW.toPx(cell); return P(p[0], p[1]); };
   const cellAt = (mx, my) => GW.fromPx((mx - view.ox) / view.s, (my - view.oy) / view.s);
 
+  const dirIndex = (v) => GW.DIRS.findIndex(d => eq(d, v));
+  const TWO_CELL = { bonders: 1, debonders: 1, duplicators: 1, projectors: 1 };
   function glyphCells(g) {
     const a = g.at, k = g.rot || 0;
     if (SINGLE_CELL[g.type]) return [a];
@@ -284,6 +283,11 @@
     if (g.type === 'purifiers' || g.type === 'animismus') c.push(addc(a, GW.DIRS[mod6(k + 1)]));
     if (g.type === 'animismus') c.push(addc(a, GW.DIRS[mod6(k + 5)]));
     return c;
+  }
+  // the visual/interactive footprint: disposal is its whole seven-hex plate
+  function glyphFootprint(g) {
+    if (g.type === 'disposals') return [g.at, ...GW.DIRS.map(d => addc(g.at, d))];
+    return glyphCells(g);
   }
   function molCells(shape, at, rot) { return shape.rel.map(rc => addc(at, GW.rotK(rc, rot || 0))); }
   function inputCells(g) { return molCells(base().reagentShapes[g.ri], g.at, g.rot); }
@@ -380,7 +384,7 @@
   // ---------- view fitting ----------
   function fitView() {
     const cells = [];
-    for (const g of layout.glyphs) glyphCells(g).forEach(c => cells.push(c));
+    for (const g of layout.glyphs) glyphFootprint(g).forEach(c => cells.push(c));
     for (const g of layout.inputs) inputCells(g).forEach(c => cells.push(c));
     outputCells().forEach(c => cells.push(c));
     for (const a of layout.arms) if (a.mount.ground) cells.push(a.mount.ground);
@@ -422,6 +426,15 @@
     const cells = glyphCells(g);
     const bond = g.type === 'bonders';
     const col = bond ? '160,118,43' : '140,59,46';
+    if (g.type === 'disposals') {
+      // the whole seven-hex plate is the glyph; only the center does anything
+      for (const c of glyphFootprint(g).slice(1)) {
+        const [x, y] = Pc(c);
+        hexPath(x, y, view.s * PITCH / 2 * 1.08);
+        ctx.fillStyle = `rgba(${col},0.07)`; ctx.fill();
+        ctx.strokeStyle = `rgba(${col},${selected ? 0.55 : 0.3})`; ctx.lineWidth = 1.2; ctx.stroke();
+      }
+    }
     for (const c of cells) {
       const [x, y] = Pc(c);
       hexPath(x, y, view.s * PITCH / 2 * 1.08);
@@ -535,19 +548,15 @@
 
   function anchorOf(s) {
     if (!s) return null;
+    if (s.kind === 'arm') { const a = armById(s.id); return a && initPoses()[a.id].pos; }
     if (s.kind === 'glyph') return layout.glyphs[s.i] && layout.glyphs[s.i].at;
     if (s.kind === 'input') return layout.inputs[s.i] && layout.inputs[s.i].at;
     if (s.kind === 'output') return layout.output.at;
     return null;
   }
-  function rotOf(s) {
-    if (s.kind === 'glyph') return layout.glyphs[s.i].rot || 0;
-    if (s.kind === 'input') return layout.inputs[s.i].rot || 0;
-    if (s.kind === 'output') return layout.output.rot || 0;
-    return 0;
-  }
   function rotatable(s) {
     if (!s) return false;
+    if (s.kind === 'arm') return !!armById(s.id);
     if (s.kind === 'glyph') return !SINGLE_CELL[layout.glyphs[s.i].type];
     if (s.kind === 'input') return base().reagentShapes[layout.inputs[s.i].ri].rel.length > 1;
     if (s.kind === 'output') return base().productShape.rel.length > 1;
@@ -556,8 +565,18 @@
   function handlePx(s) {
     const a = anchorOf(s); if (!a) return null;
     const [ax, ay] = Pc(a);
-    const th = rotOf(s) * Math.PI / 3;
-    const r = view.s * PITCH * 1.45;
+    let th, r;
+    if (s.kind === 'arm') {
+      const arm = armById(s.id);
+      const p = initPoses()[arm.id];
+      th = mod6(p.rot + arm.angle) * Math.PI / 3;
+      r = view.s * PITCH * (arm.len + 0.7);
+    } else {
+      const rot = s.kind === 'glyph' ? (layout.glyphs[s.i].rot || 0)
+        : s.kind === 'input' ? (layout.inputs[s.i].rot || 0) : (layout.output.rot || 0);
+      th = rot * Math.PI / 3;
+      r = view.s * PITCH * 1.45;
+    }
     return [ax + r * Math.cos(th), ay + r * Math.sin(th), ax, ay];
   }
 
@@ -599,10 +618,6 @@
       } else if (drag.part.glyph) {
         ctx.globalAlpha = 0.55;
         drawGlyph({ type: drag.part.glyph, at: hoverCell, rot: 0 }, false);
-        ctx.globalAlpha = 1;
-      } else if (drag.part.input !== undefined) {
-        ctx.globalAlpha = 0.55;
-        drawInput({ ri: drag.part.input, at: hoverCell, rot: 0 }, false);
         ctx.globalAlpha = 1;
       }
     }
@@ -682,7 +697,9 @@
   }
   function pieceAt(cell) {
     for (let i = layout.glyphs.length - 1; i >= 0; i--) {
-      if (glyphCells(layout.glyphs[i]).some(c => eq(c, cell))) return { kind: 'glyph', i };
+      const g = layout.glyphs[i];
+      const idx = glyphFootprint(g).findIndex(c => eq(c, cell));
+      if (idx >= 0) return { kind: 'glyph', i, end: TWO_CELL[g.type] ? idx : undefined };
     }
     for (let i = layout.inputs.length - 1; i >= 0; i--) {
       if (inputCells(layout.inputs[i]).some(c => eq(c, cell))) return { kind: 'input', i };
@@ -703,13 +720,16 @@
   }
   function deleteSelected() {
     if (!sel) return;
+    if (sel.kind === 'input' || sel.kind === 'output') {
+      setStatus('reagents and the product are the puzzle\'s fixed pool — move them, don\'t remove them', 'bad');
+      return;
+    }
     withUndo(() => {
       if (sel.kind === 'arm') {
         const doomed = descendantsOf(sel.id);
         layout.arms = layout.arms.filter(a => !doomed.has(a.id));
         if (cursor && doomed.has(cursor.armId)) cursor = null;
       } else if (sel.kind === 'glyph') layout.glyphs.splice(sel.i, 1);
-      else if (sel.kind === 'input') layout.inputs.splice(sel.i, 1);
       sel = null;
     });
   }
@@ -765,9 +785,12 @@
     if (mode === 'edit') {
       const pal = document.createElement('div'); pal.className = 'oppal';
       pal.innerHTML = `<span class="seg-label">SET OP</span>`;
+      const OP_KEYS = { G: 'g', D: 'd', '+': 'q', '-': 'w', P: 'e', Q: 'r', W: 't' };
       for (const op of ['G', 'D', '+', '-', 'P', 'Q', 'W']) {
-        const b = document.createElement('button'); b.textContent = GLYPH[op];
-        b.title = { G: 'grab', D: 'release', '+': 'turn cw', '-': 'turn ccw', P: 'pivot cw', Q: 'pivot ccw', W: 'wait' }[op];
+        const b = document.createElement('button');
+        b.innerHTML = GLYPH[op] + ' <span style="opacity:.45;font-size:9px">' + OP_KEYS[op] + '</span>';
+        b.title = { G: 'grab', D: 'release', '+': 'turn cw', '-': 'turn ccw', P: 'pivot cw', Q: 'pivot ccw', W: 'wait' }[op]
+          + ' — key ' + OP_KEYS[op];
         b.addEventListener('click', () => setOp(op));
         pal.appendChild(b);
       }
@@ -874,7 +897,9 @@
       inputs: decoded.inputs || clone(b.defaultLayout.inputs),
       output: decoded.output ? { at: decoded.output.at, rot: decoded.output.rot } : clone(b.defaultLayout.output),
     };
-    lay.inputs = lay.inputs.filter(g => g.ri < b.reagentShapes.length);
+    // the reagent pool is fixed: exactly one placement per puzzle reagent
+    lay.inputs = b.reagentShapes.map((sh, ri) =>
+      lay.inputs.find(g => g.ri === ri) || clone(b.defaultLayout.inputs[ri]));
     lay.arms.forEach(a => { a.tape = a.tape || {}; a.tape.delay = a.tape.delay || 0; a.tape.ops = a.tape.ops || ['W']; });
     return lay;
   }
@@ -898,7 +923,7 @@
     sel = null; cursor = null; undoStack = []; redoStack = []; syncUndoButtons();
     enterEdit();
     document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', i === pIdx));
-    buildReagentTray(); fitView(); touched();
+    fitView(); touched();
     setStatus('imported ' + layout.arms.length + ' arm(s) into ' + BASES[idx].name, 'good');
     return true;
   }
@@ -980,9 +1005,9 @@
     // 4) glyph / input / output bodies
     const piece = pieceAt(cell);
     if (piece) {
-      sel = piece;
+      sel = { kind: piece.kind, i: piece.i };
       const a = anchorOf(piece);
-      drag = { kind: piece.kind, i: piece.i, grab: subc(a, cell), snap: snapshot(), moved: false };
+      drag = { kind: piece.kind, i: piece.i, end: piece.end, grab: subc(a, cell), snap: snapshot(), moved: false };
       refreshAll(); return;
     }
     // 5) pan
@@ -1017,6 +1042,21 @@
       const a = armById(drag.armId); if (!a) return;
       const m = mountFor(hoverCell, drag.armId);
       if (m && !(a.mount.ground && m.ground && eq(a.mount.ground, m.ground))) { a.mount = m; drag.moved = true; }
+    } else if (drag.kind === 'glyph' && drag.end !== undefined) {
+      // two-cell glyphs move by whichever end you grabbed; near the other end they pivot around it
+      const g = layout.glyphs[drag.i]; if (!g) return;
+      const other = drag.end === 0 ? addc(g.at, GW.DIRS[g.rot || 0]) : g.at;
+      if (eq(hoverCell, other)) return;
+      const d = subc(other, hoverCell), dToOther = dirIndex(d);
+      if (drag.end === 0) {
+        if (dToOther >= 0) { g.at = hoverCell.slice(); g.rot = dToOther; }       // pivot around the far end
+        else g.at = hoverCell.slice();                                          // translate, keep orientation
+      } else {
+        const dFrom = dirIndex(subc(hoverCell, other));
+        if (dFrom >= 0) g.rot = dFrom;                                          // pivot around the anchor
+        else g.at = subc(hoverCell, GW.DIRS[g.rot || 0]);                       // translate, dragged end on cursor
+      }
+      drag.moved = true;
     } else if (drag.kind === 'glyph' || drag.kind === 'input' || drag.kind === 'output') {
       const target = addc(hoverCell, drag.grab);
       const obj = drag.kind === 'glyph' ? layout.glyphs[drag.i]
@@ -1025,7 +1065,10 @@
     } else if (drag.kind === 'handle') {
       const a = anchorOf(sel); if (!a) return;
       const k = bearing6(Pc(a), mx, my);
-      if (sel.kind === 'glyph') layout.glyphs[sel.i].rot = k;
+      if (sel.kind === 'arm') {
+        const arm = armById(sel.id);
+        if (arm) arm.angle = mod6(k - initPoses()[arm.id].rot);
+      } else if (sel.kind === 'glyph') layout.glyphs[sel.i].rot = k;
       else if (sel.kind === 'input') layout.inputs[sel.i].rot = k;
       else if (sel.kind === 'output') layout.output.rot = k;
     }
@@ -1048,9 +1091,6 @@
           } else if (d.part.glyph) {
             layout.glyphs.push({ type: d.part.glyph, at: hoverCell.slice(), rot: 0 });
             sel = { kind: 'glyph', i: layout.glyphs.length - 1 };
-          } else if (d.part.input !== undefined) {
-            layout.inputs.push({ ri: d.part.input, at: hoverCell.slice(), rot: 0 });
-            sel = { kind: 'input', i: layout.inputs.length - 1 };
           }
         });
       }
@@ -1058,9 +1098,9 @@
     }
     // drop on the tray = remove (output snaps back instead)
     if (overTray(ev) && (d.kind === 'base' || d.kind === 'glyph' || d.kind === 'input' || d.kind === 'output')) {
-      if (d.kind === 'output') {
+      if (d.kind === 'output' || d.kind === 'input') {
         layout = JSON.parse(d.snap); touched();
-        setStatus('the product glyph is part of the puzzle — it can move, not vanish', 'bad');
+        setStatus('reagents and the product are the puzzle\'s fixed pool — they can move, not vanish', 'bad');
       } else {
         layout = JSON.parse(d.snap);
         if (d.kind === 'base') sel = { kind: 'arm', id: d.armId };
@@ -1076,28 +1116,10 @@
     el.addEventListener('mousedown', (ev) => {
       if (mode !== 'edit') return;
       ev.preventDefault();
-      const part = el.dataset.arm ? { arm: +el.dataset.arm }
-        : el.dataset.glyph ? { glyph: el.dataset.glyph }
-        : { input: +el.dataset.input };
+      const part = el.dataset.arm ? { arm: +el.dataset.arm } : { glyph: el.dataset.glyph };
       drag = { kind: 'new', part };
     });
   });
-  function buildReagentTray() {
-    const host = $('reagentParts');
-    host.innerHTML = '';
-    base().reagentShapes.forEach((sh, i) => {
-      const el = document.createElement('div');
-      el.className = 'part'; el.dataset.input = i;
-      el.innerHTML = (sh.elems.length > 1 ? sh.elems[0] + '·' + (sh.elems.length - 1) : sh.elems[0]) + '<small>free</small>';
-      el.title = 'reagent: ' + sh.elems.join('-');
-      el.addEventListener('mousedown', (ev) => {
-        if (mode !== 'edit') return;
-        ev.preventDefault();
-        drag = { kind: 'new', part: { input: i } };
-      });
-      host.appendChild(el);
-    });
-  }
 
   canvas.addEventListener('wheel', (ev) => {
     ev.preventDefault();
@@ -1116,6 +1138,8 @@
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
     if (mode !== 'edit') return;
+    const KEY_OPS = { g: 'G', d: 'D', q: '+', w: '-', e: 'P', r: 'Q', t: 'W' };
+    if (!ev.altKey && KEY_OPS[ev.key.toLowerCase()] && cursor) { setOp(KEY_OPS[ev.key.toLowerCase()]); ev.preventDefault(); return; }
     if (ev.key === '[') rotateSelected(-1);
     else if (ev.key === ']') rotateSelected(1);
     else if (ev.key === 'Delete' || ev.key === 'Backspace') { if (sel) { deleteSelected(); ev.preventDefault(); } }
@@ -1167,7 +1191,7 @@
     document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
     layout = loadDraft() || layoutFrom({ arms: clone(base().refArms) });
     sel = null; cursor = null; undoStack = []; redoStack = []; syncUndoButtons();
-    enterEdit(); buildReagentTray(); fitView(); refreshAll(); hud();
+    enterEdit(); fitView(); refreshAll(); hud();
     try { history.replaceState(null, '', '#' + key()); } catch (e) {}
   }
   const tabs = $('tabs');
