@@ -171,6 +171,15 @@ const CASES = EXAMPLES.concat([{
   machine: { arms: [{ id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0,
     tape: { delay: 0, ops: ['G', '+'] } }] },
   expect: { fault: 'collision' },
+}, {
+  // repeat markers travel through the codec symbolically; the sim must run the
+  // normative expansion (G + R - R -> G + G + - -), same in C as in JS
+  key: 'repeat',
+  puzzle: { caps: { cycles: 24 }, inputs: [{ cell: [1, 0], elem: 'Sa' }] },
+  machine: { arms: [{ id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0,
+    tape: { delay: 0, ops: ['G', '+', 'R', '-', 'R'] } }] },
+  // the carried atom sweeps back through the respawned reagent on the wrap
+  expect: { fault: 'collision' },
 }]);
 
 const exNames = [];

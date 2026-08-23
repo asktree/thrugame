@@ -61,8 +61,11 @@ enum {                              /* invalid-machine rejections (pre-run) */
   GW_ERR_CAPACITY,                  /* exceeds a GW_MAX_* build bound */
 };
 
-/* ---- opcodes: G D + - P Q W -> 0..6 (codec order) ---- */
-enum { GW_OP_G, GW_OP_D, GW_OP_CW, GW_OP_CCW, GW_OP_PIV_CW, GW_OP_PIV_CCW, GW_OP_WAIT };
+/* ---- opcodes: G D + - P Q W R -> 0..7 (codec order). R (repeat) survives
+ * serialization for legibility; the sim runs the NORMATIVE expansion: each
+ * marker copies the ops since the end of the previous repeat block,
+ * consecutive markers copy that same segment, then the origin advances. ---- */
+enum { GW_OP_G, GW_OP_D, GW_OP_CW, GW_OP_CCW, GW_OP_PIV_CW, GW_OP_PIV_CCW, GW_OP_WAIT, GW_OP_REPEAT };
 
 typedef struct { int32_t q, r; } gw_cell_t;
 
@@ -166,6 +169,8 @@ typedef struct gw_sim {
   struct { uint32_t a, b; } bonds[GW_MAX_BONDS];
   uint8_t  narms;
   gw_arm_t arms[GW_MAX_ARMS];
+  /* expanded tapes (repeat markers resolved); arms[i].ops points here */
+  uint8_t  tapes[GW_MAX_ARMS][GW_MAX_TAPE];
   /* area: linear-probe set of packed cells */
   uint32_t area_count;
   uint32_t area_keys[GW_AREA_CAP];        /* 0 = empty; keys are packed+1 */

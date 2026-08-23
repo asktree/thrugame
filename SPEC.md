@@ -132,11 +132,14 @@ carried, turned, or re-planted.
 | `·` | WAIT | hold for one tick |
 | `»` | DELAY | start-of-tape only; holds one tick on the first pass, then vanishes from the loop |
 
-There is no repeat instruction in the rules. Editors may offer an Opus-Magnum-style
-**repeat marker** as authoring sugar — it expands, at edit time, into a copy of the
-ops since the previous repeat block (consecutive markers copy that same segment) —
-but what is submitted, encoded, and simulated is always the expanded tape. The
-engine and the wire format know nothing of it.
+A tape may also carry the **repeat marker** `⟲` (Opus Magnum's repeat). It is not
+an instruction the machine executes — before simulation the engine expands each
+marker into a copy of the ops accumulated since the end of the previous repeat
+block (consecutive markers copy that same frozen segment; after a run of markers
+the segment origin advances past the copies). The marker survives serialization
+so shared tapes stay legible, but **the machine always runs the expansion**, and
+the tape-length cap binds both the authored tape and its expansion. The expansion
+is normative: every verifier must reproduce it exactly.
 
 ## 7. The tick
 

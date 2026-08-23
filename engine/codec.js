@@ -16,7 +16,9 @@
  *     u8     initial angle (0..5)
  *     varint delay block count
  *     varint tape length
- *     tape   ops packed 3 bits each (G D ↻ ↺ ↷ ↶ · -> 0..6), little-endian within bytes
+ *     tape   ops packed 3 bits each (G D ↻ ↺ ↷ ↶ · ⟲ -> 0..7), little-endian within bytes.
+ *            Code 7 (⟲, 'R') is the repeat marker: kept symbolic on the wire so shared
+ *            solutions stay legible, expanded by the engine before simulation.
  *
  * Share strings are base64url of those bytes. Arm ids are not serialized —
  * they are labels, not identity; decode regenerates them as a0, a1, …
@@ -33,7 +35,7 @@
 (function (root) {
   'use strict';
 
-  const OPS = 'GD+-PQW';                       // 3-bit opcodes, in this order
+  const OPS = 'GD+-PQWR';                      // 3-bit opcodes, in this order; R = repeat marker
   const GRIPS = [1, 2, 3, 6];
   const GLYPH_TYPES = ['bonders', 'debonders', 'calcifiers', 'duplicators',
     'projectors', 'purifiers', 'animismus', 'disposals'];
@@ -136,8 +138,7 @@
       for (let k = 0; k < opsLen; k++) {
         if (bits < 3) { acc |= u8() << bits; bits += 8; }
         const code = acc & 7; acc >>>= 3; bits -= 3;
-        if (code > 6) throw new Error('codec: bad opcode');
-        ops.push(OPS[code]);
+        ops.push(OPS[code]);              // all 8 codes are valid; 7 is the repeat marker
       }
       arms.push({ id: 'a' + i, grippers, len, mount, angle, tape: { delay, ops } });
     }

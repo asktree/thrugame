@@ -152,8 +152,37 @@
   // which is the normative Q16.16 form of (2*RADIUS*PITCH)^2. K_SAMPLES = 12 is what
   // makes every sweep angle an exact multiple of 60/12 = 5°, hence the COS5/SIN5 table.
   const RADIUS = 0.35, K_SAMPLES = 12;
-  const OPS = 'GD+-PQW';
+  const OPS = 'GD+-PQWR';
   const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 9 };
+
+  // -- repeat expansion (NORMATIVE) --
+  // A tape may carry 'R' repeat markers (Opus Magnum semantics): each marker
+  // expands to a copy of the ops accumulated since the end of the previous
+  // repeat block (consecutive markers copy that SAME segment); after a run of
+  // markers the segment origin advances. The simulation always runs the
+  // expanded tape — the marker survives serialization purely for legibility,
+  // and the on-chain verifier must expand identically. `cells` maps display
+  // positions for editors: {src} entries are the author's ops ('R' shown as a
+  // marker), {ghost} entries are the copies, `engine` is the expanded index.
+  function expandTape(src) {
+    const ops = [], cells = [];
+    let segStart = 0, i = 0;
+    while (i < src.length) {
+      if (src[i] !== 'R') {
+        cells.push({ src: i, op: src[i], ghost: false, engine: ops.length });
+        ops.push(src[i]); i++;
+      } else {
+        const seg = ops.slice(segStart);      // frozen once per run of consecutive markers
+        while (i < src.length && src[i] === 'R') {
+          cells.push({ src: i, op: '⟲', ghost: false, engine: null });
+          for (const op of seg) { cells.push({ src: null, op, ghost: true, engine: ops.length }); ops.push(op); }
+          i++;
+        }
+        segStart = ops.length;
+      }
+    }
+    return { ops, cells };
+  }
 
   // ---------- simulation ----------
   function createSim(puzzle, machine) {
@@ -181,11 +210,13 @@
     // -- build arms --
     const byId = {};
     for (const a of machine.arms) {
+      const srcOps = (a.tape && a.tape.ops) || ['W'];
       const arm = {
         id: a.id, grippers: a.grippers || 1, len: a.len || 1,
         mount: a.mount,                       // {ground:[q,r]} | {elbow:{parent,at}}
         angle: a.angle || 0,                  // relative angle, 0..5
-        tape: { delay: (a.tape && a.tape.delay) || 0, ops: (a.tape && a.tape.ops) || ['W'] },
+        // src is as authored (repeat markers intact); ops is what runs
+        tape: { delay: (a.tape && a.tape.delay) || 0, src: srcOps, ops: expandTape(srcOps).ops },
         baseRot: 0,                           // frame rotation for ground arms
         carriers: [],                         // [{arm, grip}] while carried (ground arms only)
         carryRel: 0,
@@ -210,8 +241,10 @@
     for (const arm of S.arms) {
       if (!OFFSETS[arm.grippers]) reject('bad gripper count ' + arm.grippers);
       if (arm.len < 1 || arm.len > 3) reject('bad arm length');
+      // the cap binds both the authored tape and its expansion — what runs must fit
+      if (arm.tape.src.length + arm.tape.delay > caps.tapeLen) reject('tape too long');
       if (arm.tape.ops.length + arm.tape.delay > caps.tapeLen) reject('tape too long');
-      for (const op of arm.tape.ops) if (!OPS.includes(op)) reject('bad op ' + op);
+      for (const op of arm.tape.src) if (!OPS.includes(op)) reject('bad op ' + op);
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
         if (!p) reject('elbow parent missing');
@@ -413,6 +446,7 @@
     // -- tape --
     function opAt(arm, tick) { // tick is 1-based
       if (tick <= arm.tape.delay) return 'W';
+      if (!arm.tape.ops.length) return 'W';  // an all-marker tape expands to nothing
       return arm.tape.ops[(tick - arm.tape.delay - 1) % arm.tape.ops.length];
     }
 
@@ -751,7 +785,7 @@
   }
 
   const GW = {
-    createSim, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_STEP, RADIUS, K_SAMPLES, DEFAULT_CAPS,
+    createSim, expandTape, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_STEP, RADIUS, K_SAMPLES, DEFAULT_CAPS,
     toPx, fromPx: axialRound,   // float, render/editor-pointer use only (see note above)
     // the deterministic core, exported so a C reimplementation can be conformance-tested
     // primitive by primitive against this oracle.

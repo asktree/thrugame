@@ -67,8 +67,7 @@ int gw_decode_machine(const uint8_t *bytes, uint32_t len, gw_machine_t *out) {
       if (bits < 3) { acc |= (uint32_t)rd_u8(&r) << bits; bits += 8; }
       if (r.err) return GW_ERR_DECODE;
       uint8_t code = acc & 7; acc >>= 3; bits -= 3;
-      if (code > 6) return GW_ERR_DECODE;
-      a->ops[k] = code;
+      a->ops[k] = code;                   /* all 8 codes valid; 7 = repeat marker */
     }
   }
 
@@ -152,7 +151,7 @@ int32_t gw_encode_machine(const gw_machine_t *m, uint8_t *buf, uint32_t cap) {
     wr_varint(&w, a->ntape);
     uint32_t acc = 0; int bits = 0;
     for (uint32_t k = 0; k < a->ntape; k++) {
-      if (a->ops[k] > 6) return -1;
+      if (a->ops[k] > 7) return -1;
       acc |= (uint32_t)a->ops[k] << bits; bits += 3;
       while (bits >= 8) { wr_u8(&w, acc & 0xff); acc >>= 8; bits -= 8; }
     }

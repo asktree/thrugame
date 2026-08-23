@@ -821,5 +821,42 @@ function lcg(seed) {
   }
 }
 
+// ---- repeat markers: symbolic on the wire, expanded before simulation ----
+{
+  check('repeat: expansion semantics (G + R R - R -> G+G+G+--)',
+    GW.expandTape(['G', '+', 'R', 'R', '-', 'R']).ops.join('') === 'G+G+G+--');
+  check('repeat: leading marker expands to nothing, all-marker tape to empty',
+    GW.expandTape(['R', 'G']).ops.join('') === 'G'
+    && GW.expandTape(['R', 'R', 'R']).ops.length === 0);
+
+  const armsR = [{ id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0,
+    tape: { delay: 0, ops: ['G', '+', 'R', '-', 'R'] } }];
+  const bytes = CODEC.encodeMachine({ arms: armsR });
+  const dec = CODEC.decodeMachine(bytes);
+  check('repeat: codec carries the marker symbolically',
+    dec.arms[0].tape.ops.join('') === 'G+R-R');
+  check('repeat: codec round-trips byte-for-byte',
+    CODEC.encodeMachine(dec).join(',') === bytes.join(','));
+
+  const puz = { inputs: [{ cell: [1, 0], elem: 'Sa' }], caps: { cycles: 10 } };
+  const armsX = [{ id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0,
+    tape: { delay: 0, ops: GW.expandTape(armsR[0].tape.ops).ops } }];
+  const a = GW.createSim(puz, { arms: armsR }), b = GW.createSim(puz, { arms: armsX });
+  for (let i = 0; i < 10 && !a.state.fault; i++) { a.step(); b.step(); }
+  const snap = (S) => JSON.stringify({ f: S.fault, t: S.tick, area: S.area.size,
+    at: S.atoms.map(x => [x.id, x.cell, x.elem]) });
+  check('repeat: marker tape simulates identically to its pre-expanded form',
+    snap(a.state) === snap(b.state));
+
+  const rejects = (m) => { try { GW.createSim({}, m); return false; } catch (e) { return /tape too long/.test(e.message); } };
+  // 24 source ops (fits the cap), but 21 ops × 3 consecutive markers expands to 84 > 64
+  const runaway = Array(21).fill('+').concat(['R', 'R', 'R']);
+  check('repeat: cap binds the EXPANSION, not just the source',
+    !rejects({ arms: [{ id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0,
+      tape: { delay: 0, ops: ['G', 'R'] } }] })
+    && rejects({ arms: [{ id: 'A', grippers: 1, len: 1, mount: { ground: [0, 0] }, angle: 0,
+      tape: { delay: 0, ops: runaway } }] }));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

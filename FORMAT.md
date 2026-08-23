@@ -18,9 +18,10 @@ Ours differs where the games differ:
 - **Elbows** (arms mounted on arms) need a parent reference; OM has no arm
   mounting. Parents are referenced by index and must precede their children,
   so a valid byte string can never encode a mounting cycle.
-- No tracks, no instruction letters for repeat/reset, no part names — our part
-  vocabulary fits in one flags byte. (The editor's repeat marker is authoring
-  sugar: it expands to concrete ops before encoding, so the wire never carries it.)
+- No tracks, no reset instruction, no part names — our part vocabulary fits in
+  one flags byte. The repeat marker IS carried (opcode 7): tapes serialize as
+  authored so a shared solution reads the way its builder wrote it, and every
+  consumer expands the markers before simulating (see below).
 
 ## Layout
 
@@ -42,7 +43,14 @@ per arm, in submission order:
   bytes  ops, 3 bits each, packed little-endian within bytes
 ```
 
-Opcodes: `G`=0 `D`=1 `↻`=2 `↺`=3 `↷`=4 `↶`=5 `·`=6.
+Opcodes: `G`=0 `D`=1 `↻`=2 `↺`=3 `↷`=4 `↶`=5 `·`=6 `⟲`=7.
+
+`⟲` is the repeat marker, stored symbolically for legibility. Before simulation
+every consumer applies the **normative expansion**: a marker expands to a copy of
+the ops accumulated since the end of the previous repeat block; consecutive
+markers each copy that same frozen segment; after a run of markers the segment
+origin advances past the copies. (`G ↻ ⟲ ↺ ⟲` runs as `G ↻ G ↻ ↺ ↺`.) The
+tape-length cap applies to the authored ops and to the expansion alike.
 
 Arm **order is preserved** — submission order is the tournament tiebreak
 identity. Arm ids are labels, not identity, and are not serialized; decoding

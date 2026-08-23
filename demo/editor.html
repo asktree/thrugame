@@ -333,8 +333,37 @@
   // which is the normative Q16.16 form of (2*RADIUS*PITCH)^2. K_SAMPLES = 12 is what
   // makes every sweep angle an exact multiple of 60/12 = 5°, hence the COS5/SIN5 table.
   const RADIUS = 0.35, K_SAMPLES = 12;
-  const OPS = 'GD+-PQW';
+  const OPS = 'GD+-PQWR';
   const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 9 };
+
+  // -- repeat expansion (NORMATIVE) --
+  // A tape may carry 'R' repeat markers (Opus Magnum semantics): each marker
+  // expands to a copy of the ops accumulated since the end of the previous
+  // repeat block (consecutive markers copy that SAME segment); after a run of
+  // markers the segment origin advances. The simulation always runs the
+  // expanded tape — the marker survives serialization purely for legibility,
+  // and the on-chain verifier must expand identically. `cells` maps display
+  // positions for editors: {src} entries are the author's ops ('R' shown as a
+  // marker), {ghost} entries are the copies, `engine` is the expanded index.
+  function expandTape(src) {
+    const ops = [], cells = [];
+    let segStart = 0, i = 0;
+    while (i < src.length) {
+      if (src[i] !== 'R') {
+        cells.push({ src: i, op: src[i], ghost: false, engine: ops.length });
+        ops.push(src[i]); i++;
+      } else {
+        const seg = ops.slice(segStart);      // frozen once per run of consecutive markers
+        while (i < src.length && src[i] === 'R') {
+          cells.push({ src: i, op: '⟲', ghost: false, engine: null });
+          for (const op of seg) { cells.push({ src: null, op, ghost: true, engine: ops.length }); ops.push(op); }
+          i++;
+        }
+        segStart = ops.length;
+      }
+    }
+    return { ops, cells };
+  }
 
   // ---------- simulation ----------
   function createSim(puzzle, machine) {
@@ -362,11 +391,13 @@
     // -- build arms --
     const byId = {};
     for (const a of machine.arms) {
+      const srcOps = (a.tape && a.tape.ops) || ['W'];
       const arm = {
         id: a.id, grippers: a.grippers || 1, len: a.len || 1,
         mount: a.mount,                       // {ground:[q,r]} | {elbow:{parent,at}}
         angle: a.angle || 0,                  // relative angle, 0..5
-        tape: { delay: (a.tape && a.tape.delay) || 0, ops: (a.tape && a.tape.ops) || ['W'] },
+        // src is as authored (repeat markers intact); ops is what runs
+        tape: { delay: (a.tape && a.tape.delay) || 0, src: srcOps, ops: expandTape(srcOps).ops },
         baseRot: 0,                           // frame rotation for ground arms
         carriers: [],                         // [{arm, grip}] while carried (ground arms only)
         carryRel: 0,
@@ -391,8 +422,10 @@
     for (const arm of S.arms) {
       if (!OFFSETS[arm.grippers]) reject('bad gripper count ' + arm.grippers);
       if (arm.len < 1 || arm.len > 3) reject('bad arm length');
+      // the cap binds both the authored tape and its expansion — what runs must fit
+      if (arm.tape.src.length + arm.tape.delay > caps.tapeLen) reject('tape too long');
       if (arm.tape.ops.length + arm.tape.delay > caps.tapeLen) reject('tape too long');
-      for (const op of arm.tape.ops) if (!OPS.includes(op)) reject('bad op ' + op);
+      for (const op of arm.tape.src) if (!OPS.includes(op)) reject('bad op ' + op);
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
         if (!p) reject('elbow parent missing');
@@ -594,6 +627,7 @@
     // -- tape --
     function opAt(arm, tick) { // tick is 1-based
       if (tick <= arm.tape.delay) return 'W';
+      if (!arm.tape.ops.length) return 'W';  // an all-marker tape expands to nothing
       return arm.tape.ops[(tick - arm.tape.delay - 1) % arm.tape.ops.length];
     }
 
@@ -932,7 +966,7 @@
   }
 
   const GW = {
-    createSim, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_STEP, RADIUS, K_SAMPLES, DEFAULT_CAPS,
+    createSim, expandTape, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_STEP, RADIUS, K_SAMPLES, DEFAULT_CAPS,
     toPx, fromPx: axialRound,   // float, render/editor-pointer use only (see note above)
     // the deterministic core, exported so a C reimplementation can be conformance-tested
     // primitive by primitive against this oracle.
@@ -963,7 +997,9 @@
  *     u8     initial angle (0..5)
  *     varint delay block count
  *     varint tape length
- *     tape   ops packed 3 bits each (G D ↻ ↺ ↷ ↶ · -> 0..6), little-endian within bytes
+ *     tape   ops packed 3 bits each (G D ↻ ↺ ↷ ↶ · ⟲ -> 0..7), little-endian within bytes.
+ *            Code 7 (⟲, 'R') is the repeat marker: kept symbolic on the wire so shared
+ *            solutions stay legible, expanded by the engine before simulation.
  *
  * Share strings are base64url of those bytes. Arm ids are not serialized —
  * they are labels, not identity; decode regenerates them as a0, a1, …
@@ -980,7 +1016,7 @@
 (function (root) {
   'use strict';
 
-  const OPS = 'GD+-PQW';                       // 3-bit opcodes, in this order
+  const OPS = 'GD+-PQWR';                      // 3-bit opcodes, in this order; R = repeat marker
   const GRIPS = [1, 2, 3, 6];
   const GLYPH_TYPES = ['bonders', 'debonders', 'calcifiers', 'duplicators',
     'projectors', 'purifiers', 'animismus', 'disposals'];
@@ -1083,8 +1119,7 @@
       for (let k = 0; k < opsLen; k++) {
         if (bits < 3) { acc |= u8() << bits; bits += 8; }
         const code = acc & 7; acc >>>= 3; bits -= 3;
-        if (code > 6) throw new Error('codec: bad opcode');
-        ops.push(OPS[code]);
+        ops.push(OPS[code]);              // all 8 codes are valid; 7 is the repeat marker
       }
       arms.push({ id: 'a' + i, grippers, len, mount, angle, tape: { delay, ops } });
     }
@@ -2566,10 +2601,12 @@
     });
   }
 
-  // ---------- repeat expansion (editor middleware) ----------
-  // 'R' lives only in the editor's tapes: a repeat copies the segment from the end of the
-  // previous repeat-block up to here, consecutive R's each copy that same frozen segment,
-  // and the origin then advances past the copies. The engine and codec only ever see ops.
+  // ---------- repeat expansion (display copy of the engine's NORMATIVE GW.expandTape) ----------
+  // 'R' is a first-class opcode: the codec carries it symbolically (shared solutions stay
+  // legible) and the engine expands it before simulating. This local copy exists only for
+  // the EXPAND_CAP runaway guard — unbounded doubling would flood the display with ghost
+  // cells for a machine the engine rejects anyway. For any tape under the cap its ops
+  // output is identical to GW.expandTape's.
   const EXPAND_CAP = 512;
   function expandTape(src) {
     const ops = [], cells = [];
@@ -2582,8 +2619,8 @@
         const seg = ops.slice(segStart);                 // frozen once per run of consecutive R's
         while (i < src.length && src[i] === 'R') {
           cells.push({ src: i, op: '⟲', ghost: false, engine: null });
-          // runaway guard: separated R's double the tape, and past this every copy is already
-          // far over the engine's ceiling — keep walking the source so every cell stays editable
+          // display guard: past this cap every ghost is far over the engine's 64-op ceiling
+          // anyway — keep walking the source so every authored cell stays editable
           if (ops.length < EXPAND_CAP) {
             for (const op of seg) { cells.push({ src: null, op, ghost: true, engine: ops.length }); ops.push(op); }
           }
@@ -2596,9 +2633,10 @@
   }
   const expandedOps = (t) => { const o = expandTape(t.ops || ['W']).ops; return o.length ? o : ['W']; };
   const tapeCap = () => (base().caps && base().caps.tapeLen) || GW.DEFAULT_CAPS.tapeLen;
-  // every handoff to the engine or the codec goes through this
+  // tapes go to the engine and the codec AS AUTHORED — repeat markers included.
+  // The engine expands internally; the codec keeps them symbolic on the wire.
   const machineArms = () => layout.arms.map(a =>
-    Object.assign({}, a, { tape: { delay: a.tape.delay || 0, ops: expandedOps(a.tape) } }));
+    Object.assign({}, a, { tape: { delay: a.tape.delay || 0, ops: (a.tape.ops || ['W']).slice() } }));
 
   // ---------- tape editing ----------
   function tapeOf(id) { return armById(id).tape; }

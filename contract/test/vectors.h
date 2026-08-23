@@ -602,6 +602,27 @@ static const uint64_t DIGESTS_collide[] = {
 };
 static const gw_expect_t EXPECT_collide = { .ticks = 2, .status = 2, .fault_kind = 1, .fault_tick = 2, .cost = 20, .cycles = -1, .area = 3, .sum = -1 };
 
+/* ---- repeat ---- */
+static const uint8_t MACHINE_repeat[] = {1,1,0,0,0,0,0,5,208,119};
+static const gw_puzzle_t PUZZLE_repeat = {
+  .ninputs = 1, .inputs = {{1,{{1,0}},{0},0,{{0,0}}}},
+  .has_output = 0, .output = {0},
+  .natoms = 0, .atom_cells = {{0,0}}, .atom_elems = {0},
+  .nbonders = 0, .bonders = {{{0,0},{0,0}}},
+  .ndebonders = 0, .debonders = {{{0,0},{0,0}}},
+  .ncalcifiers = 0, .calcifiers = {{0,0}},
+  .nduplicators = 0, .duplicators = {{{0,0},{0,0}}},
+  .nprojectors = 0, .projectors = {{{0,0},{0,0}}},
+  .npurifiers = 0, .purifiers = {{{0,0},{0,0},{0,0}}},
+  .nanimismus = 0, .animismus = {{{0,0},{0,0},{0,0},{0,0}}},
+  .ndisposals = 0, .disposals = {{0,0}},
+  .caps = {24,4,64,64,24,9},
+};
+static const uint64_t DIGESTS_repeat[] = {
+  0x14a76c853f3a07d0ULL,0x547af6394e6752fbULL,0x300370b358e02e8eULL,0xf0d4d93cf4347fb9ULL,0x4b26f31012f7efd3ULL,0xef7088cb2f6d974cULL
+};
+static const gw_expect_t EXPECT_repeat = { .ticks = 6, .status = 2, .fault_kind = 1, .fault_tick = 6, .cost = 20, .cycles = -1, .area = 4, .sum = -1 };
+
 static const gw_vector_case_t VEC_CASES[] = {
   { "courier", &PUZZLE_courier, MACHINE_courier, sizeof(MACHINE_courier), DIGESTS_courier, &EXPECT_courier },
   { "ferris", &PUZZLE_ferris, MACHINE_ferris, sizeof(MACHINE_ferris), DIGESTS_ferris, &EXPECT_ferris },
@@ -615,6 +636,7 @@ static const gw_vector_case_t VEC_CASES[] = {
   { "ouroboros", &PUZZLE_ouroboros, MACHINE_ouroboros, sizeof(MACHINE_ouroboros), DIGESTS_ouroboros, &EXPECT_ouroboros },
   { "tugofwar", &PUZZLE_tugofwar, MACHINE_tugofwar, sizeof(MACHINE_tugofwar), DIGESTS_tugofwar, &EXPECT_tugofwar },
   { "collide", &PUZZLE_collide, MACHINE_collide, sizeof(MACHINE_collide), DIGESTS_collide, &EXPECT_collide },
+  { "repeat", &PUZZLE_repeat, MACHINE_repeat, sizeof(MACHINE_repeat), DIGESTS_repeat, &EXPECT_repeat },
 };
 
 #endif /* GW_VECTORS_H */

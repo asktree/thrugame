@@ -783,10 +783,12 @@
     });
   }
 
-  // ---------- repeat expansion (editor middleware) ----------
-  // 'R' lives only in the editor's tapes: a repeat copies the segment from the end of the
-  // previous repeat-block up to here, consecutive R's each copy that same frozen segment,
-  // and the origin then advances past the copies. The engine and codec only ever see ops.
+  // ---------- repeat expansion (display copy of the engine's NORMATIVE GW.expandTape) ----------
+  // 'R' is a first-class opcode: the codec carries it symbolically (shared solutions stay
+  // legible) and the engine expands it before simulating. This local copy exists only for
+  // the EXPAND_CAP runaway guard — unbounded doubling would flood the display with ghost
+  // cells for a machine the engine rejects anyway. For any tape under the cap its ops
+  // output is identical to GW.expandTape's.
   const EXPAND_CAP = 512;
   function expandTape(src) {
     const ops = [], cells = [];
@@ -799,8 +801,8 @@
         const seg = ops.slice(segStart);                 // frozen once per run of consecutive R's
         while (i < src.length && src[i] === 'R') {
           cells.push({ src: i, op: '⟲', ghost: false, engine: null });
-          // runaway guard: separated R's double the tape, and past this every copy is already
-          // far over the engine's ceiling — keep walking the source so every cell stays editable
+          // display guard: past this cap every ghost is far over the engine's 64-op ceiling
+          // anyway — keep walking the source so every authored cell stays editable
           if (ops.length < EXPAND_CAP) {
             for (const op of seg) { cells.push({ src: null, op, ghost: true, engine: ops.length }); ops.push(op); }
           }
@@ -813,9 +815,10 @@
   }
   const expandedOps = (t) => { const o = expandTape(t.ops || ['W']).ops; return o.length ? o : ['W']; };
   const tapeCap = () => (base().caps && base().caps.tapeLen) || GW.DEFAULT_CAPS.tapeLen;
-  // every handoff to the engine or the codec goes through this
+  // tapes go to the engine and the codec AS AUTHORED — repeat markers included.
+  // The engine expands internally; the codec keeps them symbolic on the wire.
   const machineArms = () => layout.arms.map(a =>
-    Object.assign({}, a, { tape: { delay: a.tape.delay || 0, ops: expandedOps(a.tape) } }));
+    Object.assign({}, a, { tape: { delay: a.tape.delay || 0, ops: (a.tape.ops || ['W']).slice() } }));
 
   // ---------- tape editing ----------
   function tapeOf(id) { return armById(id).tape; }

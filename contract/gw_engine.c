@@ -236,8 +236,32 @@ static void hand_q(gw_sim_t *S, int ai, int gi, int k, const motion_t *M,
 /* ---- tape ---- */
 static uint8_t op_at(const gw_arm_t *arm, uint32_t tick) {   /* tick is 1-based */
   if (tick <= arm->delay) return GW_OP_WAIT;
-  if (arm->ntape == 0) return GW_OP_WAIT;
+  if (arm->ntape == 0) return GW_OP_WAIT;                    /* all-marker tape expands to nothing */
   return arm->ops[(tick - arm->delay - 1) % arm->ntape];
+}
+/* NORMATIVE repeat expansion (mirrors the oracle's expandTape): a marker copies
+ * out[seg_start..len) as frozen at the FIRST marker of a consecutive run; each
+ * marker in the run copies that same segment; then seg_start advances.
+ * Returns expanded length, or -1 when it exceeds cap. */
+static int expand_tape(const uint8_t *src, int n, uint8_t *out, int cap) {
+  int len = 0, seg_start = 0, i = 0;
+  while (i < n) {
+    if (src[i] != GW_OP_REPEAT) {
+      if (len >= cap) return -1;
+      out[len++] = src[i++];
+    } else {
+      int s0 = seg_start, s1 = len;
+      while (i < n && src[i] == GW_OP_REPEAT) {
+        for (int k = s0; k < s1; k++) {
+          if (len >= cap) return -1;
+          out[len++] = out[k];
+        }
+        i++;
+      }
+      seg_start = len;
+    }
+  }
+  return len;
 }
 
 /* ---- init ---- */
@@ -264,6 +288,7 @@ int gw_sim_init(gw_sim_t *S, const gw_puzzle_t *puzzle, const gw_machine_t *m) {
   S->next_atom = 1;
   S->cycles = -1;
 
+  if (S->caps.parts > GW_MAX_ARMS || S->caps.tape_len > GW_MAX_TAPE) return GW_ERR_CAPACITY;
   if (m->narms > GW_MAX_ARMS) return GW_ERR_CAPACITY;
   S->narms = m->narms;
   if (S->narms > S->caps.parts) return GW_ERR_PARTS;
@@ -276,9 +301,12 @@ int gw_sim_init(gw_sim_t *S, const gw_puzzle_t *puzzle, const gw_machine_t *m) {
     a->ngrips = GRIP_NGRIPS[d->grippers];
     if (d->len < 1 || d->len > 3) return GW_ERR_LENGTH;
     a->len = d->len;
+    /* the cap binds both the authored tape and its expansion — what runs must fit */
     if ((int64_t)d->ntape + d->delay > S->caps.tape_len) return GW_ERR_TAPE;
-    for (int k = 0; k < d->ntape; k++) if (d->ops[k] > 6) return GW_ERR_OP;
-    a->ntape = d->ntape; a->ops = d->ops; a->delay = d->delay;
+    for (int k = 0; k < d->ntape; k++) if (d->ops[k] > 7) return GW_ERR_OP;
+    int xlen = expand_tape(d->ops, d->ntape, S->tapes[i], GW_MAX_TAPE);
+    if (xlen < 0 || (int64_t)xlen + d->delay > S->caps.tape_len) return GW_ERR_TAPE;
+    a->ntape = (uint8_t)xlen; a->ops = S->tapes[i]; a->delay = d->delay;
     a->angle = (uint8_t)mod6(d->angle);
     a->is_elbow = d->is_elbow;
     if (d->is_elbow) {
