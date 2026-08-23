@@ -430,6 +430,9 @@
             S.atoms.push(a); return a;
           });
           for (const [i, j] of g.bonds) { born[i].bonds.add(born[j].id); born[j].bonds.add(born[i].id); }
+          // render-only: tells a renderer where a reagent just refilled. Events are not
+          // part of the conformance digest and the C oracle does not implement them.
+          ev({ type: 'spawn', cells: g.cells.map(c => c.slice()), elems: g.elems.slice(), ids: born.map(a => a.id) });
         }
       }
       if (S.atoms.length > caps.atoms) { S.fault = { kind: 'exhaustion', tick: S.tick, detail: 'atom cap' }; return S; }
@@ -607,19 +610,19 @@
       // 4. glyphs — every transmutation acts on whatever rests on its cells (held or not)
       for (const [c1, c2] of (puzzle.bonders || [])) {
         const a1 = atomAt(c1), a2 = atomAt(c2);
-        if (a1 && a2 && !a1.bonds.has(a2.id)) { a1.bonds.add(a2.id); a2.bonds.add(a1.id); ev({ type: 'bond', a: a1.id, b: a2.id }); }
+        if (a1 && a2 && !a1.bonds.has(a2.id)) { a1.bonds.add(a2.id); a2.bonds.add(a1.id); ev({ type: 'bond', a: a1.id, b: a2.id, cells: [c1.slice(), c2.slice()] }); }
       }
       for (const [c1, c2] of (puzzle.debonders || [])) {
         const a1 = atomAt(c1), a2 = atomAt(c2);
-        if (a1 && a2 && a1.bonds.has(a2.id)) { a1.bonds.delete(a2.id); a2.bonds.delete(a1.id); ev({ type: 'note', msg: 'bond severed' }); }
+        if (a1 && a2 && a1.bonds.has(a2.id)) { a1.bonds.delete(a2.id); a2.bonds.delete(a1.id); ev({ type: 'note', msg: 'bond severed', fx: 'debond', a: a1.id, b: a2.id, cells: [c1.slice(), c2.slice()] }); }
       }
       for (const g of (puzzle.calcifiers || [])) {
         const a = atomAt(g);
-        if (a && CARDINALS.includes(a.elem)) { a.elem = 'Sa'; ev({ type: 'note', msg: 'calcified to salt' }); }
+        if (a && CARDINALS.includes(a.elem)) { a.elem = 'Sa'; ev({ type: 'note', msg: 'calcified to salt', fx: 'calcify', a: a.id, cells: [g.slice()] }); }
       }
       for (const [ce, cs] of (puzzle.duplicators || [])) {
         const src = atomAt(ce), dst = atomAt(cs);
-        if (src && dst && CARDINALS.includes(src.elem) && dst.elem === 'Sa') { dst.elem = src.elem; ev({ type: 'note', msg: 'duplicated ' + src.elem }); }
+        if (src && dst && CARDINALS.includes(src.elem) && dst.elem === 'Sa') { dst.elem = src.elem; ev({ type: 'note', msg: 'duplicated ' + src.elem, fx: 'duplicate', a: src.id, b: dst.id, elem: src.elem, cells: [ce.slice(), cs.slice()] }); }
       }
       const kill = new Set();
       // conversion glyphs can't see bonded or held atoms (matches Opus Magnum)
@@ -632,7 +635,7 @@
         const rung = m ? METALS.indexOf(m.elem) : -1;
         if (m && q && q.elem === 'Hg' && rung >= 0 && rung < METALS.length - 1 && !kill.has(q.id)) {
           kill.add(q.id); m.elem = METALS[rung + 1];
-          ev({ type: 'note', msg: 'projection → ' + m.elem });
+          ev({ type: 'note', msg: 'projection → ' + m.elem, fx: 'project', a: m.id, b: q.id, elem: m.elem, cells: [cm.slice(), cq.slice()] });
         }
       }
       for (const [ca, cb, co] of (puzzle.purifiers || [])) {
@@ -643,7 +646,7 @@
             && !atomAt(co) && !kill.has(a.id) && !kill.has(b.id)) {
           kill.add(a.id); kill.add(b.id);
           S.atoms.push({ id: S.nextAtom++, cell: co.slice(), elem: METALS[rung + 1], bonds: new Set() });
-          ev({ type: 'note', msg: 'purified → ' + METALS[rung + 1] });
+          ev({ type: 'note', msg: 'purified → ' + METALS[rung + 1], fx: 'purify', a: a.id, b: b.id, out: S.nextAtom - 1, elem: METALS[rung + 1], cells: [ca.slice(), cb.slice(), co.slice()] });
         }
       }
       for (const [ca, cb, cv, cm] of (puzzle.animismus || [])) {
@@ -654,12 +657,12 @@
           kill.add(a.id); kill.add(b.id);
           S.atoms.push({ id: S.nextAtom++, cell: cv.slice(), elem: 'Vi', bonds: new Set() });
           S.atoms.push({ id: S.nextAtom++, cell: cm.slice(), elem: 'Mo', bonds: new Set() });
-          ev({ type: 'note', msg: 'animismus → vitae + mors' });
+          ev({ type: 'note', msg: 'animismus → vitae + mors', fx: 'animismus', a: a.id, b: b.id, vi: S.nextAtom - 2, mo: S.nextAtom - 1, cells: [ca.slice(), cb.slice(), cv.slice(), cm.slice()] });
         }
       }
       for (const g of (puzzle.disposals || [])) {
         const a = atomAt(g);
-        if (loose(a)) { kill.add(a.id); ev({ type: 'note', msg: 'disposed ' + a.elem }); }
+        if (loose(a)) { kill.add(a.id); ev({ type: 'note', msg: 'disposed ' + a.elem, fx: 'dispose', a: a.id, elem: a.elem, cells: [g.slice()] }); }
       }
       if (kill.size) {
         S.atoms = S.atoms.filter(a => !kill.has(a.id));
@@ -682,7 +685,7 @@
           && molecule(got[0]).length === out.cells.length) {
           S.atoms = S.atoms.filter(a => !got.includes(a));
           S.products++;
-          ev({ type: 'product', n: S.products });
+          ev({ type: 'product', n: S.products, cells: out.cells.map(c => c.slice()), elems: out.elems.slice(), ids: got.map(a => a.id) });
           if (S.products >= caps.goal) { S.cycles = S.tick; ev({ type: 'complete', cycles: S.cycles }); }
         }
       }

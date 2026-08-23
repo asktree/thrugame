@@ -138,6 +138,9 @@
 /*__EXAMPLES__*/
 </script>
 <script>
+/*__FX__*/
+</script>
+<script>
 (() => {
   'use strict';
   const EXAMPLES = window.GW_EXAMPLES;
@@ -172,8 +175,20 @@
   canvas.width = CW * dpr; canvas.height = CH * dpr;
   canvas.style.aspectRatio = `${CW} / ${CH}`;
 
-  let exIdx = 0, sim, view, phase = 1, running = true, stepMs = 140, done = false;
+  let exIdx = 0, sim, view, phase = 1, running = true, stepMs = 140, done = false, frameDt = 16;
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // the effects overlay reads the sim's event log and paints on top of it; it never
+  // writes back. `view` is reassigned on every example, so hand it live accessors.
+  const FX = GWFX.create({
+    ctx: ctx,
+    s: () => view.s,
+    P: (x, y) => P(x, y),
+    Pc: (cell) => Pc(cell),
+    hex: (x, y, r) => hexPath(x, y, r),
+    fill: (elem) => (ELEMS[elem] || { fill: '#999' }).fill,
+  });
+  const fxOn = () => !reduceMotion && stepMs !== 0;
 
   // ---- view fitting: run a throwaway sim to completion, fit to its full footprint ----
   function fitView(ex) {
@@ -203,11 +218,18 @@
   function draw(f) {
     const rs = sim.renderState(f);
     const ex = EXAMPLES[exIdx];
+    const atomPx = {}, armPx = {};
+    for (const a of rs.atoms) atomPx[a.id] = P(a.x, a.y);
+    for (const arm of rs.arms) armPx[arm.id] = P(arm.base[0], arm.base[1]);
+    // atoms that appeared, changed element or vanished since the last frame become
+    // materialisations, colour eases and ghosts — the event log said why, this says when
+    FX.noteAtoms(rs.atoms);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#EAE0C9'; ctx.fillRect(0, 0, CW, CH);
+    FX.mat(CW, CH);
 
     // hex field
-    ctx.strokeStyle = 'rgba(160,140,95,0.18)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(160,140,95,0.17)'; ctx.lineWidth = 1;
     for (let q = -12; q <= 12; q++) for (let r = -12; r <= 12; r++) {
       const [x, y] = Pc([q, r]);
       if (x < -40 || x > CW + 40 || y < -40 || y > CH + 40) continue;
@@ -304,47 +326,59 @@
       ctx.fillStyle = '#33705E'; ctx.fillText('OUT', x, y - view.s * 1.0);
     }
 
+    // effects that belong beneath the cargo: glyph footprints firing, ripples
+    FX.draw('under', atomPx, armPx);
+
     // bonds
-    const atomPx = {};
-    for (const a of rs.atoms) atomPx[a.id] = P(a.x, a.y);
-    ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2;
+    ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2; ctx.lineCap = 'round';
     for (const [i, j] of rs.bonds) {
       if (!atomPx[i] || !atomPx[j]) continue;
       ctx.beginPath(); ctx.moveTo(...atomPx[i]); ctx.lineTo(...atomPx[j]); ctx.stroke();
     }
+    ctx.lineCap = 'butt';
 
     // atoms first, arms above — the claws grip in front of their cargo
     for (const a of rs.atoms) {
       const [x, y] = atomPx[a.id];
-      const E = ELEMS[a.elem] || { fill: '#999', label: '#000' };
-      ctx.beginPath(); ctx.arc(x, y, view.s * 0.35 * PITCH, 0, Math.PI * 2);
-      ctx.fillStyle = E.fill; ctx.fill();
-      ctx.lineWidth = 1.5; ctx.strokeStyle = '#2A2318'; ctx.stroke();
-      ctx.fillStyle = E.label;
-      ctx.font = `600 ${Math.round(view.s * 0.5)}px 'EB Garamond', serif`;
-      ctx.fillText(a.elem, x, y + 0.5);
+      const E = ELEMS[a.elem] || { fill: '#999', label: '#2A2318' };
+      const st = FX.atom(a.id, a.elem);
+      const r = view.s * 0.35 * PITCH * st.scale;
+      FX.atomBody(x, y, r, st.fill, st.alpha);
+      if (st.alpha > 0.3) {
+        ctx.save();
+        ctx.globalAlpha = st.alpha;
+        ctx.fillStyle = E.label;
+        ctx.font = `600 ${Math.round(view.s * 0.5 * st.scale)}px 'EB Garamond', serif`;
+        ctx.fillText(a.elem, x, y + 0.5);
+        ctx.restore();
+      }
     }
+
+    // sparks, welds, ghosts — above the atoms, below the machinery
+    FX.draw('over', atomPx, armPx);
 
     for (const arm of rs.arms) {
       const [bx, by] = P(arm.base[0], arm.base[1]);
-      for (const h of arm.hands) {
+      arm.hands.forEach((h, gi) => {
         const [hx, hy] = P(h.x, h.y);
         ctx.strokeStyle = '#8A6A1E'; ctx.lineWidth = view.s * 0.16; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(hx, hy); ctx.stroke();
         // three-fold symmetric grabber head; its pose is the arm's own direction
         ctx.beginPath(); ctx.arc(hx, hy, view.s * 0.13, 0, Math.PI * 2);
         ctx.lineWidth = view.s * 0.1; ctx.stroke();
-        const r1 = view.s * 0.17, r2 = view.s * (h.holding ? 0.38 : 0.5);
+        // the claw snaps shut on a grab and eases open on a release
+        const g = FX.grip(arm.id + ':' + gi, h.holding ? 1 : 0, frameDt);
+        const r1 = view.s * 0.17, r2 = view.s * (0.5 - 0.12 * g);
         ctx.lineWidth = view.s * 0.11;
         for (let k = 0; k < 3; k++) {
           const a = h.ang + Math.PI / 3 + k * (Math.PI * 2 / 3);
-          const bend = h.holding ? 0.35 : 0;
+          const bend = 0.35 * g;
           ctx.beginPath();
           ctx.moveTo(hx + Math.cos(a) * r1, hy + Math.sin(a) * r1);
           ctx.lineTo(hx + Math.cos(a + bend) * r2, hy + Math.sin(a + bend) * r2);
           ctx.stroke();
         }
-      }
+      });
       // base: ground bases are solid, collidable plates; elbows are pins
       if (arm.elbow) {
         ctx.beginPath(); ctx.arc(bx, by, view.s * 0.16, 0, Math.PI * 2);
@@ -396,7 +430,8 @@
   function events() {
     const host = document.getElementById('events');
     const st = sim.state;
-    const rows = st.events.slice(-7).map(e => {
+    // spawn events exist for the renderer's benefit; the log stays a log of decisions
+    const rows = st.events.filter(e => e.type !== 'spawn').slice(-7).map(e => {
       if (e.type === 'bond') return `<div><span class="t">c${e.tick}</span>bond formed</div>`;
       if (e.type === 'product') return `<div><span class="t">c${e.tick}</span><span class="good">product ${e.n}/${st.caps.goal} verified</span></div>`;
       if (e.type === 'note') return `<div><span class="t">c${e.tick}</span>${e.msg}</div>`;
@@ -436,13 +471,14 @@
     sim = GW.createSim(ex.puzzle, ex.machine);
     view = fitView(ex);
     phase = 1; done = false;
+    FX.reset(sim.state);
     buildTapes(); updateTapes(); hud(); events(); stamp();
     draw(1);
   }
 
   let last = performance.now();
   function frame(now) {
-    const dt = Math.min(120, now - last); last = now;
+    const dt = Math.min(120, now - last); last = now; frameDt = dt;
     if (running && !done) {
       if (stepMs === 0) {
         for (let i = 0; i < 40 && !done; i++) { sim.step(); if (sim.state.fault || sim.state.cycles !== null) break; }
@@ -457,7 +493,15 @@
         }
       }
     }
-    draw(Math.min(phase, 1));
+    // effects are enqueued from the events this step produced; at MAX the index still
+    // advances so nothing backs up, it just doesn't get painted
+    FX.harvest(sim.state, { stepMs: stepMs || 140, enabled: fxOn(), motion: !reduceMotion });
+    FX.prune();
+    // a collision freezes the render at the sweep instant it was found: the machine
+    // reads as jammed, not as reset
+    const frozen = FX.freezeF();
+    const p = Math.min(phase, 1);
+    draw(frozen !== null ? frozen : (reduceMotion ? p : GWFX.phaseEase(p)));
     requestAnimationFrame(frame);
   }
 
@@ -486,6 +530,9 @@
     stepMs = +b.dataset.ms;
     document.querySelectorAll('.speed .ctl').forEach(x => x.classList.toggle('on', x === b));
   }));
+
+  // test hook: lets automated checks watch the effect pool stay bounded
+  window.__gwFX = () => FX.debug();
 
   select(0);
   if (reduceMotion) { running = false; btnPlay.textContent = 'Play'; }
