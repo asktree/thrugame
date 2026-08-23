@@ -37,6 +37,7 @@
     font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
     color: var(--ink); background: var(--parch); border: 1px solid var(--ink-dim);
     padding: 5px 8px; cursor: grab; user-select: none; text-align: center; line-height: 1.35;
+    touch-action: none;
   }
   .part small { display: block; font-weight: 400; color: var(--ink-faint); font-size: 9px; }
   .part:hover { background: var(--parch-2); border-color: var(--ink); }
@@ -57,7 +58,7 @@
   button.ctl:disabled:hover { background: var(--parch); color: var(--ink); }
 
   .stagebox { border: 1px solid var(--line); background: var(--parch-2); position: relative; }
-  canvas#field { display: block; width: 100%; height: auto; }
+  canvas#field { display: block; width: 100%; height: auto; touch-action: none; }
   .stamp { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .4s; }
   .stamp.show { opacity: 1; }
   .stamp-inner {
@@ -143,9 +144,9 @@
     <button class="ctl" id="btnPlay" disabled>Pause</button>
     <button class="ctl" id="btnStep" disabled>Step</button>
     <div class="speed" role="group" aria-label="speed">
-      <button class="ctl" data-ms="700">1×</button>
-      <button class="ctl on" data-ms="350">2×</button>
-      <button class="ctl" data-ms="140">4×</button>
+      <button class="ctl" data-ms="560">0.25×</button>
+      <button class="ctl" data-ms="280">0.5×</button>
+      <button class="ctl on" data-ms="140">1×</button>
       <button class="ctl" data-ms="0">MAX</button>
     </div>
     <button class="ctl" id="btnUndo" title="ctrl-z">Undo</button>
@@ -261,7 +262,7 @@
   let sel = null;                      // {kind:'arm'|'glyph'|'input'|'output', id?|i?}
   let cursor = null;                   // tape cursor {armId, pos}
   let hoverCell = null, mousePx = null;
-  let running = false, stepMs = 350, phase = 1, done = false;
+  let running = false, stepMs = 140, phase = 1, done = false;
   let drag = null;
   let undoStack = [], redoStack = [], dragSnap = null;
 
@@ -515,7 +516,7 @@
     const r1 = view.s * 0.17, r2 = view.s * (holding ? 0.38 : 0.5);
     ctx.lineWidth = view.s * 0.11;
     for (let k = 0; k < 3; k++) {
-      const a = ang + k * (Math.PI * 2 / 3);
+      const a = ang + Math.PI / 3 + k * (Math.PI * 2 / 3);
       const bend = holding ? 0.35 : 0;
       ctx.beginPath();
       ctx.moveTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1);
@@ -647,11 +648,6 @@
       if (!atomPx[i] || !atomPx[j]) continue;
       ctx.beginPath(); ctx.moveTo(...atomPx[i]); ctx.lineTo(...atomPx[j]); ctx.stroke();
     }
-    for (const arm of rs.arms) {
-      drawArmShape(P(arm.base[0], arm.base[1]),
-        arm.hands.map(h => { const [x, y] = P(h.x, h.y); return { x, y, ang: h.ang, holding: h.holding }; }),
-        arm.elbow, false, false);
-    }
     for (const a of rs.atoms) {
       const [x, y] = atomPx[a.id];
       const E = ELEMS[a.elem] || { fill: '#999', label: '#000' };
@@ -662,6 +658,11 @@
       ctx.font = `600 ${Math.round(view.s * 0.5)}px 'EB Garamond', serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(a.elem, x, y + 0.5);
+    }
+    for (const arm of rs.arms) {
+      drawArmShape(P(arm.base[0], arm.base[1]),
+        arm.hands.map(h => { const [x, y] = P(h.x, h.y); return { x, y, ang: h.ang, holding: h.holding }; }),
+        arm.elbow, false, false);
     }
   }
 
@@ -980,10 +981,19 @@
   };
   const bearing6 = (fromPx, mx, my) => mod6(Math.round(Math.atan2(my - fromPx[1], mx - fromPx[0]) / (Math.PI / 3)));
 
-  canvas.addEventListener('mousedown', (ev) => {
-    if (mode !== 'edit') return;
+  // one drag at a time: a second finger mid-drag is ignored rather than allowed to corrupt it
+  let activeId = null;
+  const isActive = (ev) => activeId !== null && ev.pointerId === activeId;
+  const capture = (el, ev) => { try { el.setPointerCapture(ev.pointerId); } catch (e) {} };
+
+  canvas.addEventListener('pointerdown', (ev) => {
+    if (mode !== 'edit' || activeId !== null) return;
+    activeId = ev.pointerId;
+    capture(canvas, ev);
     const [mx, my] = mouse(ev);
     const cell = cellAt(mx, my);
+    mousePx = { x: mx, y: my, overCanvas: true };   // touch has no hover, so seed it here
+    hoverCell = cell;
 
     // 1) rotation handle of the current selection
     if (sel && rotatable(sel)) {
@@ -1014,7 +1024,8 @@
     refreshAll();
   });
 
-  window.addEventListener('mousemove', (ev) => {
+  window.addEventListener('pointermove', (ev) => {
+    if (activeId !== null && ev.pointerId !== activeId) return;
     const [mx, my] = mouse(ev);
     mousePx = { x: mx, y: my, overCanvas: overCanvas(ev) };
     hoverCell = cellAt(mx, my);
@@ -1068,11 +1079,15 @@
     }
   });
 
-  window.addEventListener('mouseup', (ev) => {
+  function endDrag(ev, cancelled) {
     if (!drag) return;
     const d = drag; drag = null;
     $('tray').classList.remove('droptarget');
     if (mode !== 'edit') return;
+    if (cancelled) {
+      if (d.snap !== undefined && snapshot() !== d.snap) { layout = JSON.parse(d.snap); touched(); }
+      refreshAll(); return;
+    }
     if (d.kind === 'new') {
       if (mousePx && mousePx.overCanvas && hoverCell) {
         withUndo(() => {
@@ -1110,13 +1125,26 @@
       cursor = nxt.kind === 'arm' ? { armId: nxt.id, pos: 0 } : cursor;
       refreshAll();
     }
+  }
+
+  window.addEventListener('pointerup', (ev) => {
+    if (!isActive(ev)) return;
+    activeId = null;
+    endDrag(ev, false);
+  });
+  window.addEventListener('pointercancel', (ev) => {
+    if (!isActive(ev)) return;
+    activeId = null;
+    endDrag(ev, true);
   });
 
-  // tray part dragging
+  // tray part dragging — the part element captures, so the drag survives crossing into the canvas
   document.querySelectorAll('#tray .part').forEach(el => {
-    el.addEventListener('mousedown', (ev) => {
-      if (mode !== 'edit') return;
+    el.addEventListener('pointerdown', (ev) => {
+      if (mode !== 'edit' || activeId !== null) return;
       ev.preventDefault();
+      activeId = ev.pointerId;
+      capture(el, ev);
       const part = el.dataset.arm ? { arm: +el.dataset.arm } : { glyph: el.dataset.glyph };
       drag = { kind: 'new', part };
     });
