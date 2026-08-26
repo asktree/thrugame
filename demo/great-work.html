@@ -271,9 +271,6 @@
   .d-num { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--brass); letter-spacing: .12em; flex: none; padding-top: 3px; }
   .d-body h3 { font-family: var(--display); font-weight: 700; font-size: 16px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); margin-bottom: 7px; }
   .d-body p { font-size: 14.5px; color: var(--ink-dim); line-height: 1.6; }
-  .d-item.stretch { border-style: dashed; background: transparent; }
-  .d-item.stretch .d-num, .d-item.stretch .d-body h3, .d-item.stretch .d-body p { color: var(--ink-faint); }
-  .d-tag { display: inline-block; font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-faint); border: 1px solid var(--line); padding: 2px 6px; margin-left: 10px; vertical-align: middle; white-space: nowrap; }
   @media (max-width: 880px) { .deliv { grid-template-columns: 1fr; } }
 
   footer {
@@ -522,22 +519,15 @@
           <p>The hex-grid simulator on Thru: accepts a machine as calldata, runs it deterministically, verifies six products, and seals cost, cycles, area, and sum on-chain.</p>
         </div>
       </div>
-      <div class="d-item stretch">
+      <div class="d-item">
         <div class="d-num">D·2</div>
         <div class="d-body">
-          <h3>Tournament system smart contract<span class="d-tag">stretch goal</span></h3>
-          <p>The prize escrow and the fuse: holds the pot, enforces the strictly-better rule, resets the countdown on each new champion, and pays out automatically at zero.</p>
-        </div>
-      </div>
-      <div class="d-item stretch">
-        <div class="d-num">D·3</div>
-        <div class="d-body">
-          <h3>Tournament puzzles<span class="d-tag">stretch goal</span></h3>
-          <p>A starter set of puzzles at graded difficulty — from first-bond simple to Airship-Fuel deep — each posted on-chain and ready to carry a prize.</p>
+          <h3>Leaderboards &amp; prize escrow</h3>
+          <p>The permanent record and the prize pot: every sealed solution takes its rank on-chain, and any puzzle can lock an escrow the contract itself awards by the strictly-better rule — no organizer, no judges.</p>
         </div>
       </div>
       <div class="d-item">
-        <div class="d-num">D·4</div>
+        <div class="d-num">D·3</div>
         <div class="d-body">
           <h3>Frontend client</h3>
           <p>A web client for the whole loop: browse puzzles and leaderboards, watch any sealed solution replay, and build machines in a visual editor that submits straight to the chain.</p>
