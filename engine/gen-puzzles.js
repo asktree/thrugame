@@ -1,9 +1,11 @@
 /*
  * GREAT WORK! — on-chain puzzle catalog generator
  *
- * Emits contract/puzzles.h from engine/examples.js. Every example with a product
- * glyph is a puzzle; its index in that list is the PUZZLE ID a submission names
- * in instruction data (see contract/program). Shapes are stored relative to
+ * Emits contract/puzzles.h from engine/examples.js. A puzzle is a PRODUCT
+ * (examples.js PRODUCTS, in order): its reagent shapes, product shape and caps
+ * come from the first example that makes it; the index in that list is the
+ * PUZZLE ID a submission names in instruction data (see contract/program).
+ * The examples themselves are just solutions of their puzzle. Shapes are stored relative to
  * their first cell — the editor's normalizeMol — because a codec v2 machine
  * places each one by anchor + rotation. Regenerate after any change to
  * examples.js; the conformance generator (gen-vectors.js) imports this module
@@ -71,22 +73,62 @@ function materialize(pz, machine) {
   return out;
 }
 
+// Where does a catalog shape sit on an example's board? Search anchor cell and
+// rotation until the placed shape reproduces the example's molecule exactly —
+// cells, elements and bonds — so examples that build the same product from a
+// differently ordered or rotated molecule still resolve to one catalog entry.
+function placeOn(shape, mol) {
+  const cells = mol.cell ? [mol.cell] : mol.cells;
+  const elems = mol.cell ? [mol.elem] : mol.elems;
+  const bonds = (mol.bonds || []).map(b => b[0] < b[1] ? b[0] + ':' + b[1] : b[1] + ':' + b[0]);
+  if (cells.length !== shape.rel.length || bonds.length !== shape.bonds.length) return null;
+  const key = (c) => c[0] + ',' + c[1];
+  const index = new Map(cells.map((c, i) => [key(c), i]));
+  for (let k = 0; k < 6; k++) {
+    for (const anchor of cells) {
+      const placed = molCells(shape, anchor, k);
+      const map = placed.map(c => index.get(key(c)));
+      if (map.some(i => i === undefined) || new Set(map).size !== map.length) continue;
+      if (shape.elems.some((e, i) => elems[map[i]] !== e)) continue;
+      const mapped = shape.bonds.map(([a, b]) => { const x = map[a], y = map[b]; return x < y ? x + ':' + y : y + ':' + x; });
+      if (mapped.sort().join('|') !== bonds.slice().sort().join('|')) continue;
+      return { at: anchor.slice(), rot: k };
+    }
+  }
+  return null;
+}
+
 function puzzles() {
-  return EXAMPLES.filter(ex => ex.puzzle.output).map((ex, id) => {
-    const pz = ex.puzzle;
+  return EXAMPLES.catalog().map((c) => {
+    const first = c.examples[0].puzzle;
+    const reagents = (first.inputs || []).map(normalizeMol);
+    const product = normalizeMol(first.output);
     return {
-      id, key: ex.key, name: ex.name,
-      caps: Object.assign({}, GW.DEFAULT_CAPS, pz.caps || {}),
-      reagents: (pz.inputs || []).map(normalizeMol),
-      product: normalizeMol(pz.output),
-      // the reference layout: every placement at its example position, unrotated
-      defaultLayout: {
-        glyphs: decomposeGlyphs(pz),
-        inputs: (pz.inputs || []).map((g, i) => ({ ri: i, at: (g.cell ? g.cell : g.cells[0]).slice(), rot: 0 })),
-        output: { at: pz.output.cells[0].slice(), rot: 0 },
-      },
-      refArms: ex.machine.arms,
-      expect: ex.expect || {},
+      id: c.id, key: c.key, name: c.name, blurb: c.blurb,
+      caps: Object.assign({}, GW.DEFAULT_CAPS, first.caps || {}),
+      reagents, product,
+      // every example that makes this product, as a codec v2 layout: its board
+      // decomposed into placements of the CATALOG shapes, its arms as authored
+      examples: c.examples.map(ex => {
+        const pz = ex.puzzle;
+        const used = new Set();
+        const inputs = (pz.inputs || []).map(mol => {
+          for (let ri = 0; ri < reagents.length; ri++) {
+            if (used.has(ri)) continue;
+            const at = placeOn(reagents[ri], mol);
+            if (at) { used.add(ri); return { ri, at: at.at, rot: at.rot }; }
+          }
+          throw new Error(ex.key + ': a reagent is not one of ' + c.key + "'s");
+        });
+        if (new Set(inputs.map(g => g.ri)).size !== reagents.length) throw new Error(ex.key + ': reagent set differs from ' + c.key);
+        const output = placeOn(product, pz.output);
+        if (!output) throw new Error(ex.key + ': product is not ' + c.name);
+        return {
+          key: ex.key, name: ex.name, blurb: ex.blurb, expect: ex.expect || {},
+          layout: { glyphs: decomposeGlyphs(pz), inputs, output },
+          arms: ex.machine.arms,
+        };
+      }),
     };
   });
 }
@@ -125,7 +167,7 @@ function header() {
   return out.join('\n') + '\n';
 }
 
-module.exports = { ELEMS, elemCode, puzzles, materialize, normalizeMol, decomposeGlyphs, glyphCells, molCells, header };
+module.exports = { ELEMS, elemCode, puzzles, materialize, normalizeMol, decomposeGlyphs, glyphCells, molCells, placeOn, header };
 
 if (require.main === module) {
   const dest = path.join(__dirname, '..', 'contract', 'puzzles.h');

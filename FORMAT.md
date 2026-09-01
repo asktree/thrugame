@@ -89,44 +89,56 @@ prefixes the puzzle key and a dot: `surrenderflare.AQMFAtT_…`
 The verifier program (`contract/program`) takes one instruction whose data is
 
 ```
-u8   instruction version  (1)
+u8   instruction version  (2)
 u8   puzzle id            index into the on-chain catalog (contract/puzzles.h,
-                          generated from engine/examples.js: every example with
-                          a product glyph, in order)
+                          generated from engine/examples.js: one entry per
+                          PRODUCT, in PRODUCTS order)
+u8   solution name length (<= 32 bytes)
+u8   username length      (<= 24 bytes)
+     solution name        UTF-8, no control bytes
+     username             UTF-8, no control bytes
      machine bytes        a version-2 payload, exactly as above
 ```
 
 The program rebuilds the puzzle from the catalog entry and the submission's own
 placements, runs the rules engine to its verdict, and — only if the machine is
-**verified** — emits one event and returns the sum. Anything else reverts, so
+**verified** — emits one event and returns 0. Anything else reverts, so
 nothing invalid ever lands on-chain: `0x100 + GW_ERR_*` for a rejected
 submission (malformed bytes, no layout, a reagent missing or placed twice, no
-product glyph, glyph overlap, …) and `0x200 + GW_FAULT_*` when the machine
-faulted (collision, overconstraint, grab-cycle, exhaustion).
+product glyph, glyph overlap, …), `0x200 + GW_FAULT_*` when the machine
+faulted (collision, overconstraint, grab-cycle, exhaustion), and small codes
+for a bad header (`0x01`), an unknown puzzle (`0x02`) or no solver (`0x05`).
 
-The **fee payer is the solver**: whoever signs the transaction owns the record.
+### Who is the solver
 
-### Score event (`GW!1`), little-endian, packed
+The solver is the beneficiary of the record, so it is never read from
+instruction data — only from an authorization the chain itself checked:
+
+- **called directly**: the fee payer, who signed the transaction;
+- **called by another program**: the first non-program account that program
+  vouched for (Thru invoke auth). The passkey manager does exactly that after
+  validating a WebAuthn signature over the wallet nonce, every account and the
+  full verifier instruction, so a passkey wallet becomes the solver and the fee
+  payer is merely paying. No authorized account → revert.
+
+A UI cannot credit a stranger: whatever key signed is who gets the record.
+
+### Score event (`GW!2`), little-endian, packed
 
 ```
-0   "GW!1"        magic + payload version
+0   "GW!2"        magic + payload version
 4   u8   puzzle id
 5   u8   reserved (0)
 6   u16  machine length
-8   32B  solver public key (the fee payer)
+8   32B  solver public key
 40  u32  cost      44  u32  cycles      48  u32  area      52  u32  sum
-56  machine bytes  (the submission, verbatim — anyone can replay it)
+56  u8   solution name length      57  u8  username length
+58  machine bytes, then solution name, then username
 ```
 
 The leaderboard is nothing but this event log filtered by program
-(`event.program.value == <program address>`), best entry per solver, lowest sum
-first, earliest slot breaking ties. `client/gw-chain.js` implements both
-directions; `client/submit.js` and `client/leaderboard.js` are the CLIs, and
-the same module bundles into the editor as `demo/gw-chain.js`.
-
-## Reference implementation
-
-`engine/codec.js` — `encodeMachine`/`decodeMachine` (bytes) and
-`encodeString`/`decodeString` (share strings), dependency-free, Node and
-browser. The golden test suite round-trips every example machine byte-for-byte
-and re-verifies identical simulation results.
+(`event.program.value == <program address>`): one row per distinct submitted
+solution, lowest sum first, earliest slot breaking ties. `client/gw-chain.js`
+implements both directions (direct and via a passkey wallet);
+`client/submit.js` and `client/leaderboard.js` are the CLIs, and the same
+module bundles into the editor as `demo/gw-chain.js`.

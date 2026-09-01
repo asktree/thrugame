@@ -641,10 +641,10 @@ static const gw_vector_case_t VEC_CASES[] = {
 
 static const uint8_t SUBMIT_0[] = {2,1,0,0,0,5,0,16,88,36,72,10,182,108,1,0,1,0,5,2,0,2,1,0,1,2,0,0,1,0,2,0};
 static const uint8_t SUBMIT_1[] = {2,1,0,0,0,1,0,16,88,36,72,10,182,108,1,0,2,1,1,2,0,0,2,2,1,1,2,2,1,1,0,2};
-static const uint8_t SUBMIT_2[] = {2,3,4,0,0,0,0,8,182,101,123,16,0,1,5,0,8,80,140,197,0,4,2,4,7,8,144,178,217,1,0,4,0,2,2,0,4,1,0,1,0,4,0,1,6,2,0};
-static const uint8_t SUBMIT_3[] = {2,3,4,0,0,2,0,8,182,101,123,16,0,1,5,0,8,80,140,197,0,5,4,0,7,8,144,178,217,1,0,3,4,4,2,0,1,4,2,1,3,0,2,1,7,6,2};
-static const uint8_t SUBMIT_4[] = {2,3,0,4,0,5,0,8,144,148,109,4,0,4,5,5,16,80,108,219,88,108,219,0,0,6,5,15,16,144,178,217,182,109,219,1,0,2,2,1,2,0,6,1,0,1,6,4,0,1,0,8,0};
-static const uint8_t SUBMIT_5[] = {2,3,0,3,4,1,0,8,144,148,109,4,3,0,1,5,16,80,108,219,88,108,219,0,5,0,1,15,16,144,178,217,182,109,219,1,0,3,2,3,2,0,3,6,2,1,9,6,2,1,7,0,2};
+static const uint8_t SUBMIT_2[] = {2,3,4,0,0,0,0,8,182,101,123,16,0,1,5,0,8,80,140,197,0,4,2,4,7,8,144,178,217,1,0,4,0,2,2,0,4,1,0,1,0,4,0,1,6,0,4};
+static const uint8_t SUBMIT_3[] = {2,3,4,0,0,2,0,8,182,101,123,16,0,1,5,0,8,80,140,197,0,5,4,0,7,8,144,178,217,1,0,3,4,4,2,0,1,4,2,1,3,0,2,1,5,6,0};
+static const uint8_t SUBMIT_4[] = {2,3,0,4,0,5,0,8,144,148,109,4,0,4,5,5,16,80,108,219,88,108,219,0,0,6,5,15,16,144,178,217,182,109,219,1,0,2,2,1,2,0,6,1,0,1,6,4,0,1,0,8,3};
+static const uint8_t SUBMIT_5[] = {2,3,0,3,4,1,0,8,144,148,109,4,3,0,1,5,16,80,108,219,88,108,219,0,5,0,1,15,16,144,178,217,182,109,219,1,0,3,2,3,2,0,3,6,2,1,9,6,2,1,7,0,5};
 static const uint8_t SUBMIT_6[] = {2,2,0,0,0,3,0,14,144,44,219,182,20,1,0,0,3,0,1,14,176,34,97,203,108,3,1,0,0,1,0,3,0,1,0,0,1,2,3,0,2,1,3,0,1,1,2,0};
 static const uint8_t SUBMIT_7[] = {2,2,0,0,0,5,0,14,144,44,219,182,20,1,0,4,0,2,1,14,176,34,97,203,108,3,1,0,2,0,2,3,0,2,1,2,1,2,2,2,2,6,1,2,1,0,1,2};
 static const uint8_t SUBMIT_8[] = {2,2,0,0,0,3,0,31,216,22,219,182,109,219,182,109,219,54,20,9,1,4,3,5,1,31,144,20,72,10,36,5,146,2,73,177,109,27,1,4,2,0,4,2,0,1,0,0,1,6,5,0,1,0,2,0};
@@ -666,22 +666,22 @@ static const uint8_t SUBMIT_23[] = {2,1,0,0,0,5,0,16,88,36,72,10,182,108,1,0,0,2
 static const gw_submit_case_t VEC_SUBMITS[] = {
   { "courier r0", 0, SUBMIT_0, sizeof(SUBMIT_0), GW_OK, 1, 0, 30, 142, 7, 179 },
   { "courier r2", 0, SUBMIT_1, sizeof(SUBMIT_1), GW_OK, 1, 0, 30, 142, 7, 179 },
-  { "ferris r0", 1, SUBMIT_2, sizeof(SUBMIT_2), GW_OK, 1, 0, 80, 75, 8, 163 },
-  { "ferris r2", 1, SUBMIT_3, sizeof(SUBMIT_3), GW_OK, 1, 0, 80, 75, 8, 163 },
-  { "crane r0", 2, SUBMIT_4, sizeof(SUBMIT_4), GW_OK, 1, 0, 70, 147, 15, 232 },
-  { "crane r2", 2, SUBMIT_5, sizeof(SUBMIT_5), GW_OK, 1, 0, 70, 147, 15, 232 },
-  { "beadwheel r0", 3, SUBMIT_6, sizeof(SUBMIT_6), GW_OK, 1, 0, 50, 125, 11, 186 },
-  { "beadwheel r2", 3, SUBMIT_7, sizeof(SUBMIT_7), GW_OK, 1, 0, 50, 125, 11, 186 },
-  { "goldladder r0", 4, SUBMIT_8, sizeof(SUBMIT_8), GW_OK, 1, 0, 64, 277, 12, 353 },
-  { "goldladder r2", 4, SUBMIT_9, sizeof(SUBMIT_9), GW_OK, 1, 0, 64, 277, 12, 353 },
-  { "leachworks r0", 5, SUBMIT_10, sizeof(SUBMIT_10), GW_OK, 1, 0, 190, 179, 26, 395 },
-  { "leachworks r2", 5, SUBMIT_11, sizeof(SUBMIT_11), GW_OK, 1, 0, 190, 179, 26, 395 },
-  { "airshipfuel r0", 6, SUBMIT_12, sizeof(SUBMIT_12), GW_OK, 1, 0, 110, 162, 26, 298 },
-  { "airshipfuel r2", 6, SUBMIT_13, sizeof(SUBMIT_13), GW_OK, 1, 0, 110, 162, 26, 298 },
-  { "surrenderflare r0", 7, SUBMIT_14, sizeof(SUBMIT_14), GW_OK, 1, 0, 105, 162, 55, 322 },
-  { "surrenderflare r2", 7, SUBMIT_15, sizeof(SUBMIT_15), GW_OK, 1, 0, 105, 162, 55, 322 },
-  { "ablativecrystal r0", 8, SUBMIT_16, sizeof(SUBMIT_16), GW_OK, 2, 4, 65, -1, 29, -1 },
-  { "ablativecrystal r2", 8, SUBMIT_17, sizeof(SUBMIT_17), GW_OK, 2, 4, 65, -1, 29, -1 },
+  { "ferris r0", 0, SUBMIT_2, sizeof(SUBMIT_2), GW_OK, 1, 0, 80, 75, 8, 163 },
+  { "ferris r2", 0, SUBMIT_3, sizeof(SUBMIT_3), GW_OK, 1, 0, 80, 75, 8, 163 },
+  { "crane r0", 0, SUBMIT_4, sizeof(SUBMIT_4), GW_OK, 1, 0, 70, 147, 15, 232 },
+  { "crane r2", 0, SUBMIT_5, sizeof(SUBMIT_5), GW_OK, 1, 0, 70, 147, 15, 232 },
+  { "beadwheel r0", 1, SUBMIT_6, sizeof(SUBMIT_6), GW_OK, 1, 0, 50, 125, 11, 186 },
+  { "beadwheel r2", 1, SUBMIT_7, sizeof(SUBMIT_7), GW_OK, 1, 0, 50, 125, 11, 186 },
+  { "goldladder r0", 2, SUBMIT_8, sizeof(SUBMIT_8), GW_OK, 1, 0, 64, 277, 12, 353 },
+  { "goldladder r2", 2, SUBMIT_9, sizeof(SUBMIT_9), GW_OK, 1, 0, 64, 277, 12, 353 },
+  { "leachworks r0", 3, SUBMIT_10, sizeof(SUBMIT_10), GW_OK, 1, 0, 190, 179, 26, 395 },
+  { "leachworks r2", 3, SUBMIT_11, sizeof(SUBMIT_11), GW_OK, 1, 0, 190, 179, 26, 395 },
+  { "airshipfuel r0", 4, SUBMIT_12, sizeof(SUBMIT_12), GW_OK, 1, 0, 110, 162, 26, 298 },
+  { "airshipfuel r2", 4, SUBMIT_13, sizeof(SUBMIT_13), GW_OK, 1, 0, 110, 162, 26, 298 },
+  { "surrenderflare r0", 5, SUBMIT_14, sizeof(SUBMIT_14), GW_OK, 1, 0, 105, 162, 55, 322 },
+  { "surrenderflare r2", 5, SUBMIT_15, sizeof(SUBMIT_15), GW_OK, 1, 0, 105, 162, 55, 322 },
+  { "ablativecrystal r0", 6, SUBMIT_16, sizeof(SUBMIT_16), GW_OK, 2, 4, 65, -1, 29, -1 },
+  { "ablativecrystal r2", 6, SUBMIT_17, sizeof(SUBMIT_17), GW_OK, 2, 4, 65, -1, 29, -1 },
   { "v1 bytes carry no layout", 0, SUBMIT_18, sizeof(SUBMIT_18), GW_ERR_LAYOUT, 0, 0, 0, 0, 0, 0 },
   { "a reagent left out", 0, SUBMIT_19, sizeof(SUBMIT_19), GW_ERR_REAGENTS, 0, 0, 0, 0, 0, 0 },
   { "a reagent placed twice", 0, SUBMIT_20, sizeof(SUBMIT_20), GW_ERR_REAGENTS, 0, 0, 0, 0, 0, 0 },

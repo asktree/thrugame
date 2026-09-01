@@ -41,17 +41,23 @@ thru program create <seed> build/thruvm/bin/gw_verifier_c.bin
 Deployed addresses live in `contract/program/DEPLOYMENTS.md`; the client reads
 the current one from `client/gw-chain.js` (`NETWORKS.alphanet.program`).
 
-## Seal a solution, read the record
+## Submit a solution, read the record
 
 ```
 cd client && npm install
-node submit.js courier.AgEAAAAFABBYJEgKtmwBAAEABQIAAgEAAQIAAAEAAgA   # a code from the editor
-node leaderboard.js [courier]
+node submit.js amalgam.AgEAAAAFABBYJEgKtmwBAAEABQIAAgEAAQIAAAEAAgA --name "Courier" --user you
+node leaderboard.js [amalgam]
 npm run bundle                    # refresh demo/gw-chain.js after changing gw-chain.js
 ```
 
-The signing key comes from `GW_PRIVATE_KEY` (64 hex chars) or the `default`
-key in `~/.thru/cli/config.yaml`. A key that has never been used bootstraps its
-own account; alphanet fees are zero, so no faucet is involved. In the editor
-the same flow runs behind the **Seal on-chain** button with a wallet kept in
-the browser.
+Puzzles are named for their product (`amalgam`, `saltedquicksilver`,
+`transmutedgold`, `vitalsalts`, `airshipfuel`, `surrenderflare`,
+`ablativecrystal`); a solution names itself and its author on the way in.
+
+The CLI's signing key comes from `GW_PRIVATE_KEY` (64 hex chars) or the
+`default` key in `~/.thru/cli/config.yaml`; a key that has never been used
+bootstraps its own account, and alphanet fees are zero, so no faucet is
+involved. In the editor the **Submit to chain** button runs the same flow;
+with a passkey signed in, the submission goes through Thru's passkey manager
+and the record is credited to the passkey wallet — whatever signed is who gets
+the record.

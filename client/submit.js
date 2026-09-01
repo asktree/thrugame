@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-/* Seal a solution on-chain.
+/* Submit a solution to the chain.
  *
- *   node client/submit.js <puzzle>.<code>            e.g. courier.AgEAAAAFABBYJEgK…
+ *   node client/submit.js <puzzle>.<code> [--name "The Courier"] [--user asktree]
  *
- * The code is what the editor's "copy code" button produces. The signing key
- * (the solver identity) comes from GW_PRIVATE_KEY (64 hex chars) or, failing
- * that, the `default` key in ~/.thru/cli/config.yaml. A key that has never
- * been used bootstraps its own account first. */
+ * The code is what the editor's "copy code" button produces (puzzle = product
+ * key, e.g. amalgam.AgEAAAAFABBYJEgK…; old example keys still resolve). The
+ * signing key — the solver — comes from GW_PRIVATE_KEY (64 hex chars) or,
+ * failing that, the `default` key in ~/.thru/cli/config.yaml. A key that has
+ * never been used bootstraps its own account first. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -27,12 +28,16 @@ function loadKey() {
   throw new Error('no key: set GW_PRIVATE_KEY (64 hex) or add a default key with `thru keys generate default`');
 }
 
-const arg = process.argv[2];
-if (!arg || arg.indexOf('.') < 0) { console.error('usage: node client/submit.js <puzzle>.<code>'); process.exit(2); }
+const argv = process.argv.slice(2);
+const opt = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : ''; };
+const arg = argv.find(a => a.indexOf('.') > 0 && !a.startsWith('--'));
+if (!arg) { console.error('usage: node client/submit.js <puzzle>.<code> [--name "…"] [--user "…"]'); process.exit(2); }
 const dot = arg.indexOf('.');
 const key = arg.slice(0, dot), data = arg.slice(dot + 1).trim();
-const puzzle = PUZ.puzzles().find(p => p.key === key);
-if (!puzzle) { console.error('unknown puzzle "' + key + '"; known: ' + PUZ.puzzles().map(p => p.key).join(', ')); process.exit(2); }
+const puzzles = PUZ.puzzles();
+const puzzle = puzzles.find(p => p.key === key) || puzzles.find(p => p.examples.some(e => e.key === key));
+if (!puzzle) { console.error('unknown puzzle "' + key + '"; known: ' + puzzles.map(p => p.key).join(', ')); process.exit(2); }
+const name = opt('--name'), user = opt('--user');
 const machineBytes = CODEC.fromString(data);
 CODEC.decodeMachine(machineBytes);   // fail fast on a bad code, before touching the chain
 
@@ -43,9 +48,9 @@ console.log(`puzzle  ${puzzle.name} (id ${puzzle.id}), ${machineBytes.length} by
 const acct = await ensureAccount(client, wallet);
 if (acct.created) console.log(`account created (${acct.signature})`);
 try {
-  const r = await submitSolution(client, { wallet, puzzleId: puzzle.id, machineBytes });
-  console.log(`SEALED  sum ${r.sum}  (${r.computeUnits} compute units)  txn ${r.signature}`);
+  const r = await submitSolution(client, { wallet, puzzleId: puzzle.id, machineBytes, name, user });
+  console.log(`SUBMITTED  sum ${r.sum === null ? '(see leaderboard)' : r.sum}  (${r.computeUnits} compute units)  txn ${r.signature}`);
 } catch (e) {
-  console.error('not sealed: ' + e.message + (e.signature ? '  txn ' + e.signature : ''));
+  console.error('not submitted: ' + e.message + (e.signature ? '  txn ' + e.signature : ''));
   process.exit(1);
 }

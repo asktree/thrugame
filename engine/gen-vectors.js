@@ -240,12 +240,12 @@ emit('');
 // Rejections pin the verifier's own checks on top of the engine's. ----
 {
   const subs = [];
-  const rotLayout = (p, k) => ({
-    arms: p.refArms.map(a => a.mount.elbow ? a
+  const rotLayout = (ex, k) => ({
+    arms: ex.arms.map(a => a.mount.elbow ? a
       : Object.assign({}, a, { mount: { ground: GW.rotK(a.mount.ground, k) }, angle: ((a.angle || 0) + k) % 6 })),
-    glyphs: p.defaultLayout.glyphs.map(g => ({ type: g.type, at: GW.rotK(g.at, k), rot: (g.rot + k) % 6 })),
-    inputs: p.defaultLayout.inputs.map(g => ({ ri: g.ri, at: GW.rotK(g.at, k), rot: (g.rot + k) % 6 })),
-    output: { at: GW.rotK(p.defaultLayout.output.at, k), rot: (p.defaultLayout.output.rot + k) % 6 },
+    glyphs: ex.layout.glyphs.map(g => ({ type: g.type, at: GW.rotK(g.at, k), rot: (g.rot + k) % 6 })),
+    inputs: ex.layout.inputs.map(g => ({ ri: g.ri, at: GW.rotK(g.at, k), rot: (g.rot + k) % 6 })),
+    output: { at: GW.rotK(ex.layout.output.at, k), rot: (ex.layout.output.rot + k) % 6 },
   });
   const settle = (sim, caps) => {
     const S = sim.state;
@@ -268,17 +268,19 @@ emit('');
       status: 0, fault: 0, cost: 0, cycles: 0, area: 0, sum: 0 });
   };
   for (const p of PUZ.puzzles()) {
-    const ex = EXAMPLES.find(e => e.key === p.key);
-    const r0 = accept(`${p.key} r0`, p, rotLayout(p, 0));
-    // the materialized reference must be the example itself
-    const ref = settle(GW.createSim(ex.puzzle, CODEC.decodeMachine(CODEC.encodeMachine(ex.machine))), p.caps);
-    for (const f of ['status', 'fault', 'cost', 'cycles', 'area', 'sum']) {
-      if (r0[f] !== ref[f]) throw new Error(`${p.key}: materialized ${f} ${r0[f]} != example ${ref[f]}`);
+    for (const exl of p.examples) {
+      const ex = EXAMPLES.find(e => e.key === exl.key);
+      const r0 = accept(`${exl.key} r0`, p, rotLayout(exl, 0));
+      // the materialized example must be the example itself
+      const ref = settle(GW.createSim(ex.puzzle, CODEC.decodeMachine(CODEC.encodeMachine(ex.machine))), p.caps);
+      for (const f of ['status', 'fault', 'cost', 'cycles', 'area', 'sum']) {
+        if (r0[f] !== ref[f]) throw new Error(`${exl.key}: materialized ${f} ${r0[f]} != example ${ref[f]}`);
+      }
+      accept(`${exl.key} r2`, p, rotLayout(exl, 2));
     }
-    accept(`${p.key} r2`, p, rotLayout(p, 2));
   }
   {
-    const p = PUZ.puzzles()[0], lay = rotLayout(p, 0);
+    const p = PUZ.puzzles()[0], lay = rotLayout(p.examples[0], 0);
     reject('v1 bytes carry no layout', p, { arms: lay.arms }, 'GW_ERR_LAYOUT');
     reject('a reagent left out', p, Object.assign({}, lay, { inputs: lay.inputs.slice(1) }), 'GW_ERR_REAGENTS');
     reject('a reagent placed twice', p, Object.assign({}, lay, { inputs: [lay.inputs[0], lay.inputs[0]] }), 'GW_ERR_REAGENTS');
