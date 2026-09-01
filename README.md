@@ -57,7 +57,9 @@ Puzzles are named for their product (`amalgam`, `saltedquicksilver`,
 The CLI's signing key comes from `GW_PRIVATE_KEY` (64 hex chars) or the
 `default` key in `~/.thru/cli/config.yaml`; a key that has never been used
 bootstraps its own account, and alphanet fees are zero, so no faucet is
-involved. In the editor the **Submit to chain** button runs the same flow;
-with a passkey signed in, the submission goes through Thru's passkey manager
-and the record is credited to the passkey wallet — whatever signed is who gets
-the record.
+involved. In the editor, **Create passkey** makes the player an app-specific
+passkey wallet (Thru's passkey manager); **Submit to chain** then routes the
+submission through it, so the record is credited to the passkey wallet —
+whatever signed is who gets the record. **Claim to Thru wallet** connects
+Unto's hosted wallet (`@thru/wallet`) and moves the passkey wallet's balance
+to that account, where it can be spent or off-ramped.

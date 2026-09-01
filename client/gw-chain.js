@@ -281,18 +281,15 @@ export async function findPasskeyWallet(client, { credentialId, rpId }) {
 }
 const accountData = (acct) => (acct && acct.data && acct.data.data) || (acct && acct.data) || new Uint8Array();
 
-// Submit through the passkey wallet. `sign(challenge)` must return the WebAuthn
-// assertion over exactly these bytes: { signatureR, signatureS,
-// authenticatorData, clientDataJSON } (what @thru/passkey/web's signWithPasskey
-// returns). The challenge commits to the wallet nonce, every account, and the
-// full verifier instruction — puzzle, names, machine — so what the passkey
-// approves is what gets recorded, credited to the wallet and nothing else.
-export async function submitViaPasskey(client, { meta, walletAddress, authIdx = 0, payer, puzzleId, machineBytes, name, user, sign, program = NETWORKS.alphanet.program, onUpdate }) {
-  if (!walletAddress) walletAddress = await passkeyWalletAddress(meta);
-  const ix = encodeSubmission(puzzleId, machineBytes, { name, user });
-  const verifier = Pubkey.from(program).toBytes();
-  const ctx = PM.buildAccountContext({ walletAddress, readWriteAccounts: [], readOnlyAccounts: [verifier], feePayerAddress: payer.address, programAddress: PASSKEY_MANAGER });
-  const target = { programIdx: ctx.getAccountIndex(verifier), instructionData: ix };
+// One passkey-approved call: the passkey signs a challenge over the wallet
+// nonce, every account, and the target instruction (program index + bytes);
+// the manager verifies it and executes the target with the wallet vouched
+// for. `sign(challenge)` returns the WebAuthn assertion (what
+// @thru/passkey/web's signWithPasskey returns). `makeTarget(ctx)` gets the
+// account context and returns { programIdx, instructionData }.
+async function passkeyValidate(client, { walletAddress, authIdx = 0, payer, readWrite = [], readOnly = [], makeTarget, sign, onUpdate }) {
+  const ctx = PM.buildAccountContext({ walletAddress, readWriteAccounts: readWrite, readOnlyAccounts: readOnly, feePayerAddress: payer.address, programAddress: PASSKEY_MANAGER });
+  const target = makeTarget(ctx);
   const nonce = await PM.fetchWalletNonce(client, walletAddress);
   const challenge = await PM.createValidateChallenge(nonce, ctx.accountAddresses, ctx.walletAccountIdx, authIdx, target);
   const a = await sign(challenge);
@@ -311,6 +308,49 @@ export async function submitViaPasskey(client, { meta, walletAddress, authIdx = 
   const last = await track(client, raw, onUpdate);
   return settle(client, last, fmtSignature(raw.slice(raw.length - 64)));
 }
+
+// Submit through the passkey wallet: the passkey approves exactly this
+// instruction — puzzle, names, machine — and the record is credited to the
+// wallet, nothing else.
+export async function submitViaPasskey(client, { meta, walletAddress, authIdx = 0, payer, puzzleId, machineBytes, name, user, sign, program = NETWORKS.alphanet.program, onUpdate }) {
+  if (!walletAddress) walletAddress = await passkeyWalletAddress(meta);
+  const ix = encodeSubmission(puzzleId, machineBytes, { name, user });
+  const verifier = Pubkey.from(program).toBytes();
+  return passkeyValidate(client, {
+    walletAddress, authIdx, payer, readOnly: [verifier], sign, onUpdate,
+    makeTarget: (ctx) => ({ programIdx: ctx.getAccountIndex(verifier), instructionData: ix }),
+  });
+}
+
+// Move native tokens out of the passkey wallet (winnings → the player's Thru
+// wallet, say). The target is the manager's own TRANSFER, approved by the
+// passkey like any other target.
+export async function passkeyTransfer(client, { meta, walletAddress, authIdx = 0, payer, to, amount, sign, onUpdate }) {
+  if (!walletAddress) walletAddress = await passkeyWalletAddress(meta);
+  const toBytes = Pubkey.from(to).toBytes();
+  const manager = Pubkey.from(PASSKEY_MANAGER).toBytes();
+  const r = await passkeyValidate(client, {
+    walletAddress, authIdx, payer, readWrite: [toBytes], sign, onUpdate,
+    makeTarget: (ctx) => ({
+      programIdx: ctx.getAccountIndex(manager),
+      instructionData: PM.encodeTransferInstruction({ walletAccountIdx: ctx.walletAccountIdx, toAccountIdx: ctx.getAccountIndex(toBytes), amount: BigInt(amount) }),
+    }),
+  });
+  return { signature: r.signature, computeUnits: r.computeUnits };
+}
+
+// native balance of any account (0n if it does not exist)
+export async function balanceOf(client, address) {
+  try {
+    const a = await client.accounts.get(address);
+    const b = a && (a.balance ?? (a.meta && a.meta.balance));
+    return b === undefined || b === null ? 0n : BigInt(b);
+  } catch (e) {
+    if (/not found|NotFound|does not exist/i.test(String(e && e.message || e))) return 0n;
+    throw e;
+  }
+}
+
 export const passkeySeal = submitViaPasskey;   // older name
 
 // ---- Thru wallet (@thru/wallet, the hosted wallet at app.tid.sh) ----
