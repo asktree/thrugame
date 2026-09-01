@@ -84,6 +84,46 @@ consumer supplies the puzzle's default board for them.
 base64url (RFC 4648 §5 alphabet, no padding) of the bytes above. The editor
 prefixes the puzzle key and a dot: `surrenderflare.AQMFAtT_…`
 
+## On-chain submission
+
+The verifier program (`contract/program`) takes one instruction whose data is
+
+```
+u8   instruction version  (1)
+u8   puzzle id            index into the on-chain catalog (contract/puzzles.h,
+                          generated from engine/examples.js: every example with
+                          a product glyph, in order)
+     machine bytes        a version-2 payload, exactly as above
+```
+
+The program rebuilds the puzzle from the catalog entry and the submission's own
+placements, runs the rules engine to its verdict, and — only if the machine is
+**verified** — emits one event and returns the sum. Anything else reverts, so
+nothing invalid ever lands on-chain: `0x100 + GW_ERR_*` for a rejected
+submission (malformed bytes, no layout, a reagent missing or placed twice, no
+product glyph, glyph overlap, …) and `0x200 + GW_FAULT_*` when the machine
+faulted (collision, overconstraint, grab-cycle, exhaustion).
+
+The **fee payer is the solver**: whoever signs the transaction owns the record.
+
+### Score event (`GW!1`), little-endian, packed
+
+```
+0   "GW!1"        magic + payload version
+4   u8   puzzle id
+5   u8   reserved (0)
+6   u16  machine length
+8   32B  solver public key (the fee payer)
+40  u32  cost      44  u32  cycles      48  u32  area      52  u32  sum
+56  machine bytes  (the submission, verbatim — anyone can replay it)
+```
+
+The leaderboard is nothing but this event log filtered by program
+(`event.program.value == <program address>`), best entry per solver, lowest sum
+first, earliest slot breaking ties. `client/gw-chain.js` implements both
+directions; `client/submit.js` and `client/leaderboard.js` are the CLIs, and
+the same module bundles into the editor as `demo/gw-chain.js`.
+
 ## Reference implementation
 
 `engine/codec.js` — `encodeMachine`/`decodeMachine` (bytes) and

@@ -1,3 +1,4 @@
 AGREEMENT.md
 *.pdf
 contract/build/
+client/node_modules/
