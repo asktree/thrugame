@@ -113,6 +113,10 @@
   }
   .chip:hover { color: var(--ink); border-color: var(--ink-dim); }
   .chip::before { content: 'KEY '; color: var(--ink-faint); letter-spacing: .12em; }
+  /* signed in with a passkey the chip names the wallet, not the local paying key */
+  .chip.passkey::before { content: 'PASSKEY '; }
+  .chip.passkey { border-style: solid; color: var(--ink); }
+  .sharebox .idctl { padding: 4px 8px; font-size: 9.5px; letter-spacing: .07em; }
 
   .chain { border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 9px 14px 11px; }
   .chain-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -222,6 +226,9 @@
     <span class="sep"></span>
     <button class="ctl" id="btnSubmit" disabled title="test a solution to verification first">Submit to chain</button>
     <span class="chip" id="walletChip" title="your alphanet key">…</span>
+    <button class="ctl idctl" id="btnPkNew" hidden>Create passkey</button>
+    <button class="ctl idctl" id="btnPkUse" hidden>Use my passkey</button>
+    <button class="ctl idctl" id="btnPkOut" hidden title="forget this passkey in this browser">Sign out</button>
   </div>
 
   <div class="chain">
@@ -1449,10 +1456,12 @@
   // (demo/gw-chain.js); if it did not load, every entry point here degrades to the
   // same quiet "chain client unavailable" and nothing throws.
   const CHAIN_OFF = 'chain client unavailable';
-  const WALLET_KEY = 'gw-wallet', USER_KEY = 'gw-user';
+  const WALLET_KEY = 'gw-wallet', USER_KEY = 'gw-user', PASSKEY_KEY = 'gw-passkey';
   const NAME_MAX = (window.GWChain && GWChain.NAME_MAX) || 32;
   const USER_MAX = (window.GWChain && GWChain.USER_MAX) || 24;
   let chainClient = null, wallet = null, walletPromise = null, submitting = false;
+  // the signed-in passkey wallet: the real identity. null = the payer key speaks for itself
+  let passkeyId = loadPasskey(), pkBusy = false;
   let pending = null;              // the run captured when the submit dialog opened
   let boardToken = 0, boardShown = -1;
 
@@ -1494,9 +1503,52 @@
     return walletPromise;
   }
 
+  // ---------- identity: a passkey wallet on top of the paying key ----------
+  // The key above stays the payer forever. A passkey — the user's own, held by
+  // the platform — owns a wallet on chain, and every submission it makes is
+  // signed by that passkey and credited to that wallet. What is kept here is
+  // only a local memo of who is signed in; signing out forgets the memo and
+  // touches neither the chain nor the passkey.
+  const passkeyOn = () => chainOn() && !!GWChain.passkey && (() => { try { return GWChain.passkey.supported(); } catch (e) { return false; } })();
+  function loadPasskey() {
+    try {
+      const p = JSON.parse(localStorage.getItem(PASSKEY_KEY) || 'null');
+      if (p && p.meta && p.meta.credentialId && p.walletAddress) {
+        return { meta: p.meta, walletAddress: p.walletAddress, authIdx: p.authIdx || 0 };
+      }
+    } catch (e) {}
+    return null;
+  }
+  function rememberPasskey(id) {
+    passkeyId = id;
+    try {
+      if (id) localStorage.setItem(PASSKEY_KEY, JSON.stringify(id));
+      else localStorage.removeItem(PASSKEY_KEY);
+    } catch (e) {}
+  }
+  // the address the board credits and the chip names
+  const myAddr = () => passkeyId ? passkeyId.walletAddress : (wallet && wallet.address);
+
+  function updateIdControls() {
+    const on = passkeyOn();
+    const set = (id, show) => { const b = $(id); if (b) { b.hidden = !show; b.disabled = pkBusy || submitting; } };
+    set('btnPkNew', on && !passkeyId);
+    set('btnPkUse', on && !passkeyId);
+    set('btnPkOut', !!passkeyId);
+  }
+
   async function renderChip() {
     const el = $('walletChip'); if (!el) return;
-    if (!chainOn()) { el.textContent = CHAIN_OFF; el.title = CHAIN_OFF; return; }
+    updateIdControls();
+    if (!chainOn()) { el.classList.remove('passkey'); el.textContent = CHAIN_OFF; el.title = CHAIN_OFF; return; }
+    if (passkeyId) {
+      el.classList.add('passkey');
+      el.textContent = shortAddr(passkeyId.walletAddress);
+      el.title = passkeyId.walletAddress + ' — your passkey wallet · click to copy';
+      el.dataset.addr = passkeyId.walletAddress;
+      return;
+    }
+    el.classList.remove('passkey');
     try {
       const w = await walletOf();
       el.textContent = shortAddr(w.address);
@@ -1509,11 +1561,63 @@
   $('walletChip').addEventListener('click', async () => {
     if (!chainOn()) { setStatus(CHAIN_OFF, 'bad'); return; }
     try {
-      const w = await walletOf();
-      try { await navigator.clipboard.writeText(w.address); setStatus('address copied — ' + w.address, 'good'); }
-      catch (e) { setStatus('your address is ' + w.address, 'good'); }
+      const addr = passkeyId ? passkeyId.walletAddress : (await walletOf()).address;
+      try { await navigator.clipboard.writeText(addr); setStatus('address copied — ' + addr, 'good'); }
+      catch (e) { setStatus('your address is ' + addr, 'good'); }
     } catch (e) { setStatus('no key: ' + errText(e), 'bad'); }
   });
+
+  const rememberedUser = () => { try { return localStorage.getItem(USER_KEY) || ''; } catch (e) { return ''; } };
+
+  // make a passkey, then the wallet it owns (the payer pays for both). Idempotent
+  // on chain: the same passkey always lands on the same wallet address.
+  async function createPasskey() {
+    if (!passkeyOn() || pkBusy) return;
+    pkBusy = true; updateIdControls();
+    try {
+      setStatus('waiting for your passkey…');
+      const meta = await GWChain.passkey.register('Great Work! · ' + (rememberedUser() || 'player'));
+      setStatus('creating your passkey wallet…');
+      const payer = await walletOf();
+      const r = await GWChain.ensurePasskeyWallet(chainClientOf(), { meta, payer });
+      rememberPasskey({ meta, walletAddress: r.walletAddress, authIdx: 0 });
+      renderChip();
+      setStatus('passkey wallet ready · ' + shortAddr(r.walletAddress), 'good');
+      refreshBoard(true);
+    } catch (e) {
+      setStatus('passkey not created: ' + errText(e), 'bad');
+    } finally { pkBusy = false; updateIdControls(); }
+  }
+
+  // sign in with a passkey this browser has never seen: the platform picks it,
+  // the chain's credential lookup names the wallet it already owns
+  async function usePasskey() {
+    if (!passkeyOn() || pkBusy) return;
+    pkBusy = true; updateIdControls();
+    try {
+      setStatus('waiting for your passkey…');
+      const found = await GWChain.passkey.signIn(chainClientOf());
+      if (!found) { setStatus('that passkey has no wallet here yet — create one', 'bad'); return; }
+      rememberPasskey({ meta: found.meta, walletAddress: found.walletAddress, authIdx: found.authIdx || 0 });
+      renderChip();
+      setStatus('signed in · ' + shortAddr(found.walletAddress), 'good');
+      refreshBoard(true);
+    } catch (e) {
+      setStatus('passkey not used: ' + errText(e), 'bad');
+    } finally { pkBusy = false; updateIdControls(); }
+  }
+
+  function signOutPasskey() {
+    if (!passkeyId) return;
+    rememberPasskey(null);
+    renderChip();
+    setStatus('signed out — this browser forgot the wallet; the passkey and its record on chain are untouched');
+    refreshBoard(true);
+  }
+
+  $('btnPkNew').addEventListener('click', createPasskey);
+  $('btnPkUse').addEventListener('click', usePasskey);
+  $('btnPkOut').addEventListener('click', signOutPasskey);
 
   // submitting is offered only for a run the local engine already verified — the program
   // re-runs it anyway and reverts otherwise, but there is no point paying that trip
@@ -1576,10 +1680,16 @@
 
   async function submitRun(req, name, user) {
     if (!chainOn() || submitting) return;
-    submitting = true; updateSubmitBtn();
-    setStatus('submitting…');
+    submitting = true; updateSubmitBtn(); updateIdControls();
+    // the identity and the score as they stand right now: nothing below may
+    // depend on the board, the run, or the sign-in state surviving the awaits
+    const id = passkeyId;
+    let localSum = null;
+    try { if (sim && !sim.state.fault && sim.state.cycles !== null) localSum = sim.metrics().sum; } catch (e) {}
+    const waiting = () => setStatus(id ? 'waiting for your passkey…' : 'submitting…');
+    waiting();
     try {
-      const w = await walletOf();
+      const w = await walletOf();          // the payer, whoever the solver is
       renderChip();
       const client = chainClientOf();
       // a fresh key bootstraps its own account; onUpdate only fires when it must
@@ -1587,16 +1697,34 @@
       await GWChain.ensureAccount(client, w, () => {
         if (!announced) { announced = true; setStatus('creating your account…'); }
       });
-      if (announced) setStatus('submitting…');
-      const res = await GWChain.submitSolution(client, {
-        wallet: w, puzzleId: req.puzzleId, machineBytes: req.machineBytes, name, user,
-      });
-      setStatus('submitted on alphanet · sum ' + res.sum + ' · txn ' + String(res.signature || '').slice(0, 12) + '…', 'good');
+      if (announced) waiting();
+      let res;
+      if (id) {
+        // the passkey signs the exact instruction — puzzle, names, machine — and
+        // the wallet it owns is the solver on the record; the key above only pays
+        const signWith = GWChain.passkey.signer(id.meta);
+        res = await GWChain.submitViaPasskey(client, {
+          meta: id.meta, walletAddress: id.walletAddress, authIdx: id.authIdx || 0, payer: w,
+          puzzleId: req.puzzleId, machineBytes: req.machineBytes, name, user,
+          sign: async (challenge) => {
+            const assertion = await signWith(challenge);
+            setStatus('submitting…');
+            return assertion;
+          },
+        });
+      } else {
+        res = await GWChain.submitSolution(client, {
+          wallet: w, puzzleId: req.puzzleId, machineBytes: req.machineBytes, name, user,
+        });
+      }
+      // the record is authoritative; if the query lagged, the run's own sum stands in
+      const sum = (res.sum === null || res.sum === undefined) ? localSum : res.sum;
+      setStatus('submitted on alphanet · sum ' + sum + ' · txn ' + String(res.signature || '').slice(0, 12) + '…', 'good');
       refreshBoard(true);
     } catch (e) {
       setStatus('not submitted: ' + errText(e), 'bad');
     } finally {
-      submitting = false; updateSubmitBtn();
+      submitting = false; updateSubmitBtn(); updateIdControls();
     }
   }
 
@@ -1613,7 +1741,7 @@
   function drawBoard(rows, puzIdx) {
     const host = $('chainBody'); if (!host) return;
     if (!rows.length) { boardNote('no submitted solutions yet'); return; }
-    const me = wallet && wallet.address;
+    const me = myAddr();      // the passkey wallet when signed in, else the paying key
     host.innerHTML = '';
     const table = document.createElement('table'); table.className = 'board';
     rows.forEach((r, i) => {
