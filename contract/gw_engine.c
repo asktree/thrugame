@@ -195,6 +195,18 @@ typedef struct {
   } atoms[GW_MAX_ATOMS];
 } motion_t;
 
+/* step scratch, carved from S->scratch (see gw.h): never static, never on the stack */
+typedef struct { uint8_t kind; uint32_t id; int64_t x, y; } obj_t;
+typedef struct {
+  uint32_t keys[GW_AREA_CAP];             /* init: layout claim set */
+  motion_t M;
+  obj_t    objs[GW_MAX_ATOMS + GW_MAX_ARMS];
+  uint8_t  mol_mask_buf[GW_MAX_ATOMS];
+  uint8_t  killed[GW_MAX_ATOMS];
+} scratch_t;
+_Static_assert(sizeof(scratch_t) <= sizeof(((gw_sim_t *)0)->scratch), "gw_sim_t.scratch too small");
+static scratch_t *scratch_of(gw_sim_t *S) { uintptr_t p = (uintptr_t)S->scratch; return (scratch_t *)p; }
+
 typedef struct { int64_t x, y; int32_t rot_u; } poseq_t;
 
 /* deterministic fractional kinematics at sweep instant k (0..K), Q16.16 px */
@@ -383,7 +395,7 @@ int gw_sim_init(gw_sim_t *S, const gw_puzzle_t *puzzle, const gw_machine_t *m) {
      overlap; bases may not sit on any of those cells. claimed set doubles as
      the initial area seed. */
   {
-    static uint32_t keys[GW_AREA_CAP];   /* scratch; sized like the area set */
+    uint32_t *keys = scratch_of(S)->keys;   /* sized like the area set */
     uint32_t count = 0;
     for (uint32_t i = 0; i < GW_AREA_CAP; i++) keys[i] = 0;
     for (int f = 0; f < 4; f++)
@@ -541,20 +553,20 @@ void gw_sim_step(gw_sim_t *S) {
   if (S->fault_kind != GW_FAULT_NONE) return;
 
   /* 3. motion — capture start, apply deltas, verify constraints, commit */
-  static motion_t M;
+  motion_t *M = &scratch_of(S)->M;
   for (int i = 0; i < S->narms; i++) {
     gw_arm_t *arm = &S->arms[i];
-    M.angle0[i] = arm->angle;
-    M.delta[i] = ops[i] == GW_OP_CW ? 1 : ops[i] == GW_OP_CCW ? -1 : 0;
-    M.pivot[i] = ops[i] == GW_OP_PIV_CW ? 1 : ops[i] == GW_OP_PIV_CCW ? -1 : 0;
-    M.carry_rel0[i] = arm->carry_rel;
-    M.ncarriers0[i] = arm->ncarriers;
+    M->angle0[i] = arm->angle;
+    M->delta[i] = ops[i] == GW_OP_CW ? 1 : ops[i] == GW_OP_CCW ? -1 : 0;
+    M->pivot[i] = ops[i] == GW_OP_PIV_CW ? 1 : ops[i] == GW_OP_PIV_CCW ? -1 : 0;
+    M->carry_rel0[i] = arm->carry_rel;
+    M->ncarriers0[i] = arm->ncarriers;
     for (int c = 0; c < arm->ncarriers; c++) {
-      M.carriers0[i][c].arm = arm->carriers[c].arm;
-      M.carriers0[i][c].grip = arm->carriers[c].grip;
+      M->carriers0[i][c].arm = arm->carriers[c].arm;
+      M->carriers0[i][c].grip = arm->carriers[c].grip;
     }
     if (!arm->is_elbow && arm->ncarriers == 0) {
-      M.base_q0[i] = arm->base_q; M.base_r0[i] = arm->base_r; M.base_rot0[i] = arm->base_rot;
+      M->base_q0[i] = arm->base_q; M->base_r0[i] = arm->base_r; M->base_rot0[i] = arm->base_rot;
     }
   }
   /* hand states before... */
@@ -566,12 +578,12 @@ void gw_sim_step(gw_sim_t *S) {
   /* ...apply joint deltas + pivots-on-towers... */
   for (int i = 0; i < S->narms; i++) {
     gw_arm_t *arm = &S->arms[i];
-    arm->angle = (uint8_t)mod6(arm->angle + M.delta[i]);
-    if (M.pivot[i])
+    arm->angle = (uint8_t)mod6(arm->angle + M->delta[i]);
+    if (M->pivot[i])
       for (int gi = 0; gi < arm->ngrips; gi++)
         if (arm->hold_kind[gi] == 2) {
           gw_arm_t *t = &S->arms[arm->hold_id[gi]];
-          t->carry_rel = (uint8_t)mod6(t->carry_rel + M.pivot[i]);
+          t->carry_rel = (uint8_t)mod6(t->carry_rel + M->pivot[i]);
         }
   }
   /* ...hand states after */
@@ -583,7 +595,7 @@ void gw_sim_step(gw_sim_t *S) {
   struct { uint32_t root_id; uint8_t k; int32_t bq, br; int8_t holder_arm, holder_grip, s; } xfs[GW_MAX_ATOMS];
   int nxfs = 0;
   int16_t mol_of[GW_MAX_ATOMS];             /* slot -> xfs index, -1 free */
-  static uint8_t mol_mask_buf[GW_MAX_ATOMS];
+  uint8_t *mol_mask_buf = scratch_of(S)->mol_mask_buf;
   for (int i = 0; i < S->natoms; i++) mol_of[i] = -1;
   /* like the oracle, keep scanning after an overconstraint fault (later grips
      still register transforms; only local state changes, but exactness first) */
@@ -597,7 +609,7 @@ void gw_sim_step(gw_sim_t *S) {
       uint32_t root_id = 0xffffffffu;
       for (int a = 0; a < S->natoms; a++)
         if (mol_mask_buf[a] && S->atoms[a].id < root_id) root_id = S->atoms[a].id;
-      int8_t s = M.pivot[i];
+      int8_t s = M->pivot[i];
       int32_t k = mod6(ha_d[i][gi] - hb_d[i][gi] + s);
       int32_t rq, rr;
       gw_rot_cell(hb_q[i][gi], hb_r[i][gi], k, &rq, &rr);
@@ -639,15 +651,15 @@ void gw_sim_step(gw_sim_t *S) {
   if (S->fault_kind != GW_FAULT_NONE) return;
 
   /* snapshot atoms + commit molecule motion (exact) */
-  M.natoms = S->natoms;
+  M->natoms = S->natoms;
   for (int a = 0; a < S->natoms; a++) {
-    M.atoms[a].id = S->atoms[a].id; M.atoms[a].elem = S->atoms[a].elem;
-    M.atoms[a].q0 = S->atoms[a].q; M.atoms[a].r0 = S->atoms[a].r;
+    M->atoms[a].id = S->atoms[a].id; M->atoms[a].elem = S->atoms[a].elem;
+    M->atoms[a].q0 = S->atoms[a].q; M->atoms[a].r0 = S->atoms[a].r;
     if (mol_of[a] >= 0) {
-      M.atoms[a].holder_arm = xfs[mol_of[a]].holder_arm;
-      M.atoms[a].holder_grip = xfs[mol_of[a]].holder_grip;
-      M.atoms[a].s = xfs[mol_of[a]].s;
-    } else M.atoms[a].holder_arm = -1;
+      M->atoms[a].holder_arm = xfs[mol_of[a]].holder_arm;
+      M->atoms[a].holder_grip = xfs[mol_of[a]].holder_grip;
+      M->atoms[a].s = xfs[mol_of[a]].s;
+    } else M->atoms[a].holder_arm = -1;
   }
   for (int a = 0; a < S->natoms; a++) {
     if (mol_of[a] < 0) continue;
@@ -658,31 +670,31 @@ void gw_sim_step(gw_sim_t *S) {
   }
 
   /* 3b. sweep — K sample instants, full pair check + area accumulation */
-  static struct { uint8_t kind; uint32_t id; int64_t x, y; } objs[GW_MAX_ATOMS + GW_MAX_ARMS];
+  obj_t *objs = scratch_of(S)->objs;
   for (int k = 1; k <= GW_K_SAMPLES && S->fault_kind == GW_FAULT_NONE; k++) {
     int nobjs = 0;
-    for (int a = 0; a < M.natoms; a++) {
+    for (int a = 0; a < M->natoms; a++) {
       int64_t x, y;
-      if (M.atoms[a].holder_arm >= 0) {
-        int ai = M.atoms[a].holder_arm, gi = M.atoms[a].holder_grip;
+      if (M->atoms[a].holder_arm >= 0) {
+        int ai = M->atoms[a].holder_arm, gi = M->atoms[a].holder_grip;
         int64_t hkx, hky, h0x, h0y; int32_t hkd, h0d;
-        hand_q(S, ai, gi, k, &M, &hkx, &hky, &hkd);
-        hand_q(S, ai, gi, 0, &M, &h0x, &h0y, &h0d);
+        hand_q(S, ai, gi, k, M, &hkx, &hky, &hkd);
+        hand_q(S, ai, gi, 0, M, &h0x, &h0y, &h0d);
         int64_t p0x, p0y;
-        gw_to_px(M.atoms[a].q0, M.atoms[a].r0, &p0x, &p0y);
-        int32_t du = hkd - h0d + M.atoms[a].s * k;
+        gw_to_px(M->atoms[a].q0, M->atoms[a].r0, &p0x, &p0y);
+        int32_t du = hkd - h0d + M->atoms[a].s * k;
         int64_t relx, rely;
         gw_rot_q(p0x - h0x, p0y - h0y, du, &relx, &rely);
         x = hkx + relx; y = hky + rely;
       } else {
-        gw_to_px(M.atoms[a].q0, M.atoms[a].r0, &x, &y);
+        gw_to_px(M->atoms[a].q0, M->atoms[a].r0, &x, &y);
       }
-      objs[nobjs].kind = 0; objs[nobjs].id = M.atoms[a].id;
+      objs[nobjs].kind = 0; objs[nobjs].id = M->atoms[a].id;
       objs[nobjs].x = x; objs[nobjs].y = y; nobjs++;
     }
     for (int i = 0; i < S->narms; i++) {
       if (S->arms[i].is_elbow) continue;    /* elbows don't collide */
-      poseq_t p = pose_q(S, i, k, &M);
+      poseq_t p = pose_q(S, i, k, M);
       objs[nobjs].kind = 1; objs[nobjs].id = (uint32_t)i;
       objs[nobjs].x = p.x; objs[nobjs].y = p.y; nobjs++;
     }
@@ -694,7 +706,7 @@ void gw_sim_step(gw_sim_t *S) {
     for (int i = 0; i < S->narms; i++)
       for (int gi = 0; gi < S->arms[i].ngrips; gi++) {
         int64_t hx, hy; int32_t hd;
-        hand_q(S, i, gi, k, &M, &hx, &hy, &hd);
+        hand_q(S, i, gi, k, M, &hx, &hy, &hd);
         int32_t cq, cr;
         gw_axial_round(hx, hy, &cq, &cr);
         area_add(S, cq, cr);
@@ -732,7 +744,7 @@ void gw_sim_step(gw_sim_t *S) {
       S->atoms[sd].elem = S->atoms[se].elem;
   }
   /* conversion glyphs can't see bonded or held atoms */
-  static uint8_t killed[GW_MAX_ATOMS];
+  uint8_t *killed = scratch_of(S)->killed;
   for (int i = 0; i < GW_MAX_ATOMS; i++) killed[i] = 0;
   int any_kill = 0;
   uint8_t gripped[GW_MAX_ATOMS];

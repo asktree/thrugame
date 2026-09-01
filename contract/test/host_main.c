@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../gw.h"
+#include "../puzzles.h"
 #include "vectors.h"
 
 void gw_panic(void) {
@@ -95,11 +96,36 @@ static void run_case(const gw_vector_case_t *vc) {
     vc->name, E->ticks, status, (long long)SIM.cost, SIM.cycles, SIM.area_count);
 }
 
+/* submissions: codec v2 bytes through gw_verify against the on-chain catalog —
+ * the exact path the program takes, minus the SDK shell */
+static gw_workspace_t WS;
+static void submissions(void) {
+  int n = sizeof(VEC_SUBMITS) / sizeof(VEC_SUBMITS[0]);
+  for (int i = 0; i < n; i++) {
+    const gw_submit_case_t *c = &VEC_SUBMITS[i];
+    gw_verdict_t v;
+    CHECK(c->puzzle < GW_NPUZZLES, "%s: puzzle id %u out of catalog", c->name, c->puzzle);
+    if (c->puzzle >= GW_NPUZZLES) continue;
+    memset(&WS, 0xA5, sizeof(WS));   /* the verifier must not rely on zeroed scratch */
+    gw_verify(&GW_PUZZLES[c->puzzle], c->bytes, c->len, &WS, &v);
+    CHECK(v.err == c->err, "%s: err %d want %d", c->name, v.err, c->err);
+    if (c->err != GW_OK || v.err != GW_OK) continue;
+    CHECK(v.status == c->status && v.fault_kind == c->fault_kind,
+      "%s: status %d/%d want %d/%d", c->name, v.status, v.fault_kind, c->status, c->fault_kind);
+    CHECK(v.cost == c->cost && v.cycles == c->cycles && v.area == c->area && v.sum == c->sum,
+      "%s: metrics %lld/%d/%d/%lld want %lld/%d/%d/%lld", c->name,
+      (long long)v.cost, v.cycles, v.area, (long long)v.sum,
+      (long long)c->cost, c->cycles, c->area, (long long)c->sum);
+  }
+}
+
 int main(void) {
   primitives();
   int n = sizeof(VEC_CASES) / sizeof(VEC_CASES[0]);
   for (int i = 0; i < n; i++) run_case(&VEC_CASES[i]);
+  submissions();
+  int ns = sizeof(VEC_SUBMITS) / sizeof(VEC_SUBMITS[0]);
   if (failures) { printf("%d FAILURES\n", failures); return 1; }
-  printf("all conformance vectors pass (%d cases)\n", n);
+  printf("all conformance vectors pass (%d cases, %d submissions, %d puzzles)\n", n, ns, GW_NPUZZLES);
   return 0;
 }

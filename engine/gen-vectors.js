@@ -37,15 +37,11 @@ const fs = require('fs');
 const GW = require(path.join(__dirname, 'engine.js'));
 const CODEC = require(path.join(__dirname, 'codec.js'));
 const EXAMPLES = require(path.join(__dirname, 'examples.js'));
+const PUZ = require(path.join(__dirname, 'gen-puzzles.js'));
 
 const Q = GW.Q;
-const ELEMS = ['Sa', 'Ai', 'Ea', 'Fi', 'Wa', 'Hg', 'Pb', 'Sn', 'Fe', 'Cu', 'Ag', 'Au', 'Vi', 'Mo'];
 const FAULTS = ['none', 'collision', 'overconstraint', 'grab-cycle', 'exhaustion'];
-const elemCode = (e) => {
-  const i = ELEMS.indexOf(e);
-  if (i < 0) throw new Error('unknown element ' + e);
-  return i;
-};
+const elemCode = PUZ.elemCode;   // one element roster for the catalog and the vectors
 
 // ---- FNV-1a 64 over a byte feed ----
 const FNV_OFFSET = 0xcbf29ce484222325n, FNV_PRIME = 0x100000001b3n, MASK64 = 0xffffffffffffffffn;
@@ -235,9 +231,77 @@ for (const n of exNames) {
 }
 emit(`};`);
 emit('');
+
+// ---- section 4: submissions — codec v2 machines against the on-chain puzzle
+// catalog (contract/puzzles.h). Exercises gw_verify end to end: the C
+// materializer must rebuild exactly the puzzle the editor's matPuzzle would,
+// so each reference layout is frozen unrotated AND rotated whole-board by two
+// sextants (anchors, rotations, ground mounts and angles all turned together).
+// Rejections pin the verifier's own checks on top of the engine's. ----
+{
+  const subs = [];
+  const rotLayout = (p, k) => ({
+    arms: p.refArms.map(a => a.mount.elbow ? a
+      : Object.assign({}, a, { mount: { ground: GW.rotK(a.mount.ground, k) }, angle: ((a.angle || 0) + k) % 6 })),
+    glyphs: p.defaultLayout.glyphs.map(g => ({ type: g.type, at: GW.rotK(g.at, k), rot: (g.rot + k) % 6 })),
+    inputs: p.defaultLayout.inputs.map(g => ({ ri: g.ri, at: GW.rotK(g.at, k), rot: (g.rot + k) % 6 })),
+    output: { at: GW.rotK(p.defaultLayout.output.at, k), rot: (p.defaultLayout.output.rot + k) % 6 },
+  });
+  const settle = (sim, caps) => {
+    const S = sim.state;
+    let guard = caps.cycles + 2;
+    while (!S.fault && S.cycles === null && guard-- > 0) sim.step();
+    if (guard <= 0) throw new Error('submission did not terminate');
+    const m = sim.metrics();
+    return { status: S.fault ? 2 : 1, fault: S.fault ? FAULTS.indexOf(S.fault.kind) : 0,
+      cost: m.cost, cycles: m.cycles === null ? -1 : m.cycles, area: m.area, sum: m.sum === null ? -1 : m.sum };
+  };
+  const accept = (name, p, machine) => {
+    const bytes = CODEC.encodeMachine(machine);
+    const decoded = CODEC.decodeMachine(bytes);
+    const r = settle(GW.createSim(PUZ.materialize(p, decoded), decoded), p.caps);
+    subs.push(Object.assign({ name, puzzle: p.id, bytes, err: 'GW_OK' }, r));
+    return r;
+  };
+  const reject = (name, p, machine, err) => {
+    subs.push({ name, puzzle: p.id, bytes: CODEC.encodeMachine(machine), err,
+      status: 0, fault: 0, cost: 0, cycles: 0, area: 0, sum: 0 });
+  };
+  for (const p of PUZ.puzzles()) {
+    const ex = EXAMPLES.find(e => e.key === p.key);
+    const r0 = accept(`${p.key} r0`, p, rotLayout(p, 0));
+    // the materialized reference must be the example itself
+    const ref = settle(GW.createSim(ex.puzzle, CODEC.decodeMachine(CODEC.encodeMachine(ex.machine))), p.caps);
+    for (const f of ['status', 'fault', 'cost', 'cycles', 'area', 'sum']) {
+      if (r0[f] !== ref[f]) throw new Error(`${p.key}: materialized ${f} ${r0[f]} != example ${ref[f]}`);
+    }
+    accept(`${p.key} r2`, p, rotLayout(p, 2));
+  }
+  {
+    const p = PUZ.puzzles()[0], lay = rotLayout(p, 0);
+    reject('v1 bytes carry no layout', p, { arms: lay.arms }, 'GW_ERR_LAYOUT');
+    reject('a reagent left out', p, Object.assign({}, lay, { inputs: lay.inputs.slice(1) }), 'GW_ERR_REAGENTS');
+    reject('a reagent placed twice', p, Object.assign({}, lay, { inputs: [lay.inputs[0], lay.inputs[0]] }), 'GW_ERR_REAGENTS');
+    reject('reagent index out of range', p, Object.assign({}, lay,
+      { inputs: [lay.inputs[0], Object.assign({}, lay.inputs[1], { ri: 7 })] }), 'GW_ERR_REAGENTS');
+    reject('no product glyph', p, Object.assign({}, lay, { output: undefined }), 'GW_ERR_OUTPUT');
+    reject('glyph on the product', p, Object.assign({}, lay,
+      { glyphs: [{ type: 'bonders', at: lay.output.at, rot: 0 }] }), 'GW_ERR_GLYPH_OVERLAP');
+  }
+  subs.forEach((s, i) => emit(`static const uint8_t SUBMIT_${i}[] = {${[...s.bytes].join(',')}};`));
+  emit(`static const gw_submit_case_t VEC_SUBMITS[] = {`);
+  subs.forEach((s, i) => emit(`  { "${s.name}", ${s.puzzle}, SUBMIT_${i}, sizeof(SUBMIT_${i}), ${s.err}, ${s.status}, ${s.fault}, ${s.cost}, ${s.cycles}, ${s.area}, ${s.sum} },`));
+  emit(`};`);
+  emit('');
+}
 emit('#endif /* GW_VECTORS_H */');
 
 const dest = path.join(__dirname, '..', 'contract', 'test', 'vectors.h');
 fs.mkdirSync(path.dirname(dest), { recursive: true });
 fs.writeFileSync(dest, out.join('\n') + '\n');
 console.log('wrote', dest, out.join('\n').length, 'bytes;', exNames.length, 'cases');
+
+// the catalog the submissions were generated against
+const catalog = path.join(__dirname, '..', 'contract', 'puzzles.h');
+fs.writeFileSync(catalog, PUZ.header());
+console.log('wrote', catalog, PUZ.puzzles().length, 'puzzles');

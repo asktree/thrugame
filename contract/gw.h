@@ -28,6 +28,7 @@
 #define GW_MAX_GLYPHS    8    /* per family */
 #define GW_AREA_CAP      4096 /* linear-probe cell set; must exceed any real area */
 #define GW_K_SAMPLES     12
+#define GW_SCRATCH_WORDS 4096 /* 32 KB step scratch arena (gw_engine.c static-asserts fit) */
 
 /* ---- normative Q16.16 constants (SPEC.md; copy verbatim, never recompute) ---- */
 #define GW_ONE        65536
@@ -60,6 +61,9 @@ enum {                              /* invalid-machine rejections (pre-run) */
   GW_ERR_GRABBERLESS,               /* tip-mounted child; parent tape grabs/pivots */
   GW_ERR_GLYPH_SHAPE, GW_ERR_GLYPH_OVERLAP, GW_ERR_BASE_ON_GLYPH,
   GW_ERR_CAPACITY,                  /* exceeds a GW_MAX_* build bound */
+  GW_ERR_LAYOUT,                    /* submission carries no board layout (codec v1) */
+  GW_ERR_REAGENTS,                  /* placements are not exactly the puzzle's reagents */
+  GW_ERR_OUTPUT,                    /* no product glyph placed */
 };
 
 /* ---- opcodes: G D + - P Q W R -> 0..7 (codec order). R (repeat) survives
@@ -128,6 +132,17 @@ typedef struct {
   uint8_t has_output; int32_t out_q, out_r; uint8_t out_rot;
 } gw_machine_t;
 
+/* ---- puzzle catalog entry (contract/puzzles.h, generated from engine/examples.js) ----
+ * Shapes are RELATIVE to their first cell; a codec v2 submission places each
+ * one by anchor cell + rotation, so what is asked for can never be altered. */
+typedef struct {
+  const char *key;
+  uint8_t    nreagents;
+  gw_shape_t reagents[GW_MAX_SHAPES];
+  gw_shape_t product;
+  gw_caps_t  caps;                        /* fully resolved (defaults merged) */
+} gw_puzzle_def_t;
+
 /* ---- runtime state ---- */
 typedef struct {
   uint32_t id;
@@ -175,7 +190,21 @@ typedef struct gw_sim {
   /* area: linear-probe set of packed cells */
   uint32_t area_count;
   uint32_t area_keys[GW_AREA_CAP];        /* 0 = empty; keys are packed+1 */
+  /* per-step scratch (gw_engine.c carves it): the on-chain program image is
+     read-only and the entry stack is one page, so nothing large may be a
+     static or an automatic — it all lives here, in the caller's memory */
+  uint64_t scratch[GW_SCRATCH_WORDS];
 } gw_sim_t;
+
+/* ---- verifier (gw_verify.c): the on-chain entry's logic, host-testable ---- */
+typedef struct { gw_machine_t m; gw_puzzle_t p; gw_sim_t s; } gw_workspace_t;
+typedef struct {
+  int32_t  err;                           /* GW_OK, or GW_ERR_*: rejected, nothing ran */
+  uint8_t  status;                        /* GW_STATUS_VERIFIED / GW_STATUS_FAULT */
+  uint8_t  fault_kind;
+  uint32_t fault_tick;
+  int64_t  cost; int32_t cycles, area; int64_t sum;   /* sum -1 unless verified */
+} gw_verdict_t;
 
 /* ---- expected-result record used by the conformance vectors ---- */
 typedef struct {
@@ -189,6 +218,13 @@ typedef struct {
   const uint64_t *digests;
   const gw_expect_t *expect;
 } gw_vector_case_t;
+typedef struct {
+  const char *name;
+  uint8_t puzzle;
+  const uint8_t *bytes; uint32_t len;
+  int32_t err, status, fault_kind;
+  int64_t cost; int32_t cycles, area; int64_t sum;
+} gw_submit_case_t;
 
 /* ---- API ---- */
 
@@ -222,5 +258,13 @@ int  gw_sim_init(gw_sim_t *S, const gw_puzzle_t *puzzle, const gw_machine_t *m);
 void gw_sim_step(gw_sim_t *S);
 /* digest of the committed state — must match gen-vectors.js digestState exactly */
 uint64_t gw_sim_digest(const gw_sim_t *S);
+
+/* verifier (gw_verify.c) */
+/* board layout (codec v2 placements) + catalog shapes -> the puzzle the sim runs;
+   mirrors the editor's matPuzzle. GW_OK or a GW_ERR_* rejection. */
+int  gw_materialize(const gw_puzzle_def_t *def, const gw_machine_t *m, gw_puzzle_t *out);
+/* decode, materialize, validate, run to verdict. ws is scratch (any alignment ok). */
+void gw_verify(const gw_puzzle_def_t *def, const uint8_t *bytes, uint32_t len,
+               gw_workspace_t *ws, gw_verdict_t *v);
 
 #endif /* GW_H */

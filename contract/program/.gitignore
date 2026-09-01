@@ -3,4 +3,6 @@ src/gw.h
 src/gw_q.c
 src/gw_codec.c
 src/gw_engine.c
+src/gw_verify.c
+src/puzzles.h
 src/vectors.h

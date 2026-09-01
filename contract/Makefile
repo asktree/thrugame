@@ -8,8 +8,8 @@
 CC      ?= cc
 CFLAGS  ?= -O2 -std=c11 -Wall -Wextra -Wconversion -Wno-sign-conversion
 
-SRC = gw_q.c gw_codec.c gw_engine.c
-HDR = gw.h
+SRC = gw_q.c gw_codec.c gw_engine.c gw_verify.c
+HDR = gw.h puzzles.h
 
 build/host-check: $(SRC) $(HDR) test/host_main.c test/vectors.h
 	@mkdir -p build
