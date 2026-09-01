@@ -13,6 +13,7 @@
     --mono: 'Courier Prime', 'Courier New', monospace;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html { background: #F1E9D6; }
   body { background: var(--parch); color: var(--ink); font-family: var(--body); font-size: 16px; }
   .wrap { max-width: 1020px; margin: 0 auto; padding: 26px 20px 60px; }
@@ -121,7 +122,12 @@
   .chain { border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 9px 14px 11px; }
   .chain-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
   .chain-title { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
-  .chain-head .ctl { margin-left: auto; padding: 4px 9px; font-size: 9.5px; }
+  .chain-head .chain-title { margin-right: auto; }
+  .chain-head .ctl { padding: 4px 9px; font-size: 9.5px; }
+  /* winnings sit beside Refresh: quiet until a passkey is signed in */
+  .winbox { display: inline-flex; align-items: center; gap: 8px; }
+  .winbox .winline { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+  .winbox .winline b { color: var(--gold); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
   .chain-note { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .04em; padding: 2px 0; }
   .chain-note.bad { color: var(--oxblood); }
   table.board { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
@@ -234,6 +240,10 @@
   <div class="chain">
     <div class="chain-head">
       <span class="chain-title" id="chainTitle">On-chain record</span>
+      <span class="winbox" id="winBox" hidden>
+        <span class="winline">winnings <b id="winAmt">0</b></span>
+        <button class="ctl" id="btnClaim" disabled title="move this wallet's balance to your Thru wallet">Claim to Thru wallet</button>
+      </span>
       <button class="ctl" id="btnScores">Refresh</button>
     </div>
     <div id="chainBody"><div class="chain-note">loading…</div></div>
@@ -3350,6 +3360,8 @@
   let chainClient = null, wallet = null, walletPromise = null, submitting = false;
   // the signed-in passkey wallet: the real identity. null = the payer key speaks for itself
   let passkeyId = loadPasskey(), pkBusy = false;
+  // what the passkey wallet holds, and whether a claim is in flight
+  let winnings = 0n, claiming = false, winToken = 0;
   let pending = null;              // the run captured when the submit dialog opened
   let boardToken = 0, boardShown = -1;
 
@@ -3419,10 +3431,78 @@
 
   function updateIdControls() {
     const on = passkeyOn();
-    const set = (id, show) => { const b = $(id); if (b) { b.hidden = !show; b.disabled = pkBusy || submitting; } };
+    const set = (id, show) => { const b = $(id); if (b) { b.hidden = !show; b.disabled = pkBusy || submitting || claiming; } };
     set('btnPkNew', on && !passkeyId);
     set('btnPkUse', on && !passkeyId);
     set('btnPkOut', !!passkeyId);
+    updateWinnings();
+  }
+
+  // ---------- winnings: what the passkey wallet holds, and moving it out ----------
+  // There is no prize escrow yet, so "winnings" is simply the native balance of the
+  // wallet the passkey owns. Claiming hands that balance to the player's own hosted
+  // Thru wallet, where they can off-ramp it; the local key still pays (fees are 0).
+  // An older bundle without the hosted wallet or the transfer hides the whole thing.
+  const claimOn = () => chainOn() && !!GWChain.wallet && !!GWChain.passkeyTransfer;
+
+  function updateWinnings() {
+    const box = $('winBox'); if (!box) return;
+    const show = claimOn() && !!passkeyId;
+    box.hidden = !show;
+    const amt = $('winAmt'); if (amt) amt.textContent = String(winnings);
+    const b = $('btnClaim');
+    if (b) {
+      b.disabled = !show || claiming || pkBusy || submitting || winnings <= 0n;
+      b.textContent = claiming ? 'Claiming…' : 'Claim to Thru wallet';
+    }
+  }
+
+  // read the wallet's balance; a stale read never overwrites a newer one, and a
+  // failed read is quiet — the line is a footnote, not the page's business
+  async function refreshWinnings() {
+    const token = ++winToken;
+    if (!claimOn() || !passkeyId) { winnings = 0n; updateWinnings(); return; }
+    const who = passkeyId.walletAddress;
+    try {
+      const bal = await GWChain.balanceOf(chainClientOf(), who);
+      if (token !== winToken) return;
+      winnings = bal;
+    } catch (e) {
+      if (token !== winToken) return;
+      winnings = 0n;
+    }
+    updateWinnings();
+  }
+
+  // the passkey approves one transfer of exactly this amount to exactly the account
+  // the hosted wallet named; that account has to exist on chain to receive it
+  async function claimWinnings() {
+    if (!claimOn() || claiming || !passkeyId || winnings <= 0n) return;
+    const id = passkeyId, amount = winnings;    // fixed before the first await
+    claiming = true; updateIdControls(); updateSubmitBtn();
+    try {
+      setStatus('opening the Thru wallet…');
+      const dest = await GWChain.wallet.connect();
+      const client = chainClientOf();
+      if (!(await GWChain.accountExists(client, dest.address))) {
+        setStatus('that Thru wallet account is not on alphanet yet: ' + dest.address, 'bad');
+        return;
+      }
+      setStatus('waiting for your passkey…');
+      const res = await GWChain.passkeyTransfer(client, {
+        meta: id.meta, walletAddress: id.walletAddress, authIdx: id.authIdx || 0,
+        payer: await walletOf(), to: dest.address, amount,
+        sign: GWChain.passkey.signer(id.meta),
+      });
+      setStatus('claimed ' + amount + ' to your Thru wallet ' + shortAddr(dest.address)
+        + ' · txn ' + String(res.signature || '').slice(0, 12) + '…', 'good');
+    } catch (e) {
+      setStatus('not claimed: ' + errText(e), 'bad');
+    } finally {
+      claiming = false;
+      updateIdControls(); updateSubmitBtn();
+      refreshWinnings();
+    }
   }
 
   async function renderChip() {
@@ -3471,7 +3551,7 @@
       rememberPasskey({ meta, walletAddress: r.walletAddress, authIdx: 0 });
       renderChip();
       setStatus('passkey wallet ready · ' + shortAddr(r.walletAddress), 'good');
-      refreshBoard(true);
+      refreshBoard(true); refreshWinnings();
     } catch (e) {
       setStatus('passkey not created: ' + errText(e), 'bad');
     } finally { pkBusy = false; updateIdControls(); }
@@ -3489,7 +3569,7 @@
       rememberPasskey({ meta: found.meta, walletAddress: found.walletAddress, authIdx: found.authIdx || 0 });
       renderChip();
       setStatus('signed in · ' + shortAddr(found.walletAddress), 'good');
-      refreshBoard(true);
+      refreshBoard(true); refreshWinnings();
     } catch (e) {
       setStatus('passkey not used: ' + errText(e), 'bad');
     } finally { pkBusy = false; updateIdControls(); }
@@ -3500,12 +3580,13 @@
     rememberPasskey(null);
     renderChip();
     setStatus('signed out — this browser forgot the wallet; the passkey and its record on chain are untouched');
-    refreshBoard(true);
+    refreshBoard(true); refreshWinnings();
   }
 
   $('btnPkNew').addEventListener('click', createPasskey);
   $('btnPkUse').addEventListener('click', usePasskey);
   $('btnPkOut').addEventListener('click', signOutPasskey);
+  $('btnClaim').addEventListener('click', claimWinnings);
 
   // submitting is offered only for a run the local engine already verified — the program
   // re-runs it anyway and reverts otherwise, but there is no point paying that trip
@@ -3513,7 +3594,7 @@
   function updateSubmitBtn() {
     const b = $('btnSubmit'); if (!b) return;
     if (!chainOn()) { b.disabled = true; b.title = CHAIN_OFF; return; }
-    b.disabled = submitting || !submittable();
+    b.disabled = submitting || claiming || !submittable();
     b.title = submitting ? 'submitting…'
       : submittable() ? 'submit this verified solution to alphanet'
       : 'test a solution to verification first';
@@ -3613,6 +3694,7 @@
       setStatus('not submitted: ' + errText(e), 'bad');
     } finally {
       submitting = false; updateSubmitBtn(); updateIdControls();
+      refreshWinnings();     // a submission moves nothing today, but the record may
     }
   }
 
@@ -3702,7 +3784,7 @@
       }
     })();
   }
-  $('btnScores').addEventListener('click', () => refreshBoard(true));
+  $('btnScores').addEventListener('click', () => { refreshBoard(true); refreshWinnings(); });
 
   // ---------- puzzles ----------
   function selectPuzzle(i) {
@@ -3739,6 +3821,7 @@
   // fire-and-forget and swallow their own failures
   renderChip();
   refreshBoard();
+  refreshWinnings();
   updateSubmitBtn();
 
   // test/debug hook: lets automated checks aim at exact cells
