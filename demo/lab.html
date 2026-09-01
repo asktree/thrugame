@@ -1158,13 +1158,30 @@
 
 </script>
 <script>
-/* GREAT WORK! — example puzzles & machines (shared by tests and the lab) */
+/* GREAT WORK! — example machines (shared by tests, the lab, and the catalog)
+ *
+ * Each example is a machine plus the board it was built on. Examples with a
+ * product glyph name the PRODUCT they make; the puzzle catalog (what the
+ * chain verifies, what the editor offers) is one entry per product, named for
+ * it — the machines themselves are just sealed solutions on its leaderboard. */
 (function (root) {
   'use strict';
+
+  // the products, in catalog order = puzzle id order (contract/puzzles.h)
+  const PRODUCTS = [
+    { key: 'amalgam',          name: 'Lead Amalgam',       blurb: 'Quicksilver bonded to lead. The floor every builder starts from.' },
+    { key: 'saltedquicksilver', name: 'Salted Quicksilver', blurb: 'Salt, quicksilver, salt in one chain.' },
+    { key: 'transmutedgold',   name: 'Transmuted Gold',    blurb: 'Lead to tin to iron to copper to silver to gold, one rung per quicksilver.' },
+    { key: 'vitalsalts',       name: 'Vital Salts',        blurb: 'Two salts, mors and vitae in a chain — water alone, calcified and animated.' },
+    { key: 'airshipfuel',      name: 'Airship Fuel',       blurb: 'Fire alone becomes a zigzag of salt and flame.' },
+    { key: 'surrenderflare',   name: 'Surrender Flare',    blurb: 'An iron core sealed inside six salt petals must come out copper.' },
+    { key: 'ablativecrystal',  name: 'Ablative Crystal',   blurb: 'Two silver-core flowers must become one thirteen-atom crystal. Still unsolved.' },
+  ];
 
   const EXAMPLES = [
     {
       key: 'courier',
+      product: 'amalgam',
       name: 'The Courier',
       blurb: 'One arm, no elbows: grab, bond, deliver, repeat. The floor every builder starts from.',
       expect: { cycles: 142 },
@@ -1182,6 +1199,7 @@
     },
     {
       key: 'ferris',
+      product: 'amalgam',
       name: 'The Ferris',
       blurb: 'An elbow arm rides its parent between two worlds: Pb-side and Hg-side share one child tape. The bonder doubles as the product glyph, so the compound vanishes the instant it forms.',
       expect: { cycles: 75 },
@@ -1203,6 +1221,7 @@
     },
     {
       key: 'crane',
+      product: 'amalgam',
       name: 'The Crane',
       blurb: 'A worker arm runs one six-step loop forever. The crane relocates it — mid-loop, tapes still ticking — so the same coordinate-free tape ferries lead in one place and quicksilver in another.',
       expect: { cycles: 147 },
@@ -1224,6 +1243,7 @@
     },
     {
       key: 'beadwheel',
+      product: 'saltedquicksilver',
       name: 'The Bead Wheel',
       blurb: 'Tria Prima: salt, quicksilver, sulfur in one chain. The wheel carries the growing molecule around its ring while the feeder threads beads onto it — passing within a whisker of a fault, legally.',
       expect: { cycles: 125 },
@@ -1243,6 +1263,7 @@
     },
     {
       key: 'goldladder',
+      product: 'transmutedgold',
       name: 'The Gold Ladder',
       blurb: 'Lead to tin to iron to copper to silver to gold: a dual-gripper shuttle feeds quicksilver to the projection glyph — one hand delivering while the other reloads — and the courier extracts the finished gold.',
       expect: { cycles: 277 },
@@ -1266,6 +1287,7 @@
     },
     {
       key: 'leachworks',
+      product: 'vitalsalts',
       name: 'The Leaching Works',
       blurb: 'Water alone becomes a chain of salt, salt, mors, and vitae. Four waters calcify in transit; an animismus glyph — its shape fixed, like every glyph — turns a salt pair into vitae and mors; and a rocking wheel drags the growing chain back and forth across a single bonder before laying the finished compound around its own hub. Six arms, one product every twenty ticks.',
       expect: { cycles: 179 },
@@ -1302,6 +1324,7 @@
     },
     {
       key: 'airshipfuel',
+      product: 'airshipfuel',
       name: 'Airship Fuel',
       blurb: 'Imported from Opus Magnum (chapter one). Fire alone becomes a zigzag of salt and flame. A dimer factory bonds salt to fire — the salt calcified in transit — and two joiner arms pose the halves over a second bonder: one pivot for the left half, two for the right, because the zigzag bends both ways.',
       expect: { cycles: 162 },
@@ -1329,6 +1352,7 @@
     },
     {
       key: 'surrenderflare',
+      product: 'surrenderflare',
       name: 'Surrender Flare',
       blurb: 'Imported from Opus Magnum (chapter two). An iron core sealed inside six salt petals must come out copper — but the projection glyph cannot reach a surrounded core. So: sever one petal, walk the open flower around the wheel past the quicksilver, pivot the core onto a bonder, and let the porter hand the petal back. The porter then carries the whole flower to the product glyph.',
       expect: { cycles: 162 },
@@ -1359,6 +1383,7 @@
     },
     {
       key: 'ablativecrystal',
+      product: 'ablativecrystal',
       name: 'Ablative Crystal',
       blurb: 'Imported from Opus Magnum (journal III) — and still unsolved here. Two silver-core flowers must become one thirteen-atom crystal: a gold core, a ring of six fire, six salt at the points, twenty-four bonds. The reference machine below is an empty gesture; it idles until the cycle cap rejects it. The first machine to seal this record earns the name Great Work.',
       expect: { fault: 'exhaustion' },
@@ -1421,6 +1446,21 @@
       },
     },
   ];
+
+  // the puzzle catalog: one entry per product, in PRODUCTS order, with the
+  // examples that make it (the first one's board is the default placement)
+  function catalog() {
+    return PRODUCTS.map((p, id) => {
+      const examples = EXAMPLES.filter(ex => ex.product === p.key && ex.puzzle.output);
+      if (!examples.length) throw new Error('product without an example: ' + p.key);
+      return { id, key: p.key, name: p.name, blurb: p.blurb, examples };
+    });
+  }
+  for (const ex of EXAMPLES) {
+    if (ex.puzzle.output && !PRODUCTS.some(p => p.key === ex.product)) throw new Error('example without a product: ' + ex.key);
+  }
+  EXAMPLES.PRODUCTS = PRODUCTS;
+  EXAMPLES.catalog = catalog;
 
   if (typeof module !== 'undefined' && module.exports) module.exports = EXAMPLES;
   else root.GW_EXAMPLES = EXAMPLES;
