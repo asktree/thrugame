@@ -104,6 +104,33 @@
 
   .sharebox { border: 1px solid var(--line); border-top: 0; background: var(--parch-2); padding: 9px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .sharebox input { flex: 1; min-width: 220px; font-family: var(--mono); font-size: 11px; padding: 6px 8px; border: 1px solid var(--line); background: var(--parch); color: var(--ink); }
+  .sharebox .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
+
+  .chip {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em; color: var(--ink-dim);
+    background: var(--parch); border: 1px dashed var(--line); padding: 6px 9px; cursor: pointer; user-select: none;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--ink-dim); }
+  .chip::before { content: 'KEY '; color: var(--ink-faint); letter-spacing: .12em; }
+
+  .chain { border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 9px 14px 11px; }
+  .chain-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .chain-title { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+  .chain-head .ctl { margin-left: auto; padding: 4px 9px; font-size: 9.5px; }
+  .chain-note { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .04em; padding: 2px 0; }
+  .chain-note.bad { color: var(--oxblood); }
+  table.board { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+  table.board td { padding: 3px 6px; border-top: 1px solid var(--line-soft); vertical-align: middle; }
+  table.board tr:first-child td { border-top: 0; }
+  table.board tr.me td { background: rgba(160,118,43,0.11); }
+  table.board td.rk { width: 1%; white-space: nowrap; color: var(--ink-faint); padding-left: 0; }
+  table.board td.sm { width: 1%; white-space: nowrap; }
+  table.board td.sm b { color: var(--gold); font-variant-numeric: tabular-nums; }
+  table.board td.sm small { color: var(--ink-faint); font-size: 10px; }
+  table.board td.who { color: var(--ink); }
+  table.board td.who .you { color: var(--verdigris); font-weight: 700; }
+  table.board td.act { width: 1%; text-align: right; padding-right: 0; }
+  table.board td.act .ctl { padding: 3px 8px; font-size: 9.5px; }
 
   footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 </style>
@@ -170,6 +197,17 @@
     <button class="ctl" id="btnCopy">Copy code</button>
     <input id="shareIn" placeholder="paste a solution code — e.g. leachworks.AgZK…" spellcheck="false">
     <button class="ctl" id="btnImport">Import</button>
+    <span class="sep"></span>
+    <button class="ctl" id="btnSeal" disabled title="verify a run first">Seal on-chain</button>
+    <span class="chip" id="walletChip" title="your alphanet key">…</span>
+  </div>
+
+  <div class="chain">
+    <div class="chain-head">
+      <span class="chain-title" id="chainTitle">On-chain record</span>
+      <button class="ctl" id="btnScores">Refresh</button>
+    </div>
+    <div id="chainBody"><div class="chain-note">loading…</div></div>
   </div>
 
   <footer>
@@ -178,6 +216,8 @@
   </footer>
 </div>
 
+<!-- the chain client: window.GWChain. Absent (or blocked) it degrades to a disabled seal button. -->
+<script src="gw-chain.js"></script>
 <script>
 /*__ENGINE__*/
 </script>
@@ -1024,6 +1064,7 @@
   }
   function stamp() {
     const el = $('stamp'), inner = $('stampInner');
+    updateSealBtn();               // sealing is offered exactly while the stamp reads Verified
     if (mode !== 'run' || !sim) { el.classList.remove('show'); return; }
     const st = sim.state;
     if (st.fault) {
@@ -1075,12 +1116,14 @@
     if (idx < 0) { setStatus('unknown puzzle “' + k + '”', 'bad'); return false; }
     let decoded;
     try { decoded = CODEC.decodeString(data); } catch (e) { setStatus(String(e.message || e), 'bad'); return false; }
+    const moved = pIdx !== idx;
     pIdx = idx;
     layout = layoutFrom(decoded);
     sel = null; cursor = null; undoStack = []; redoStack = []; syncUndoButtons();
     enterEdit();
     document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', i === pIdx));
     fitView(); touched();
+    if (moved) refreshBoard();
     setStatus('imported ' + layout.arms.length + ' arm(s) into ' + BASES[idx].name, 'good');
     return true;
   }
@@ -1371,6 +1414,181 @@
   });
   $('btnImport').addEventListener('click', () => importCode($('shareIn').value.trim()));
 
+  // ---------- the chain: seal a verified run, read the record back ----------
+  // Everything below is render-only. window.GWChain is the prebuilt browser bundle
+  // (demo/gw-chain.js); if it did not load, every entry point here degrades to the
+  // same quiet "chain client unavailable" and nothing throws.
+  const CHAIN_OFF = 'chain client unavailable';
+  const WALLET_KEY = 'gw-wallet';
+  let chainClient = null, wallet = null, walletPromise = null, sealing = false;
+  let boardToken = 0, boardShown = -1;
+
+  const chainOn = () => !!window.GWChain;
+  const errText = (e) => String((e && e.message) || e || 'unknown error');
+  const shortAddr = (a) => (a && a.length > 12) ? a.slice(0, 6) + '…' + a.slice(-4) : (a || '');
+
+  function chainClientOf() {
+    if (!chainClient) chainClient = GWChain.createClient(GWChain.NETWORKS.alphanet);
+    return chainClient;
+  }
+  // the solver identity IS a raw keypair kept in this browser — generated on first
+  // use, never before, so a visitor who only reads the board never makes one
+  function walletOf() {
+    if (walletPromise) return walletPromise;
+    walletPromise = (async () => {
+      let hex = null;
+      try { hex = localStorage.getItem(WALLET_KEY); } catch (e) {}
+      if (hex) {
+        try { return (wallet = await GWChain.walletFromPrivateKey(GWChain.hexToBytes(hex))); }
+        catch (e) { /* unreadable key: mint a fresh one below */ }
+      }
+      const w = await GWChain.generateWallet();
+      try { localStorage.setItem(WALLET_KEY, GWChain.bytesToHex(w.privateKey)); } catch (e) {}
+      return (wallet = w);
+    })();
+    walletPromise.catch(() => { walletPromise = null; });   // a failure must not poison later tries
+    return walletPromise;
+  }
+
+  async function renderChip() {
+    const el = $('walletChip'); if (!el) return;
+    if (!chainOn()) { el.textContent = CHAIN_OFF; el.title = CHAIN_OFF; return; }
+    try {
+      const w = await walletOf();
+      el.textContent = shortAddr(w.address);
+      el.title = w.address + ' — click to copy';
+      el.dataset.addr = w.address;
+    } catch (e) {
+      el.textContent = 'key unavailable'; el.title = errText(e);
+    }
+  }
+  $('walletChip').addEventListener('click', async () => {
+    if (!chainOn()) { setStatus(CHAIN_OFF, 'bad'); return; }
+    try {
+      const w = await walletOf();
+      try { await navigator.clipboard.writeText(w.address); setStatus('address copied — ' + w.address, 'good'); }
+      catch (e) { setStatus('your address is ' + w.address, 'good'); }
+    } catch (e) { setStatus('no key: ' + errText(e), 'bad'); }
+  });
+
+  // seal is offered only for a run the local engine already verified — the program
+  // re-runs it anyway and reverts otherwise, but there is no point paying that trip
+  const sealable = () => mode === 'run' && !!sim && !sim.state.fault && sim.state.cycles !== null;
+  function updateSealBtn() {
+    const b = $('btnSeal'); if (!b) return;
+    if (!chainOn()) { b.disabled = true; b.title = CHAIN_OFF; return; }
+    b.disabled = sealing || !sealable();
+    b.title = sealing ? 'sealing…'
+      : sealable() ? 'submit this verified solution to alphanet'
+      : 'test a solution to verification first';
+  }
+
+  async function seal() {
+    if (!chainOn() || sealing || !sealable()) return;
+    const puzzleId = pIdx;
+    let machineBytes;
+    try { machineBytes = CODEC.encodeMachine(asMachine()); }
+    catch (e) { setStatus('not sealed: ' + errText(e), 'bad'); return; }
+    sealing = true; updateSealBtn();
+    setStatus('sealing…');
+    try {
+      const w = await walletOf();
+      renderChip();
+      const client = chainClientOf();
+      // a fresh key bootstraps its own account; onUpdate only fires when it must
+      let announced = false;
+      await GWChain.ensureAccount(client, w, () => {
+        if (!announced) { announced = true; setStatus('creating your account…'); }
+      });
+      if (announced) setStatus('sealing…');
+      const res = await GWChain.submitSolution(client, { wallet: w, puzzleId, machineBytes });
+      setStatus('sealed on alphanet · sum ' + res.sum + ' · txn ' + String(res.signature || '').slice(0, 12) + '…', 'good');
+      refreshBoard(true);
+    } catch (e) {
+      setStatus('not sealed: ' + errText(e), 'bad');
+    } finally {
+      sealing = false; updateSealBtn();
+    }
+  }
+  $('btnSeal').addEventListener('click', () => { seal(); });
+
+  // ---------- leaderboard: the program's event log for this puzzle ----------
+  function boardNote(text, bad) {
+    const host = $('chainBody'); if (!host) return;
+    host.innerHTML = '';
+    const d = document.createElement('div');
+    d.className = 'chain-note' + (bad ? ' bad' : '');
+    d.textContent = text;
+    host.appendChild(d);
+  }
+
+  function drawBoard(rows, puzIdx) {
+    const host = $('chainBody'); if (!host) return;
+    if (!rows.length) { boardNote('no sealed solutions yet'); return; }
+    const me = wallet && wallet.address;
+    host.innerHTML = '';
+    const table = document.createElement('table'); table.className = 'board';
+    rows.forEach((r, i) => {
+      const mine = !!me && r.solver === me;
+      const tr = document.createElement('tr');
+      if (mine) tr.className = 'me';
+
+      const rk = document.createElement('td'); rk.className = 'rk'; rk.textContent = (i + 1) + '.';
+
+      const sm = document.createElement('td'); sm.className = 'sm';
+      const b = document.createElement('b'); b.textContent = String(r.sum);
+      const bd = document.createElement('small');
+      bd.textContent = ' = ' + r.cost + 'g + ' + r.cycles + 'c + ' + r.area + 'a';
+      sm.appendChild(b); sm.appendChild(bd);
+
+      const who = document.createElement('td'); who.className = 'who';
+      who.textContent = shortAddr(r.solver);
+      if (mine) { const y = document.createElement('span'); y.className = 'you'; y.textContent = ' · you'; who.appendChild(y); }
+      who.title = r.solver + (r.slot !== null && r.slot !== undefined ? ' · slot ' + String(r.slot) : '');
+
+      const act = document.createElement('td'); act.className = 'act';
+      const btn = document.createElement('button'); btn.className = 'ctl'; btn.textContent = 'load';
+      btn.title = 'open this sealed solution in the editor';
+      btn.addEventListener('click', () => loadEntry(r, puzIdx));
+      act.appendChild(btn);
+
+      tr.appendChild(rk); tr.appendChild(sm); tr.appendChild(who); tr.appendChild(act);
+      table.appendChild(tr);
+    });
+    host.appendChild(table);
+  }
+
+  function loadEntry(entry, puzIdx) {
+    try {
+      const k = (BASES[puzIdx] || base()).key;
+      importCode(k + '.' + CODEC.toString(entry.machine));
+    } catch (e) { setStatus('could not load that solution: ' + errText(e), 'bad'); }
+  }
+
+  // `force` re-reads a puzzle already on screen (the Refresh button, and a fresh seal);
+  // without it, landing on the puzzle the board already shows costs no request
+  function refreshBoard(force) {
+    const title = $('chainTitle');
+    if (title) title.textContent = 'On-chain record · ' + base().name;
+    const host = $('chainBody'); if (!host) return;
+    if (!chainOn()) { boardNote(CHAIN_OFF); return; }
+    if (!force && boardShown === pIdx) return;
+    const want = pIdx, token = ++boardToken;
+    boardShown = want;
+    boardNote('loading…');
+    (async () => {
+      try {
+        const scores = await GWChain.fetchScores(chainClientOf(), { puzzleId: want });
+        if (token !== boardToken || pIdx !== want) return;     // the puzzle moved on
+        drawBoard(GWChain.rankScores(scores), want);
+      } catch (e) {
+        if (token !== boardToken || pIdx !== want) return;
+        boardNote(errText(e), true);
+      }
+    })();
+  }
+  $('btnScores').addEventListener('click', () => refreshBoard(true));
+
   // ---------- puzzles ----------
   function selectPuzzle(i) {
     pIdx = i;
@@ -1378,6 +1596,7 @@
     layout = loadDraft() || layoutFrom({ arms: clone(base().refArms) });
     sel = null; cursor = null; undoStack = []; redoStack = []; syncUndoButtons();
     enterEdit(); fitView(); refreshAll(); hud();
+    refreshBoard();
     try { history.replaceState(null, '', '#' + key()); } catch (e) {}
   }
   const tabs = $('tabs');
@@ -1401,6 +1620,11 @@
   }
   if (!booted) selectPuzzle(0);
   syncUndoButtons();
+  // the chain comes up alongside the editor, never in front of it: both of these are
+  // fire-and-forget and swallow their own failures
+  renderChip();
+  refreshBoard();
+  updateSealBtn();
 
   // test/debug hook: lets automated checks aim at exact cells
   window.__gwDebug = () => ({
