@@ -12,7 +12,8 @@
   "dependencies": {
     "@thru/passkey": "^0.3.11",
     "@thru/programs": "^0.3.11",
-    "@thru/sdk": "^0.3.11"
+    "@thru/sdk": "^0.3.11",
+    "@thru/wallet": "^0.3.11"
   },
   "devDependencies": {
     "esbuild": "^0.25.4"

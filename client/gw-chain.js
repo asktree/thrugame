@@ -312,6 +312,38 @@ export async function submitViaPasskey(client, { meta, walletAddress, authIdx = 
   return settle(client, last, fmtSignature(raw.slice(raw.length - 64)));
 }
 export const passkeySeal = submitViaPasskey;   // older name
+
+// ---- Thru wallet (@thru/wallet, the hosted wallet at app.tid.sh) ----
+// The wallet owns the fee payer, the account list, headers and nonces; we hand
+// it an intent (our program + instruction) and get back a signed raw
+// transaction to send. The wallet routes through its passkey manager, so the
+// selected wallet account is what the verifier sees vouched for — the solver.
+// `signIntent(intent) -> base64 raw transaction` is the wallet's signTransaction.
+export const bytesToBase64 = (b) => PM.bytesToBase64(b);
+export async function submitViaWallet(client, { signIntent, walletAddress, puzzleId, machineBytes, name, user, puzzleName, program = NETWORKS.alphanet.program, onUpdate }) {
+  const ix = encodeSubmission(puzzleId, machineBytes, { name, user });
+  const intent = {
+    walletAddress,
+    programAddress: program,
+    instructionData: bytesToBase64(ix),
+    readWriteAddresses: [],
+    readOnlyAddresses: [],
+    review: {
+      appName: 'Great Work!',
+      programAddress: program,
+      instruction: 'Submit ' + (name ? '“' + cleanName(name, NAME_MAX) + '”' : 'a solution') + (puzzleName ? ' for ' + puzzleName : '') + ' to the on-chain record',
+    },
+  };
+  const rawB64 = await signIntent(intent);
+  const raw = typeof rawB64 === 'string' ? base64ToBytesStd(rawB64) : rawB64;
+  const last = await track(client, raw, onUpdate);
+  return settle(client, last, fmtSignature(raw.slice(raw.length - 64)));
+}
+const base64ToBytesStd = (s) => {
+  const norm = s.replace(/-/g, '+').replace(/_/g, '/');
+  if (typeof atob === 'function') { const bin = atob(norm); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }
+  return Uint8Array.from(Buffer.from(norm, 'base64'));
+};
 export const base64UrlToBytes = (s) => PM.base64UrlToBytes(s);
 export const bytesToBase64Url = (b) => PM.bytesToBase64Url(b);
 

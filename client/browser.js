@@ -5,6 +5,7 @@ import * as GWChain from './gw-chain.js';
 import {
   registerPasskey, signWithPasskey, signWithDiscoverablePasskey, isWebAuthnSupported,
 } from '@thru/passkey/web';
+import { BrowserSDK, ThruNetwork } from '@thru/wallet';
 
 const rpId = () => (typeof location !== 'undefined' ? location.hostname : 'localhost');
 
@@ -33,4 +34,40 @@ const passkey = {
   },
 };
 
-window.GWChain = Object.assign({}, GWChain, { passkey });
+// The hosted Thru wallet (app.tid.sh) in an iframe: passkeys, accounts and fee
+// payer are the wallet's business; we connect, hand it intents, send what it
+// signs. One SDK per page; create lazily so a visitor who never connects never
+// loads the iframe.
+const WALLET_IFRAME = 'https://app.tid.sh/embedded';
+let sdk = null, sdkReady = null;
+const wallet = {
+  iframeUrl: WALLET_IFRAME,
+  async sdk() {
+    if (!sdk) {
+      sdk = new BrowserSDK({ iframeUrl: WALLET_IFRAME, rpcUrl: GWChain.NETWORKS.alphanet.rpc, network: ThruNetwork.Alphanet });
+      sdkReady = sdk.initialize().catch((e) => { sdk = null; sdkReady = null; throw e; });
+    }
+    await sdkReady;
+    return sdk;
+  },
+  // Connect (the wallet shows its own UI: sign in with a passkey, pick an
+  // account). Resolves to { address, label } of the selected account.
+  async connect() {
+    const s = await wallet.sdk();
+    const r = await s.connect({ metadata: {
+      appId: 'great-work', appName: 'Great Work!',
+      appUrl: typeof location !== 'undefined' ? location.origin + location.pathname : 'https://asktree.github.io/thrugame/editor.html',
+    } });
+    const acct = r.selectedAccount || (r.accounts && r.accounts[0]) || null;
+    if (!acct) throw new Error('the wallet connected no account');
+    return { address: acct.address, label: acct.label || '' };
+  },
+  isConnected() { return !!sdk && sdk.isConnected(); },
+  selected() { const a = sdk && sdk.getSelectedAccount(); return a ? { address: a.address, label: a.label || '' } : null; },
+  async disconnect() { if (sdk) await sdk.disconnect(); },
+  on(event, fn) { if (sdk) sdk.on(event, fn); },
+  // the signer submitViaWallet wants
+  signer() { return async (intent) => (await wallet.sdk()).signTransaction(intent); },
+};
+
+window.GWChain = Object.assign({}, GWChain, { passkey, wallet });
