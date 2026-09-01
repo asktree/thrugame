@@ -128,10 +128,32 @@
   table.board td.sm { width: 1%; white-space: nowrap; }
   table.board td.sm b { color: var(--gold); font-variant-numeric: tabular-nums; }
   table.board td.sm small { color: var(--ink-faint); font-size: 10px; }
-  table.board td.who { color: var(--ink); }
-  table.board td.who .you { color: var(--verdigris); font-weight: 700; }
+  table.board td.nm { color: var(--ink); }
+  table.board td.nm.unnamed { color: var(--ink-faint); }
+  table.board td.who { color: var(--ink-dim); }
+  table.board td.who .you { color: var(--verdigris); font-weight: 700; white-space: nowrap; }
+  /* names come off the chain and can be as long as their byte cap allows: clip them
+     in an inline-block so one long name cannot widen the table */
+  table.board .clip { display: inline-block; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+  table.board td.who .clip { max-width: 170px; }
   table.board td.act { width: 1%; text-align: right; padding-right: 0; }
   table.board td.act .ctl { padding: 3px 8px; font-size: 9.5px; }
+
+  dialog.submitdlg {
+    border: 1px solid var(--ink-dim); background: var(--parch); color: var(--ink); padding: 0;
+    margin: auto;   /* the global reset zeroes it, and a modal dialog centres on auto margins */
+    width: min(370px, calc(100vw - 36px)); box-shadow: 0 12px 34px rgba(42, 35, 24, .3);
+  }
+  dialog.submitdlg::backdrop { background: rgba(42, 35, 24, .45); }
+  .submitdlg form { padding: 16px 18px 15px; }
+  .submitdlg h2 { font-family: var(--display); font-size: 15px; font-weight: 700; letter-spacing: .06em; }
+  .submitdlg .sd-note { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .04em; margin-top: 3px; }
+  .submitdlg label { display: block; font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); margin: 13px 0 4px; }
+  .submitdlg input { width: 100%; font-family: var(--mono); font-size: 12px; padding: 6px 8px; border: 1px solid var(--line); background: var(--parch-2); color: var(--ink); }
+  .submitdlg input:focus { outline: none; border-color: var(--brass); }
+  .submitdlg .sd-count { font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); letter-spacing: .06em; text-align: right; margin-top: 3px; }
+  .submitdlg .sd-count.full { color: var(--oxblood); }
+  .submitdlg .sd-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
   footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 </style>
@@ -180,7 +202,6 @@
     </div>
     <button class="ctl" id="btnUndo" title="ctrl-z">Undo</button>
     <button class="ctl" id="btnRedo" title="ctrl-shift-z">Redo</button>
-    <button class="ctl" id="btnRef">Reference</button>
     <button class="ctl warn" id="btnClear">Clear</button>
     <div class="hud">
       <span>CYCLE <b id="hTick">0</b></span>
@@ -196,10 +217,10 @@
 
   <div class="sharebox">
     <button class="ctl" id="btnCopy">Copy code</button>
-    <input id="shareIn" placeholder="paste a solution code — e.g. leachworks.AgZK…" spellcheck="false">
+    <input id="shareIn" placeholder="paste a solution code — e.g. amalgam.AgEAAA…" spellcheck="false">
     <button class="ctl" id="btnImport">Import</button>
     <span class="sep"></span>
-    <button class="ctl" id="btnSeal" disabled title="verify a run first">Seal on-chain</button>
+    <button class="ctl" id="btnSubmit" disabled title="test a solution to verification first">Submit to chain</button>
     <span class="chip" id="walletChip" title="your alphanet key">…</span>
   </div>
 
@@ -211,13 +232,30 @@
     <div id="chainBody"><div class="chain-note">loading…</div></div>
   </div>
 
+  <dialog class="submitdlg" id="submitDlg">
+    <form method="dialog" id="submitForm">
+      <h2>Submit to alphanet</h2>
+      <div class="sd-note" id="sdNote">—</div>
+      <label for="sdName">Solution name</label>
+      <input id="sdName" placeholder="Twin ferris" spellcheck="false" autocomplete="off">
+      <div class="sd-count" id="sdNameCount">0 / 32 bytes</div>
+      <label for="sdUser">Your name</label>
+      <input id="sdUser" placeholder="anonymous" spellcheck="false" autocomplete="off">
+      <div class="sd-count" id="sdUserCount">0 / 24 bytes</div>
+      <div class="sd-actions">
+        <button type="button" class="ctl" id="sdCancel">Cancel</button>
+        <button type="submit" class="ctl" id="sdOk" value="ok">Submit</button>
+      </div>
+    </form>
+  </dialog>
+
   <footer>
     <span>GREAT WORK! · solution editor · the code you copy is the calldata you would submit</span>
     <span>Agrippa Kellum · for Unto Labs</span>
   </footer>
 </div>
 
-<!-- the chain client: window.GWChain. Absent (or blocked) it degrades to a disabled seal button. -->
+<!-- the chain client: window.GWChain. Absent (or blocked) it degrades to a disabled submit button. -->
 <script src="gw-chain.js"></script>
 <script>
 /*
@@ -1248,13 +1286,30 @@
 
 </script>
 <script>
-/* GREAT WORK! — example puzzles & machines (shared by tests and the lab) */
+/* GREAT WORK! — example machines (shared by tests, the lab, and the catalog)
+ *
+ * Each example is a machine plus the board it was built on. Examples with a
+ * product glyph name the PRODUCT they make; the puzzle catalog (what the
+ * chain verifies, what the editor offers) is one entry per product, named for
+ * it — the machines themselves are just sealed solutions on its leaderboard. */
 (function (root) {
   'use strict';
+
+  // the products, in catalog order = puzzle id order (contract/puzzles.h)
+  const PRODUCTS = [
+    { key: 'amalgam',          name: 'Lead Amalgam',       blurb: 'Quicksilver bonded to lead. The floor every builder starts from.' },
+    { key: 'saltedquicksilver', name: 'Salted Quicksilver', blurb: 'Salt, quicksilver, salt in one chain.' },
+    { key: 'transmutedgold',   name: 'Transmuted Gold',    blurb: 'Lead to tin to iron to copper to silver to gold, one rung per quicksilver.' },
+    { key: 'vitalsalts',       name: 'Vital Salts',        blurb: 'Two salts, mors and vitae in a chain — water alone, calcified and animated.' },
+    { key: 'airshipfuel',      name: 'Airship Fuel',       blurb: 'Fire alone becomes a zigzag of salt and flame.' },
+    { key: 'surrenderflare',   name: 'Surrender Flare',    blurb: 'An iron core sealed inside six salt petals must come out copper.' },
+    { key: 'ablativecrystal',  name: 'Ablative Crystal',   blurb: 'Two silver-core flowers must become one thirteen-atom crystal. Still unsolved.' },
+  ];
 
   const EXAMPLES = [
     {
       key: 'courier',
+      product: 'amalgam',
       name: 'The Courier',
       blurb: 'One arm, no elbows: grab, bond, deliver, repeat. The floor every builder starts from.',
       expect: { cycles: 142 },
@@ -1272,6 +1327,7 @@
     },
     {
       key: 'ferris',
+      product: 'amalgam',
       name: 'The Ferris',
       blurb: 'An elbow arm rides its parent between two worlds: Pb-side and Hg-side share one child tape. The bonder doubles as the product glyph, so the compound vanishes the instant it forms.',
       expect: { cycles: 75 },
@@ -1293,6 +1349,7 @@
     },
     {
       key: 'crane',
+      product: 'amalgam',
       name: 'The Crane',
       blurb: 'A worker arm runs one six-step loop forever. The crane relocates it — mid-loop, tapes still ticking — so the same coordinate-free tape ferries lead in one place and quicksilver in another.',
       expect: { cycles: 147 },
@@ -1314,6 +1371,7 @@
     },
     {
       key: 'beadwheel',
+      product: 'saltedquicksilver',
       name: 'The Bead Wheel',
       blurb: 'Tria Prima: salt, quicksilver, sulfur in one chain. The wheel carries the growing molecule around its ring while the feeder threads beads onto it — passing within a whisker of a fault, legally.',
       expect: { cycles: 125 },
@@ -1333,6 +1391,7 @@
     },
     {
       key: 'goldladder',
+      product: 'transmutedgold',
       name: 'The Gold Ladder',
       blurb: 'Lead to tin to iron to copper to silver to gold: a dual-gripper shuttle feeds quicksilver to the projection glyph — one hand delivering while the other reloads — and the courier extracts the finished gold.',
       expect: { cycles: 277 },
@@ -1356,6 +1415,7 @@
     },
     {
       key: 'leachworks',
+      product: 'vitalsalts',
       name: 'The Leaching Works',
       blurb: 'Water alone becomes a chain of salt, salt, mors, and vitae. Four waters calcify in transit; an animismus glyph — its shape fixed, like every glyph — turns a salt pair into vitae and mors; and a rocking wheel drags the growing chain back and forth across a single bonder before laying the finished compound around its own hub. Six arms, one product every twenty ticks.',
       expect: { cycles: 179 },
@@ -1392,6 +1452,7 @@
     },
     {
       key: 'airshipfuel',
+      product: 'airshipfuel',
       name: 'Airship Fuel',
       blurb: 'Imported from Opus Magnum (chapter one). Fire alone becomes a zigzag of salt and flame. A dimer factory bonds salt to fire — the salt calcified in transit — and two joiner arms pose the halves over a second bonder: one pivot for the left half, two for the right, because the zigzag bends both ways.',
       expect: { cycles: 162 },
@@ -1419,6 +1480,7 @@
     },
     {
       key: 'surrenderflare',
+      product: 'surrenderflare',
       name: 'Surrender Flare',
       blurb: 'Imported from Opus Magnum (chapter two). An iron core sealed inside six salt petals must come out copper — but the projection glyph cannot reach a surrounded core. So: sever one petal, walk the open flower around the wheel past the quicksilver, pivot the core onto a bonder, and let the porter hand the petal back. The porter then carries the whole flower to the product glyph.',
       expect: { cycles: 162 },
@@ -1449,6 +1511,7 @@
     },
     {
       key: 'ablativecrystal',
+      product: 'ablativecrystal',
       name: 'Ablative Crystal',
       blurb: 'Imported from Opus Magnum (journal III) — and still unsolved here. Two silver-core flowers must become one thirteen-atom crystal: a gold core, a ring of six fire, six salt at the points, twenty-four bonds. The reference machine below is an empty gesture; it idles until the cycle cap rejects it. The first machine to seal this record earns the name Great Work.',
       expect: { fault: 'exhaustion' },
@@ -1511,6 +1574,21 @@
       },
     },
   ];
+
+  // the puzzle catalog: one entry per product, in PRODUCTS order, with the
+  // examples that make it (the first one's board is the default placement)
+  function catalog() {
+    return PRODUCTS.map((p, id) => {
+      const examples = EXAMPLES.filter(ex => ex.product === p.key && ex.puzzle.output);
+      if (!examples.length) throw new Error('product without an example: ' + p.key);
+      return { id, key: p.key, name: p.name, blurb: p.blurb, examples };
+    });
+  }
+  for (const ex of EXAMPLES) {
+    if (ex.puzzle.output && !PRODUCTS.some(p => p.key === ex.product)) throw new Error('example without a product: ' + ex.key);
+  }
+  EXAMPLES.PRODUCTS = PRODUCTS;
+  EXAMPLES.catalog = catalog;
 
   if (typeof module !== 'undefined' && module.exports) module.exports = EXAMPLES;
   else root.GW_EXAMPLES = EXAMPLES;
@@ -2119,32 +2197,28 @@
     const elems = g.cell ? [g.elem] : g.elems;
     return { rel: cells.map(c => subc(c, cells[0])), elems, bonds: g.bonds || [] };
   }
-  function decomposeGlyphs(pz) {
-    const out = [];
-    for (const type in GLYPH_LABEL) {
-      for (const g of (pz[type] || [])) {
-        const cells = Array.isArray(g[0]) ? g : [g];
-        const rot = cells.length > 1 ? GW.DIRS.findIndex(d => eq(d, subc(cells[1], cells[0]))) : 0;
-        out.push({ type, at: cells[0].slice(), rot: Math.max(0, rot) });
-      }
-    }
-    return out;
-  }
-  // only real puzzles are editable — the fault demos (no product glyph) stay in the lab
-  const BASES = EXAMPLES.filter(ex => ex.puzzle.output).map(ex => {
-    const pz = ex.puzzle;
+  // one tab per PRODUCT, in catalog order — so the tab index IS the on-chain puzzle id.
+  // The first example's board defines the puzzle: its reagent and product shapes, its
+  // caps, and where those pieces start. Glyphs are not part of it — the player buys and
+  // places every glyph from the tray.
+  const BASES = EXAMPLES.catalog().map(entry => {
+    const pz = entry.examples[0].puzzle;
     return {
-      key: ex.key, name: ex.name, caps: pz.caps,
+      key: entry.key, name: entry.name, blurb: entry.blurb, caps: pz.caps,
       reagentShapes: (pz.inputs || []).map(normalizeMol),
       productShape: normalizeMol(pz.output),
       defaultLayout: {
-        glyphs: decomposeGlyphs(pz),
+        glyphs: [],
         inputs: (pz.inputs || []).map((g, i) => ({ ri: i, at: (g.cell ? g.cell : g.cells[0]).slice(), rot: 0 })),
         output: { at: pz.output.cells[0].slice(), rot: 0 },
       },
-      refArms: ex.machine.arms,
     };
   });
+  // links and codes minted before the catalog named an EXAMPLE ("courier.…"); each of
+  // those still resolves, to the tab of the product that example makes
+  const KEY_ALIAS = {};
+  for (const ex of EXAMPLES) if (ex.product) KEY_ALIAS[ex.key] = ex.product;
+  const resolveKey = (k) => (BASES.some(b => b.key === k) ? k : (KEY_ALIAS[k] || k));
 
   // ---------- state ----------
   let pIdx = 0;
@@ -2913,7 +2987,7 @@
   }
   function stamp() {
     const el = $('stamp'), inner = $('stampInner');
-    updateSealBtn();               // sealing is offered exactly while the stamp reads Verified
+    updateSubmitBtn();             // submitting is offered exactly while the stamp reads Verified
     if (mode !== 'run' || !sim) { el.classList.remove('show'); return; }
     const st = sim.state;
     if (st.fault) {
@@ -2961,7 +3035,7 @@
     const dot = str.indexOf('.');
     if (dot < 0) { setStatus('codes look like <puzzle>.<data>', 'bad'); return false; }
     const k = str.slice(0, dot), data = str.slice(dot + 1).trim();
-    const idx = BASES.findIndex(b => b.key === k);
+    const idx = BASES.findIndex(b => b.key === resolveKey(k));
     if (idx < 0) { setStatus('unknown puzzle “' + k + '”', 'bad'); return false; }
     let decoded;
     try { decoded = CODEC.decodeString(data); } catch (e) { setStatus(String(e.message || e), 'bad'); return false; }
@@ -3242,11 +3316,6 @@
   }));
   $('btnUndo').addEventListener('click', undo);
   $('btnRedo').addEventListener('click', redo);
-  $('btnRef').addEventListener('click', () => withUndo(() => {
-    layout = layoutFrom({ arms: clone(base().refArms) });
-    sel = null; cursor = null; fitView();
-    setStatus('reference solution loaded', 'good');
-  }));
   $('btnClear').addEventListener('click', () => withUndo(() => {
     layout = layoutFrom({ arms: [] });
     layout.glyphs = [];
@@ -3263,18 +3332,32 @@
   });
   $('btnImport').addEventListener('click', () => importCode($('shareIn').value.trim()));
 
-  // ---------- the chain: seal a verified run, read the record back ----------
+  // ---------- the chain: submit a verified run, read the record back ----------
   // Everything below is render-only. window.GWChain is the prebuilt browser bundle
   // (demo/gw-chain.js); if it did not load, every entry point here degrades to the
   // same quiet "chain client unavailable" and nothing throws.
   const CHAIN_OFF = 'chain client unavailable';
-  const WALLET_KEY = 'gw-wallet';
-  let chainClient = null, wallet = null, walletPromise = null, sealing = false;
+  const WALLET_KEY = 'gw-wallet', USER_KEY = 'gw-user';
+  const NAME_MAX = (window.GWChain && GWChain.NAME_MAX) || 32;
+  const USER_MAX = (window.GWChain && GWChain.USER_MAX) || 24;
+  let chainClient = null, wallet = null, walletPromise = null, submitting = false;
+  let pending = null;              // the run captured when the submit dialog opened
   let boardToken = 0, boardShown = -1;
 
   const chainOn = () => !!window.GWChain;
   const errText = (e) => String((e && e.message) || e || 'unknown error');
   const shortAddr = (a) => (a && a.length > 12) ? a.slice(0, 6) + '…' + a.slice(-4) : (a || '');
+  // the program measures names in UTF-8 bytes, not characters: clamp by code point so
+  // a multibyte name is cut on a character boundary and never overruns its cap
+  const ENC = new TextEncoder();
+  const byteLen = (v) => ENC.encode(v || '').length;
+  function clampBytes(v, max) {
+    v = String(v == null ? '' : v);
+    if (byteLen(v) <= max) return v;
+    let out = '';
+    for (const ch of v) { if (byteLen(out + ch) > max) break; out += ch; }
+    return out;
+  }
 
   function chainClientOf() {
     if (!chainClient) chainClient = GWChain.createClient(GWChain.NETWORKS.alphanet);
@@ -3320,26 +3403,69 @@
     } catch (e) { setStatus('no key: ' + errText(e), 'bad'); }
   });
 
-  // seal is offered only for a run the local engine already verified — the program
+  // submitting is offered only for a run the local engine already verified — the program
   // re-runs it anyway and reverts otherwise, but there is no point paying that trip
-  const sealable = () => mode === 'run' && !!sim && !sim.state.fault && sim.state.cycles !== null;
-  function updateSealBtn() {
-    const b = $('btnSeal'); if (!b) return;
+  const submittable = () => mode === 'run' && !!sim && !sim.state.fault && sim.state.cycles !== null;
+  function updateSubmitBtn() {
+    const b = $('btnSubmit'); if (!b) return;
     if (!chainOn()) { b.disabled = true; b.title = CHAIN_OFF; return; }
-    b.disabled = sealing || !sealable();
-    b.title = sealing ? 'sealing…'
-      : sealable() ? 'submit this verified solution to alphanet'
+    b.disabled = submitting || !submittable();
+    b.title = submitting ? 'submitting…'
+      : submittable() ? 'submit this verified solution to alphanet'
       : 'test a solution to verification first';
   }
 
-  async function seal() {
-    if (!chainOn() || sealing || !sealable()) return;
-    const puzzleId = pIdx;
+  // ---------- the submit dialog: name the solution, name yourself ----------
+  function countInput(input, out, max) {
+    const clamped = clampBytes(input.value, max);
+    if (clamped !== input.value) input.value = clamped;
+    const used = byteLen(clamped);
+    out.textContent = used + ' / ' + max + ' bytes';
+    out.classList.toggle('full', used >= max);
+  }
+  const wireCount = (id, outId, max) => {
+    const input = $(id), out = $(outId);
+    if (input && out) input.addEventListener('input', () => countInput(input, out, max));
+  };
+  wireCount('sdName', 'sdNameCount', NAME_MAX);
+  wireCount('sdUser', 'sdUserCount', USER_MAX);
+
+  function openSubmit() {
+    if (!chainOn() || submitting || !submittable()) return;
+    const dlg = $('submitDlg'); if (!dlg) return;
+    // capture the run before anything can await or the board can move: what the
+    // dialog confirms is exactly the machine that was on screen when it opened
     let machineBytes;
     try { machineBytes = CODEC.encodeMachine(asMachine()); }
-    catch (e) { setStatus('not sealed: ' + errText(e), 'bad'); return; }
-    sealing = true; updateSealBtn();
-    setStatus('sealing…');
+    catch (e) { setStatus('not submitted: ' + errText(e), 'bad'); return; }
+    pending = { puzzleId: pIdx, machineBytes };
+    const note = $('sdNote');
+    if (note) note.textContent = base().name + ' · sum ' + $('hSum').textContent;
+    let remembered = '';
+    try { remembered = localStorage.getItem(USER_KEY) || ''; } catch (e) {}
+    $('sdName').value = '';
+    $('sdUser').value = clampBytes(remembered, USER_MAX);
+    countInput($('sdName'), $('sdNameCount'), NAME_MAX);
+    countInput($('sdUser'), $('sdUserCount'), USER_MAX);
+    dlg.returnValue = '';
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    setTimeout(() => { try { $('sdName').focus(); } catch (e) {} }, 0);
+  }
+  $('btnSubmit').addEventListener('click', openSubmit);
+  $('sdCancel').addEventListener('click', () => { const d = $('submitDlg'); d.close ? d.close('') : d.removeAttribute('open'); });
+  $('submitDlg').addEventListener('close', () => {
+    const req = pending; pending = null;
+    if ($('submitDlg').returnValue !== 'ok' || !req) return;
+    const name = clampBytes($('sdName').value.trim(), NAME_MAX);
+    const user = clampBytes($('sdUser').value.trim(), USER_MAX);
+    try { localStorage.setItem(USER_KEY, user); } catch (e) {}
+    submitRun(req, name, user);
+  });
+
+  async function submitRun(req, name, user) {
+    if (!chainOn() || submitting) return;
+    submitting = true; updateSubmitBtn();
+    setStatus('submitting…');
     try {
       const w = await walletOf();
       renderChip();
@@ -3349,17 +3475,18 @@
       await GWChain.ensureAccount(client, w, () => {
         if (!announced) { announced = true; setStatus('creating your account…'); }
       });
-      if (announced) setStatus('sealing…');
-      const res = await GWChain.submitSolution(client, { wallet: w, puzzleId, machineBytes });
-      setStatus('sealed on alphanet · sum ' + res.sum + ' · txn ' + String(res.signature || '').slice(0, 12) + '…', 'good');
+      if (announced) setStatus('submitting…');
+      const res = await GWChain.submitSolution(client, {
+        wallet: w, puzzleId: req.puzzleId, machineBytes: req.machineBytes, name, user,
+      });
+      setStatus('submitted on alphanet · sum ' + res.sum + ' · txn ' + String(res.signature || '').slice(0, 12) + '…', 'good');
       refreshBoard(true);
     } catch (e) {
-      setStatus('not sealed: ' + errText(e), 'bad');
+      setStatus('not submitted: ' + errText(e), 'bad');
     } finally {
-      sealing = false; updateSealBtn();
+      submitting = false; updateSubmitBtn();
     }
   }
-  $('btnSeal').addEventListener('click', () => { seal(); });
 
   // ---------- leaderboard: the program's event log for this puzzle ----------
   function boardNote(text, bad) {
@@ -3373,7 +3500,7 @@
 
   function drawBoard(rows, puzIdx) {
     const host = $('chainBody'); if (!host) return;
-    if (!rows.length) { boardNote('no sealed solutions yet'); return; }
+    if (!rows.length) { boardNote('no submitted solutions yet'); return; }
     const me = wallet && wallet.address;
     host.innerHTML = '';
     const table = document.createElement('table'); table.className = 'board';
@@ -3390,18 +3517,29 @@
       bd.textContent = ' = ' + r.cost + 'g + ' + r.cycles + 'c + ' + r.area + 'a';
       sm.appendChild(b); sm.appendChild(bd);
 
+      // names come off the chain: they only ever go in through textContent
+      const nm = document.createElement('td'); nm.className = 'nm';
+      const nmSpan = document.createElement('span'); nmSpan.className = 'clip';
+      const nameTxt = String(r.name || '').trim();
+      nmSpan.textContent = nameTxt || '(unnamed)';
+      if (nameTxt) nm.title = nameTxt; else nm.classList.add('unnamed');
+      nm.appendChild(nmSpan);
+
       const who = document.createElement('td'); who.className = 'who';
-      who.textContent = shortAddr(r.solver);
+      const whoSpan = document.createElement('span'); whoSpan.className = 'clip';
+      const userTxt = String(r.user || '').trim();
+      whoSpan.textContent = userTxt ? 'by ' + userTxt : shortAddr(r.solver);
+      who.appendChild(whoSpan);
       if (mine) { const y = document.createElement('span'); y.className = 'you'; y.textContent = ' · you'; who.appendChild(y); }
       who.title = r.solver + (r.slot !== null && r.slot !== undefined ? ' · slot ' + String(r.slot) : '');
 
       const act = document.createElement('td'); act.className = 'act';
       const btn = document.createElement('button'); btn.className = 'ctl'; btn.textContent = 'load';
-      btn.title = 'open this sealed solution in the editor';
+      btn.title = 'open this solution in the editor';
       btn.addEventListener('click', () => loadEntry(r, puzIdx));
       act.appendChild(btn);
 
-      tr.appendChild(rk); tr.appendChild(sm); tr.appendChild(who); tr.appendChild(act);
+      tr.appendChild(rk); tr.appendChild(sm); tr.appendChild(nm); tr.appendChild(who); tr.appendChild(act);
       table.appendChild(tr);
     });
     host.appendChild(table);
@@ -3414,7 +3552,7 @@
     } catch (e) { setStatus('could not load that solution: ' + errText(e), 'bad'); }
   }
 
-  // `force` re-reads a puzzle already on screen (the Refresh button, and a fresh seal);
+  // `force` re-reads a puzzle already on screen (the Refresh button, and a fresh submission);
   // without it, landing on the puzzle the board already shows costs no request
   function refreshBoard(force) {
     const title = $('chainTitle');
@@ -3442,7 +3580,7 @@
   function selectPuzzle(i) {
     pIdx = i;
     document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
-    layout = loadDraft() || layoutFrom({ arms: clone(base().refArms) });
+    layout = loadDraft() || layoutFrom({ arms: [] });
     sel = null; cursor = null; undoStack = []; redoStack = []; syncUndoButtons();
     enterEdit(); fitView(); refreshAll(); hud();
     refreshBoard();
@@ -3463,7 +3601,7 @@
   if (hash) {
     if (hash.includes('.')) booted = importCode(hash);
     else {
-      const i = BASES.findIndex(b => b.key === hash);
+      const i = BASES.findIndex(b => b.key === resolveKey(hash));
       if (i >= 0) { selectPuzzle(i); booted = true; }
     }
   }
@@ -3473,7 +3611,7 @@
   // fire-and-forget and swallow their own failures
   renderChip();
   refreshBoard();
-  updateSealBtn();
+  updateSubmitBtn();
 
   // test/debug hook: lets automated checks aim at exact cells
   window.__gwDebug = () => ({
