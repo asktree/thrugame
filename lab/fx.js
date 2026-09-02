@@ -194,15 +194,46 @@
     }
 
     // The fault's detail string is the engine's, verbatim: "atom 7 × base a0 @ f=5/12",
-    // "molecule 3", "tower a1". We only read it — the renderer never authors a verdict.
+    // "molecule 3", "tower a1", "atom cap". We only read it — the renderer never authors
+    // a verdict — and widen it to everything a player would call the offender: the whole
+    // molecule and the arms holding it, a tower and its carriers, the reagent that
+    // overfilled the board, the output that never got its product.
     function armFault(st) {
       const det = String(st.fault.detail || '');
-      const objs = [];
+      const objs = [], seen = new Set();
+      const mark = (kind, id) => { const k = kind + ':' + id; if (!seen.has(k)) { seen.add(k); objs.push({ kind: kind, id: id }); } };
+      const atomById = (id) => st.atoms.find(a => String(a.id) === String(id));
+      const armById = (id) => st.arms.find(a => String(a.id) === String(id));
+      const holdersOf = (ids) => {
+        for (const arm of st.arms) for (const h of arm.holds) if (h && h.kind === 'atom' && ids.has(String(h.id))) mark('base', arm.id);
+      };
       const re = /(atom|base|molecule|tower)\s+([A-Za-z0-9_.:-]+)/g;
       let m;
       while ((m = re.exec(det))) {
         if (m[2] === 'cap') continue;
-        objs.push({ kind: m[1], id: m[2] });
+        if (m[1] === 'molecule') {
+          const root = atomById(m[2]);
+          const ids = new Set(), stack = root ? [root] : [];
+          if (root) ids.add(String(root.id));
+          while (stack.length) {
+            const a = stack.pop();
+            for (const id of a.bonds) { const b = atomById(id); if (b && !ids.has(String(b.id))) { ids.add(String(b.id)); stack.push(b); } }
+          }
+          for (const id of ids) mark('atom', id);
+          if (!ids.size) mark('atom', m[2]);
+          holdersOf(ids);
+        } else if (m[1] === 'tower') {
+          mark('base', m[2]);
+          const t = armById(m[2]);
+          if (t) for (const c of t.carriers || []) mark('base', c.arm && c.arm.id !== undefined ? c.arm.id : c.arm);
+        } else mark(m[1], m[2]);
+      }
+      if (st.fault.kind === 'exhaustion') {
+        if (/atom cap/.test(det)) {
+          for (const e of st.events) if (e.type === 'spawn' && e.tick === st.fault.tick) for (const id of e.ids || []) mark('atom', id);
+        } else if (st.puzzle && st.puzzle.output) {
+          for (const cell of st.puzzle.output.cells || []) objs.push({ kind: 'cell', cell: cell });
+        }
       }
       const fm = det.match(/f=(\d+)\/(\d+)/);
       fault = { objs: objs, born: now(), f: fm ? +fm[1] / +fm[2] : null };
@@ -520,17 +551,21 @@
       for (const o of fault.objs) {
         let p = null;
         if (o.kind === 'atom' || o.kind === 'molecule') p = atomPx && atomPx[o.id];
+        else if (o.kind === 'cell') p = env.Pc(o.cell);
         else p = armPx && armPx[o.id];
         if (!p) continue;
-        // throbs like a warning lamp, then settles into a standing mark on the jam
+        // a red square on the offender: throbs like a warning lamp, then settles into
+        // a standing mark on the jam
         const damp = Math.max(0, 1 - age / 3000);
         const beat = motion ? 0.5 + 0.5 * Math.sin(age / 150) * damp : 1;
-        c.beginPath(); c.arc(p[0], p[1], s * (ATOM_R + 0.18 + (motion ? 0.05 * beat : 0)), 0, TAU);
-        c.strokeStyle = rgba(COL.ox, 0.45 + 0.4 * beat); c.lineWidth = s * 0.09;
+        const h = s * (ATOM_R + 0.2 + (motion ? 0.05 * beat : 0));
+        c.beginPath(); c.rect(p[0] - h, p[1] - h, 2 * h, 2 * h);
+        c.strokeStyle = rgba(COL.ox, 0.55 + 0.4 * beat); c.lineWidth = s * 0.1;
+        c.lineJoin = 'miter';
         c.stroke();
         if (motion && age < 700) {
-          const u = age / 700;
-          c.beginPath(); c.arc(p[0], p[1], s * (ATOM_R + 1.5 * eOut(u)), 0, TAU);
+          const u = age / 700, hh = s * (ATOM_R + 1.5 * eOut(u));
+          c.beginPath(); c.rect(p[0] - hh, p[1] - hh, 2 * hh, 2 * hh);
           c.strokeStyle = rgba(COL.ox, 0.7 * (1 - u)); c.lineWidth = s * 0.1 * (1 - u);
           c.stroke();
         }
@@ -541,7 +576,7 @@
       return {
         effects: list.length, cap: CAP, tint: tint.size, grow: grow.size,
         doom: doom.size, birth: birth.size, prev: prev.size, grips: grips.size,
-        evIdx: evIdx, fault: fault ? fault.objs.length : 0, enabled: enabled,
+        evIdx: evIdx, fault: fault ? fault.objs.length : 0, faultObjs: fault ? fault.objs.slice() : [], enabled: enabled,
         live: list.map(f => ({ k: f.kind, age: Math.round(now() - f.born), dur: Math.round(f.dur) })),
       };
     }

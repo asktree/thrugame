@@ -63,6 +63,10 @@
   canvas#field { display: block; width: 100%; height: auto; touch-action: none; }
   .stamp { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .4s; }
   .stamp.show { opacity: 1; }
+  .stamp.high { align-items: flex-start; }
+  .stamp.low { align-items: flex-end; }
+  .stamp.high .stamp-inner { margin-top: 12px; }
+  .stamp.low .stamp-inner { margin-bottom: 12px; }
   .stamp-inner {
     border: 2.5px solid var(--gold); color: var(--gold); background: rgba(241,233,214,.85);
     font-family: var(--display); font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
@@ -171,6 +175,12 @@
   .submitdlg .sd-count { font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); letter-spacing: .06em; text-align: right; margin-top: 3px; }
   .submitdlg .sd-count.full { color: var(--oxblood); }
   .submitdlg .sd-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  dialog.aboutdlg { width: min(540px, calc(100vw - 36px)); }
+  .aboutdlg .ab { padding: 18px 22px 16px; font-size: 15.5px; line-height: 1.45; }
+  .aboutdlg p { margin: 10px 0; }
+  .aboutdlg ul { margin: 10px 0 10px 22px; padding: 0; }
+  .aboutdlg li { margin: 4px 0; }
+  .aboutdlg .sig { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--ink-faint); margin-top: 14px; }
 
   footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 </style>
@@ -178,6 +188,7 @@
 <div class="wrap">
   <header>
     <h1>Great Work!<small>Solution Editor</small></h1>
+    <button class="ctl" id="btnAbout">About</button>
   </header>
 
   <div class="tabs" id="tabs"></div>
@@ -256,6 +267,27 @@
     <div id="chainBody"><div class="chain-note">loading…</div></div>
   </div>
 
+  <dialog class="submitdlg aboutdlg" id="aboutDlg">
+    <form method="dialog" class="ab">
+      <h2>About</h2>
+      <p>Hello! This is a free game based on Opus Magnum by Zachtronics. The gameplay will be very familiar, but there are a few changes:</p>
+      <ul>
+        <li>Arms can move other arms by grabbing their base</li>
+        <li>Arms can be mounted to other arms in the editor. This costs 10 gold, or 5 if it replaces the grabber.</li>
+        <li>There are no tracks or pistons</li>
+        <li>Some gold costs are different &mdash; namely bi-arms and tri-arms are slightly cheaper.</li>
+        <li>You need to make 9 products instead of 6</li>
+        <li>The leaderboard only cares about Sum. Since you need 9 products, Sum in this game is more weighted towards cycles.</li>
+        <li>Instruction tapes don't auto-pad &mdash; let me know what you think of this!</li>
+      </ul>
+      <p>This game is currently in playtesting. I am not very good at Opus Magnum, tried to make something thought provoking and familiar, let me know what you think.</p>
+      <p>In the future, I plan to run longform contests with cash prizes! So stay tuned.</p>
+      <p class="sig">&mdash; agrippa</p>
+      <div class="sd-actions">
+        <button type="submit" class="ctl" id="abClose" value="ok">Close</button>
+      </div>
+    </form>
+  </dialog>
   <dialog class="submitdlg" id="submitDlg">
     <form method="dialog" id="submitForm">
       <h2>Submit to alphanet</h2>
@@ -670,7 +702,7 @@
     // pose: {pos:[q,r], rot} — rot is the arm's frame rotation; global dir = rot+angle
     function pose(arm, guard) {
       guard = guard || new Set();
-      if (guard.has(arm.id)) { S.fault = S.fault || { kind: 'grab-cycle', tick: S.tick }; return { pos: [0, 0], rot: 0 }; }
+      if (guard.has(arm.id)) { S.fault = S.fault || { kind: 'grab-cycle', tick: S.tick, detail: 'tower ' + arm.id }; return { pos: [0, 0], rot: 0 }; }
       guard.add(arm.id);
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
@@ -786,6 +818,10 @@
     function step() {
       if (S.fault || S.cycles !== null) return S;
       S.tick++;
+      // render-only: a fault before the sweep leaves no motion for this tick, so a
+      // renderer shows the committed poses (an arm already turned, the molecule it
+      // tore) rather than replaying the previous tick's motion
+      S.motion = null;
       const ev = (e) => S.events.push(Object.assign({ tick: S.tick }, e));
 
       // 1. spawn — a reagent refills only when its whole footprint is empty
@@ -830,7 +866,7 @@
           if (atom) { arm.holds[gi] = { kind: 'atom', id: atom.id }; return; }
           const tower = groundArmAt(cell);
           if (tower && tower !== arm) {
-            if (supportChain(arm).has(tower.id)) { S.fault = { kind: 'grab-cycle', tick: S.tick }; return; }
+            if (supportChain(arm).has(tower.id)) { S.fault = { kind: 'grab-cycle', tick: S.tick, detail: `base ${arm.id} grabs tower ${tower.id} beneath it` }; return; }
             const preRot = pose(tower).rot; // pose before this carrier attaches
             arm.holds[gi] = { kind: 'tower', id: tower.id };
             tower.carriers.push({ arm, grip: gi });
@@ -1860,15 +1896,46 @@
     }
 
     // The fault's detail string is the engine's, verbatim: "atom 7 × base a0 @ f=5/12",
-    // "molecule 3", "tower a1". We only read it — the renderer never authors a verdict.
+    // "molecule 3", "tower a1", "atom cap". We only read it — the renderer never authors
+    // a verdict — and widen it to everything a player would call the offender: the whole
+    // molecule and the arms holding it, a tower and its carriers, the reagent that
+    // overfilled the board, the output that never got its product.
     function armFault(st) {
       const det = String(st.fault.detail || '');
-      const objs = [];
+      const objs = [], seen = new Set();
+      const mark = (kind, id) => { const k = kind + ':' + id; if (!seen.has(k)) { seen.add(k); objs.push({ kind: kind, id: id }); } };
+      const atomById = (id) => st.atoms.find(a => String(a.id) === String(id));
+      const armById = (id) => st.arms.find(a => String(a.id) === String(id));
+      const holdersOf = (ids) => {
+        for (const arm of st.arms) for (const h of arm.holds) if (h && h.kind === 'atom' && ids.has(String(h.id))) mark('base', arm.id);
+      };
       const re = /(atom|base|molecule|tower)\s+([A-Za-z0-9_.:-]+)/g;
       let m;
       while ((m = re.exec(det))) {
         if (m[2] === 'cap') continue;
-        objs.push({ kind: m[1], id: m[2] });
+        if (m[1] === 'molecule') {
+          const root = atomById(m[2]);
+          const ids = new Set(), stack = root ? [root] : [];
+          if (root) ids.add(String(root.id));
+          while (stack.length) {
+            const a = stack.pop();
+            for (const id of a.bonds) { const b = atomById(id); if (b && !ids.has(String(b.id))) { ids.add(String(b.id)); stack.push(b); } }
+          }
+          for (const id of ids) mark('atom', id);
+          if (!ids.size) mark('atom', m[2]);
+          holdersOf(ids);
+        } else if (m[1] === 'tower') {
+          mark('base', m[2]);
+          const t = armById(m[2]);
+          if (t) for (const c of t.carriers || []) mark('base', c.arm && c.arm.id !== undefined ? c.arm.id : c.arm);
+        } else mark(m[1], m[2]);
+      }
+      if (st.fault.kind === 'exhaustion') {
+        if (/atom cap/.test(det)) {
+          for (const e of st.events) if (e.type === 'spawn' && e.tick === st.fault.tick) for (const id of e.ids || []) mark('atom', id);
+        } else if (st.puzzle && st.puzzle.output) {
+          for (const cell of st.puzzle.output.cells || []) objs.push({ kind: 'cell', cell: cell });
+        }
       }
       const fm = det.match(/f=(\d+)\/(\d+)/);
       fault = { objs: objs, born: now(), f: fm ? +fm[1] / +fm[2] : null };
@@ -2186,17 +2253,21 @@
       for (const o of fault.objs) {
         let p = null;
         if (o.kind === 'atom' || o.kind === 'molecule') p = atomPx && atomPx[o.id];
+        else if (o.kind === 'cell') p = env.Pc(o.cell);
         else p = armPx && armPx[o.id];
         if (!p) continue;
-        // throbs like a warning lamp, then settles into a standing mark on the jam
+        // a red square on the offender: throbs like a warning lamp, then settles into
+        // a standing mark on the jam
         const damp = Math.max(0, 1 - age / 3000);
         const beat = motion ? 0.5 + 0.5 * Math.sin(age / 150) * damp : 1;
-        c.beginPath(); c.arc(p[0], p[1], s * (ATOM_R + 0.18 + (motion ? 0.05 * beat : 0)), 0, TAU);
-        c.strokeStyle = rgba(COL.ox, 0.45 + 0.4 * beat); c.lineWidth = s * 0.09;
+        const h = s * (ATOM_R + 0.2 + (motion ? 0.05 * beat : 0));
+        c.beginPath(); c.rect(p[0] - h, p[1] - h, 2 * h, 2 * h);
+        c.strokeStyle = rgba(COL.ox, 0.55 + 0.4 * beat); c.lineWidth = s * 0.1;
+        c.lineJoin = 'miter';
         c.stroke();
         if (motion && age < 700) {
-          const u = age / 700;
-          c.beginPath(); c.arc(p[0], p[1], s * (ATOM_R + 1.5 * eOut(u)), 0, TAU);
+          const u = age / 700, hh = s * (ATOM_R + 1.5 * eOut(u));
+          c.beginPath(); c.rect(p[0] - hh, p[1] - hh, 2 * hh, 2 * hh);
           c.strokeStyle = rgba(COL.ox, 0.7 * (1 - u)); c.lineWidth = s * 0.1 * (1 - u);
           c.stroke();
         }
@@ -2207,7 +2278,7 @@
       return {
         effects: list.length, cap: CAP, tint: tint.size, grow: grow.size,
         doom: doom.size, birth: birth.size, prev: prev.size, grips: grips.size,
-        evIdx: evIdx, fault: fault ? fault.objs.length : 0, enabled: enabled,
+        evIdx: evIdx, fault: fault ? fault.objs.length : 0, faultObjs: fault ? fault.objs.slice() : [], enabled: enabled,
         live: list.map(f => ({ k: f.kind, age: Math.round(now() - f.born), dur: Math.round(f.dur) })),
       };
     }
@@ -3196,6 +3267,7 @@
     mode = 'run';
     sim = GW.createSim(matPuzzle(), clone({ arms: machineArms() }));
     running = true; done = false; phase = 1;
+    $('stamp').classList.remove('high', 'low');
     FX.reset(sim.state);
     $('btnMode').textContent = '✎ Edit';
     $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
@@ -3240,6 +3312,15 @@
   const capture = (el, ev) => { try { el.setPointerCapture(ev.pointerId); } catch (e) {} };
 
   canvas.addEventListener('pointerdown', (ev) => {
+    if (mode === 'run') {
+      // the verdict covers the middle of the mat; a click sends it to the edge
+      // farther from the pointer so what's under it can be inspected
+      if (!done) return;
+      const [, my] = mouse(ev);
+      const el = $('stamp'), low = my < CH / 2;
+      el.classList.toggle('low', low); el.classList.toggle('high', !low);
+      return;
+    }
     if (mode !== 'edit' || activeId !== null) return;
     activeId = ev.pointerId;
     capture(canvas, ev);
@@ -3965,6 +4046,7 @@
   }
   $('btnSubmit').addEventListener('click', openSubmit);
   $('sdCancel').addEventListener('click', () => { const d = $('submitDlg'); d.close ? d.close('') : d.removeAttribute('open'); });
+  $('btnAbout').addEventListener('click', () => { const d = $('aboutDlg'); d.showModal ? d.showModal() : d.setAttribute('open', ''); });
   $('submitDlg').addEventListener('close', () => {
     const req = pending; pending = null;
     if ($('submitDlg').returnValue !== 'ok' || !req) return;
@@ -4164,17 +4246,21 @@
   function frame(now) {
     const dt = Math.min(120, now - last); last = now; frameDt = dt;
     if (mode === 'run' && sim) {
-      if (running && !done) {
-        if (stepMs === 0) {
+      if (stepMs === 0) {
+        if (running && !done) {
           for (let i = 0; i < 40 && !done; i++) { sim.step(); if (sim.state.fault || sim.state.cycles !== null) break; }
-          phase = 1;
           updateRunTapes(); hud(); stamp();
-        } else {
-          phase += dt / stepMs;
-          if (phase >= 1) {
+        }
+        phase = 1;
+      } else {
+        // the tick in hand always plays out to its end — paused, stepped or finished,
+        // the view settles on the state the tick produced, never the one before it
+        phase += dt / stepMs;
+        if (phase >= 1) {
+          if (running && !done) {
             sim.step(); phase = 0;
             updateRunTapes(); hud(); stamp();
-          }
+          } else phase = 1;
         }
       }
       // effects come off the event log the steps above produced; at MAX the index

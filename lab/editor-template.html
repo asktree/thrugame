@@ -63,6 +63,10 @@
   canvas#field { display: block; width: 100%; height: auto; touch-action: none; }
   .stamp { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .4s; }
   .stamp.show { opacity: 1; }
+  .stamp.high { align-items: flex-start; }
+  .stamp.low { align-items: flex-end; }
+  .stamp.high .stamp-inner { margin-top: 12px; }
+  .stamp.low .stamp-inner { margin-bottom: 12px; }
   .stamp-inner {
     border: 2.5px solid var(--gold); color: var(--gold); background: rgba(241,233,214,.85);
     font-family: var(--display); font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
@@ -171,6 +175,12 @@
   .submitdlg .sd-count { font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); letter-spacing: .06em; text-align: right; margin-top: 3px; }
   .submitdlg .sd-count.full { color: var(--oxblood); }
   .submitdlg .sd-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  dialog.aboutdlg { width: min(540px, calc(100vw - 36px)); }
+  .aboutdlg .ab { padding: 18px 22px 16px; font-size: 15.5px; line-height: 1.45; }
+  .aboutdlg p { margin: 10px 0; }
+  .aboutdlg ul { margin: 10px 0 10px 22px; padding: 0; }
+  .aboutdlg li { margin: 4px 0; }
+  .aboutdlg .sig { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--ink-faint); margin-top: 14px; }
 
   footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 </style>
@@ -178,6 +188,7 @@
 <div class="wrap">
   <header>
     <h1>Great Work!<small>Solution Editor</small></h1>
+    <button class="ctl" id="btnAbout">About</button>
   </header>
 
   <div class="tabs" id="tabs"></div>
@@ -256,6 +267,27 @@
     <div id="chainBody"><div class="chain-note">loading…</div></div>
   </div>
 
+  <dialog class="submitdlg aboutdlg" id="aboutDlg">
+    <form method="dialog" class="ab">
+      <h2>About</h2>
+      <p>Hello! This is a free game based on Opus Magnum by Zachtronics. The gameplay will be very familiar, but there are a few changes:</p>
+      <ul>
+        <li>Arms can move other arms by grabbing their base</li>
+        <li>Arms can be mounted to other arms in the editor. This costs 10 gold, or 5 if it replaces the grabber.</li>
+        <li>There are no tracks or pistons</li>
+        <li>Some gold costs are different &mdash; namely bi-arms and tri-arms are slightly cheaper.</li>
+        <li>You need to make 9 products instead of 6</li>
+        <li>The leaderboard only cares about Sum. Since you need 9 products, Sum in this game is more weighted towards cycles.</li>
+        <li>Instruction tapes don't auto-pad &mdash; let me know what you think of this!</li>
+      </ul>
+      <p>This game is currently in playtesting. I am not very good at Opus Magnum, tried to make something thought provoking and familiar, let me know what you think.</p>
+      <p>In the future, I plan to run longform contests with cash prizes! So stay tuned.</p>
+      <p class="sig">&mdash; agrippa</p>
+      <div class="sd-actions">
+        <button type="submit" class="ctl" id="abClose" value="ok">Close</button>
+      </div>
+    </form>
+  </dialog>
   <dialog class="submitdlg" id="submitDlg">
     <form method="dialog" id="submitForm">
       <h2>Submit to alphanet</h2>
@@ -1259,6 +1291,7 @@
     mode = 'run';
     sim = GW.createSim(matPuzzle(), clone({ arms: machineArms() }));
     running = true; done = false; phase = 1;
+    $('stamp').classList.remove('high', 'low');
     FX.reset(sim.state);
     $('btnMode').textContent = '✎ Edit';
     $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
@@ -1303,6 +1336,15 @@
   const capture = (el, ev) => { try { el.setPointerCapture(ev.pointerId); } catch (e) {} };
 
   canvas.addEventListener('pointerdown', (ev) => {
+    if (mode === 'run') {
+      // the verdict covers the middle of the mat; a click sends it to the edge
+      // farther from the pointer so what's under it can be inspected
+      if (!done) return;
+      const [, my] = mouse(ev);
+      const el = $('stamp'), low = my < CH / 2;
+      el.classList.toggle('low', low); el.classList.toggle('high', !low);
+      return;
+    }
     if (mode !== 'edit' || activeId !== null) return;
     activeId = ev.pointerId;
     capture(canvas, ev);
@@ -2028,6 +2070,7 @@
   }
   $('btnSubmit').addEventListener('click', openSubmit);
   $('sdCancel').addEventListener('click', () => { const d = $('submitDlg'); d.close ? d.close('') : d.removeAttribute('open'); });
+  $('btnAbout').addEventListener('click', () => { const d = $('aboutDlg'); d.showModal ? d.showModal() : d.setAttribute('open', ''); });
   $('submitDlg').addEventListener('close', () => {
     const req = pending; pending = null;
     if ($('submitDlg').returnValue !== 'ok' || !req) return;
@@ -2227,17 +2270,21 @@
   function frame(now) {
     const dt = Math.min(120, now - last); last = now; frameDt = dt;
     if (mode === 'run' && sim) {
-      if (running && !done) {
-        if (stepMs === 0) {
+      if (stepMs === 0) {
+        if (running && !done) {
           for (let i = 0; i < 40 && !done; i++) { sim.step(); if (sim.state.fault || sim.state.cycles !== null) break; }
-          phase = 1;
           updateRunTapes(); hud(); stamp();
-        } else {
-          phase += dt / stepMs;
-          if (phase >= 1) {
+        }
+        phase = 1;
+      } else {
+        // the tick in hand always plays out to its end — paused, stepped or finished,
+        // the view settles on the state the tick produced, never the one before it
+        phase += dt / stepMs;
+        if (phase >= 1) {
+          if (running && !done) {
             sim.step(); phase = 0;
             updateRunTapes(); hud(); stamp();
-          }
+          } else phase = 1;
         }
       }
       // effects come off the event log the steps above produced; at MAX the index

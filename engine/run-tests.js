@@ -235,8 +235,10 @@ for (const ex of EXAMPLES) {
   const back = CODEC.decodeString(s);
   const a = GW.createSim(ex.puzzle, ex.machine).run(500);
   const b = GW.createSim(ex.puzzle, back).run(500);
+  // the fault's detail names arms, and the codec renames them: compare the verdict
+  const verdict = (S) => S.fault ? { kind: S.fault.kind, tick: S.fault.tick } : null;
   const same = JSON.stringify(a.metrics()) === JSON.stringify(b.metrics())
-    && JSON.stringify(a.state.fault) === JSON.stringify(b.state.fault);
+    && JSON.stringify(verdict(a.state)) === JSON.stringify(verdict(b.state));
   check(`codec: ${ex.key} round-trips (${s.length} chars)`, same
     && CODEC.encodeString(back) === s);
 }

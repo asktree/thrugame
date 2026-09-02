@@ -390,7 +390,7 @@
     // pose: {pos:[q,r], rot} — rot is the arm's frame rotation; global dir = rot+angle
     function pose(arm, guard) {
       guard = guard || new Set();
-      if (guard.has(arm.id)) { S.fault = S.fault || { kind: 'grab-cycle', tick: S.tick }; return { pos: [0, 0], rot: 0 }; }
+      if (guard.has(arm.id)) { S.fault = S.fault || { kind: 'grab-cycle', tick: S.tick, detail: 'tower ' + arm.id }; return { pos: [0, 0], rot: 0 }; }
       guard.add(arm.id);
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
@@ -506,6 +506,10 @@
     function step() {
       if (S.fault || S.cycles !== null) return S;
       S.tick++;
+      // render-only: a fault before the sweep leaves no motion for this tick, so a
+      // renderer shows the committed poses (an arm already turned, the molecule it
+      // tore) rather than replaying the previous tick's motion
+      S.motion = null;
       const ev = (e) => S.events.push(Object.assign({ tick: S.tick }, e));
 
       // 1. spawn — a reagent refills only when its whole footprint is empty
@@ -550,7 +554,7 @@
           if (atom) { arm.holds[gi] = { kind: 'atom', id: atom.id }; return; }
           const tower = groundArmAt(cell);
           if (tower && tower !== arm) {
-            if (supportChain(arm).has(tower.id)) { S.fault = { kind: 'grab-cycle', tick: S.tick }; return; }
+            if (supportChain(arm).has(tower.id)) { S.fault = { kind: 'grab-cycle', tick: S.tick, detail: `base ${arm.id} grabs tower ${tower.id} beneath it` }; return; }
             const preRot = pose(tower).rot; // pose before this carrier attaches
             arm.holds[gi] = { kind: 'tower', id: tower.id };
             tower.carriers.push({ arm, grip: gi });
