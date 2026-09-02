@@ -94,8 +94,10 @@
   .tape-label .over { color: var(--oxblood); }
   .tape-cells { display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
   .tape-cells::-webkit-scrollbar { display: none; }
+  /* every cell is one fixed slot, so the rows read as a shared timeline and a
+     repeat bar can be measured in slots */
   .tape-cells span {
-    font-family: var(--mono); font-size: 12px; line-height: 1; padding: 3px 5px;
+    font-family: var(--mono); font-size: 12px; line-height: 1; padding: 3px 0; width: 22px; box-sizing: border-box; text-align: center;
     border: 1px solid var(--line); color: var(--ink-dim); background: var(--parch-2); flex: none; cursor: pointer;
   }
   .tape-cells span.delay { opacity: .45; border-style: dashed; }
@@ -1136,9 +1138,8 @@
       row.appendChild(lab); row.appendChild(cells); host.appendChild(row);
       // size each bar from a real cell, now that the row is in the document
       cells.querySelectorAll('.repeat-bar').forEach(bar => {
-        const n = +bar.dataset.cells, ref = bar.previousElementSibling;
-        const w = ref ? ref.getBoundingClientRect().width : 19;
-        bar.style.width = (n * w + (n - 1) * 3) + 'px';
+        const n = +bar.dataset.cells;              // slots the bar covers
+        bar.style.width = (n * 22 + (n - 1) * 3) + 'px';
       });
     }
     if (!arms.length) host.innerHTML += `<div class="tape-row"><span class="tape-label" style="width:auto">no arms yet — drag one from the tray onto the board</span></div>`;
