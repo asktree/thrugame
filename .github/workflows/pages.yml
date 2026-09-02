@@ -2,7 +2,7 @@ name: Deploy greatwork.quest
 
 on:
   push:
-    branches: [claude/blockchain-pvp-game-contract-6vizhc]
+    branches: [main]
     paths: ['demo/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
