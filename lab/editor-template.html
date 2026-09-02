@@ -171,6 +171,7 @@
   table.board td.who .clip { max-width: 170px; }
   table.board td.act { width: 1%; text-align: right; padding-right: 0; }
   table.board td.act .ctl { padding: 3px 8px; font-size: 9.5px; }
+  table.board td.act a.ctl { display: inline-block; text-decoration: none; margin-left: 4px; }
 
   dialog.submitdlg {
     border: 1px solid var(--ink-dim); background: var(--parch); color: var(--ink); padding: 0;
@@ -1915,17 +1916,18 @@
     });
   }
 
-  async function exportGif() {
-    const bad = validate();
-    if (bad) { setStatus('cannot record: ' + bad, 'bad'); return; }
+  // The recording itself: a run of the machine on screen, every frame encoded as it
+  // is drawn. Shared by the Export button and the headless renderer below.
+  async function renderGif(onProgress, opts) {
     const G = window.GIFENC;
-    if (!G) { setStatus('the GIF encoder did not load', 'bad'); return; }
-
+    if (!G) throw new Error('the GIF encoder did not load');
+    const o = opts || {};
+    const TICK = o.tickMs || GIF_TICK_MS, FRAME = o.frameMs || GIF_FRAME_MS, MAX = o.maxFrames || GIF_MAX_FRAMES;
     const surf = gifSurface();
     const rsim = GW.createSim(matPuzzle(), clone({ arms: machineArms() }));
     const rec = {
       ctx: surf.ctx, view: fitViewFor(surf.w, surf.h),
-      w: surf.w, h: surf.h, sim: rsim, dt: GIF_FRAME_MS,
+      w: surf.w, h: surf.h, sim: rsim, dt: FRAME,
       layout: clone(layout), pIdx: pIdx,
     };
     // the recording's own overlay, bound to the recording's surface. Effects are
@@ -1965,30 +1967,37 @@
     const yieldSlice = () => new Promise(r => setTimeout(r, 0));
 
     for (;;) {
-      rec.fx.harvest(rsim.state, { stepMs: GIF_TICK_MS, enabled: false, motion: false });
+      rec.fx.harvest(rsim.state, { stepMs: TICK, enabled: false, motion: false });
       rec.fx.prune();
       const frozen = rec.fx.freezeF();
       const f = frozen !== null ? frozen : (ph >= 1 ? 1 : GWFX.phaseEase(ph));
       renderPlaymat(rec, f);
-      const last = (ended && ph >= 1) || frames + 1 >= GIF_MAX_FRAMES;
+      const last = (ended && ph >= 1) || frames + 1 >= MAX;
       if (last) drawGifStamp(surf, rsim);
-      encodeFrame(last ? GIF_FRAME_MS + GIF_HOLD_MS : GIF_FRAME_MS);
+      encodeFrame(last ? FRAME + GIF_HOLD_MS : FRAME);
       frames++;
       if (last) break;
-      ph += GIF_FRAME_MS / GIF_TICK_MS;
+      ph += FRAME / TICK;
       while (ph >= 1 && !ended) {
         rsim.step();
         ended = !!(rsim.state.fault || rsim.state.cycles !== null);
         ph -= 1;
       }
       if (frames % 5 === 0) {
-        setStatus('rendering GIF ' + Math.min(99, Math.round(frames / GIF_MAX_FRAMES * 100)) + '%');
+        onProgress(Math.min(99, Math.round(frames / MAX * 100)));
         await yieldSlice();          // the live view keeps its frames while we encode
       }
     }
 
     gif.finish();
-    const bytes = gif.bytes();
+    return { bytes: gif.bytes(), surf, rsim };
+  }
+
+  async function exportGif() {
+    const bad = validate();
+    if (bad) { setStatus('cannot record: ' + bad, 'bad'); return; }
+    if (!window.GIFENC) { setStatus('the GIF encoder did not load', 'bad'); return; }
+    const { bytes, surf, rsim } = await renderGif((pct) => setStatus('rendering GIF ' + pct + '%'));
     const blob = new Blob([bytes], { type: 'image/gif' });
     const m = rsim.metrics();
     const tag = (rsim.state.cycles !== null && m.sum !== null) ? String(m.sum) : 'run';
@@ -2018,6 +2027,18 @@
     setStatus(bits.join(' · '), 'good');
   }
 
+  // Headless rendering, for the GIF service: load a solution code, record it, hand
+  // back the bytes and the verdict. Nothing on the page is touched beyond an import.
+  window.__gwRenderGif = async (codeStr, opts) => {
+    if (!importCode(codeStr)) throw new Error('unreadable solution code');
+    const bad = validate();
+    if (bad) throw new Error('illegal machine: ' + bad);
+    const r = await renderGif(() => {}, opts);
+    const m = r.rsim.metrics();
+    return { bytes: r.bytes, w: r.surf.w, h: r.surf.h, sum: m.sum, cycles: m.cycles, fault: r.rsim.state.fault,
+      still: r.surf.canvas.toDataURL('image/png') };
+  };
+
   $('btnGif').addEventListener('click', () => {
     if (gifBusy) return;
     gifBusy = true; syncGifBtn();
@@ -2032,6 +2053,8 @@
   // (demo/gw-chain.js); if it did not load, every entry point here degrades to the
   // same quiet "chain client unavailable" and nothing throws.
   const CHAIN_OFF = 'chain client unavailable';
+  // the GIF service (gifsvc/): renders any solution code on demand; '' = no links
+  const GIF_SERVICE = 'https://gif.greatwork.quest';
   const WALLET_KEY = 'gw-wallet', USER_KEY = 'gw-user', PASSKEY_KEY = 'gw-passkey';
   const NAME_MAX = (window.GWChain && GWChain.NAME_MAX) || 32;
   const USER_MAX = (window.GWChain && GWChain.USER_MAX) || 24;
@@ -2436,6 +2459,12 @@
       btn.title = 'open this solution in the editor';
       btn.addEventListener('click', () => loadEntry(r, puzIdx));
       act.appendChild(btn);
+      if (GIF_SERVICE) {
+        const g = document.createElement('a'); g.className = 'ctl'; g.textContent = 'gif';
+        g.title = 'this solution as an animated GIF — link it anywhere';
+        g.target = '_blank'; g.rel = 'noopener';
+        try { g.href = GIF_SERVICE + '/gif/' + (BASES[puzIdx] || base()).key + '/' + CODEC.toString(r.machine) + '.gif'; act.appendChild(g); } catch (e) {}
+      }
 
       tr.appendChild(rk); tr.appendChild(sm); tr.appendChild(nm); tr.appendChild(who); tr.appendChild(act);
       table.appendChild(tr);

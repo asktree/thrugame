@@ -1,0 +1,11 @@
+{
+  "name": "great-work-gif",
+  "private": true,
+  "type": "module",
+  "description": "Renders a Great Work! solution code to an animated GIF (or a PNG still) on demand.",
+  "scripts": { "dev": "node dev.mjs" },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.65",
+    "jsdom": "^24.1.0"
+  }
+}

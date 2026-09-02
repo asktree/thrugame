@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    { "source": "/gif/:puzzle/:code.gif", "destination": "/api/gif?puzzle=:puzzle&code=:code" },
+    { "source": "/png/:puzzle/:code.png", "destination": "/api/gif?puzzle=:puzzle&code=:code&kind=png" }
+  ],
+  "functions": {
+    "api/gif.js": { "maxDuration": 60, "includeFiles": "{page,fonts}/**" }
+  }
+}

@@ -2,3 +2,6 @@ AGREEMENT.md
 *.pdf
 contract/build/
 client/node_modules/
+
+# GIF service dependencies
+gifsvc/node_modules/

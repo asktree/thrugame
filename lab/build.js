@@ -18,5 +18,8 @@ for (const [tplName, outName] of [['editor-template.html', 'editor.html']]) {
   tpl = tpl.replace('/*__FX__*/', () => fx);
   tpl = tpl.replace('/*__GIFENC__*/', () => gifenc);
   fs.writeFileSync(path.join(root, 'demo', outName), tpl);
+  // the GIF service renders with the very same page
+  fs.mkdirSync(path.join(root, 'gifsvc', 'page'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'gifsvc', 'page', outName), tpl);
   console.log('built demo/' + outName + ' (' + tpl.length + ' bytes)');
 }
