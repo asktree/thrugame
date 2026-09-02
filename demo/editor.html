@@ -2948,8 +2948,8 @@
     && (c.kind === 'arm' ? c.id === s.id : c.kind === 'output' ? true : c.i === s.i);
 
   // ---------- edit ops ----------
-  let nextId = 0;
-  const freshId = () => { while (armById('a' + nextId)) nextId++; return 'a' + nextId; };
+  // the lowest free number: deleting arms gives their names back
+  const freshId = () => { let n = 0; while (armById('a' + n)) n++; return 'a' + n; };
   function touched() { saveDraft(); refreshAll(); }
 
   // returns the mount AND the rotation of the frame it lands in — a shaft mount
