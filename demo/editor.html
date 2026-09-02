@@ -271,10 +271,6 @@
     </form>
   </dialog>
 
-  <footer>
-    <span>GREAT WORK! · solution editor · the code you copy is the calldata you would submit</span>
-    <span>Agrippa Kellum · for Unto Labs</span>
-  </footer>
 </div>
 
 <!-- the chain client: window.GWChain. Absent (or blocked) it degrades to a disabled submit button. -->
@@ -3751,13 +3747,22 @@
   // the address the board credits and the chip names
   const myAddr = () => passkeyId ? passkeyId.walletAddress : (wallet && wallet.address);
 
+  // the passkey buttons are always offered (when the chain client loaded); a browser
+  // that cannot do WebAuthn is told why on click rather than shown nothing
   function updateIdControls() {
-    const on = passkeyOn();
+    const on = chainOn() && !!GWChain.passkey;
     const set = (id, show) => { const b = $(id); if (b) { b.hidden = !show; b.disabled = pkBusy || submitting || claiming; } };
     set('btnPkNew', on && !passkeyId);
     set('btnPkUse', on && !passkeyId);
     set('btnPkOut', !!passkeyId);
     updateWinnings();
+    updateSubmitBtn();
+  }
+  function passkeyBlocker() {
+    if (!chainOn()) return CHAIN_OFF;
+    if (!window.isSecureContext) return 'passkeys need a secure https page — a certificate warning or plain http disables them';
+    if (!passkeyOn()) return 'this browser has no passkey (WebAuthn) support';
+    return null;
   }
 
   // ---------- winnings: what the passkey wallet holds, and moving it out ----------
@@ -3827,34 +3832,27 @@
     }
   }
 
+  // the chip is the passkey wallet, or nothing: the paying key is never an identity
   async function renderChip() {
     const el = $('walletChip'); if (!el) return;
     updateIdControls();
-    if (!chainOn()) { el.classList.remove('passkey'); el.textContent = CHAIN_OFF; el.title = CHAIN_OFF; return; }
+    if (!chainOn()) { el.hidden = false; el.classList.remove('passkey'); el.textContent = CHAIN_OFF; el.title = CHAIN_OFF; return; }
     if (passkeyId) {
+      el.hidden = false;
       el.classList.add('passkey');
       el.textContent = shortAddr(passkeyId.walletAddress);
       el.title = passkeyId.walletAddress + ' — your passkey wallet · click to copy';
       el.dataset.addr = passkeyId.walletAddress;
       return;
     }
-    el.classList.remove('passkey');
-    try {
-      const w = await walletOf();
-      el.textContent = shortAddr(w.address);
-      el.title = w.address + ' — click to copy';
-      el.dataset.addr = w.address;
-    } catch (e) {
-      el.textContent = 'key unavailable'; el.title = errText(e);
-    }
+    el.hidden = true;
   }
   $('walletChip').addEventListener('click', async () => {
     if (!chainOn()) { setStatus(CHAIN_OFF, 'bad'); return; }
-    try {
-      const addr = passkeyId ? passkeyId.walletAddress : (await walletOf()).address;
-      try { await navigator.clipboard.writeText(addr); setStatus('address copied — ' + addr, 'good'); }
-      catch (e) { setStatus('your address is ' + addr, 'good'); }
-    } catch (e) { setStatus('no key: ' + errText(e), 'bad'); }
+    if (!passkeyId) return;
+    const addr = passkeyId.walletAddress;
+    try { await navigator.clipboard.writeText(addr); setStatus('address copied — ' + addr, 'good'); }
+    catch (e) { setStatus('your address is ' + addr, 'good'); }
   });
 
   const rememberedUser = () => { try { return localStorage.getItem(USER_KEY) || ''; } catch (e) { return ''; } };
@@ -3862,7 +3860,9 @@
   // make a passkey, then the wallet it owns (the payer pays for both). Idempotent
   // on chain: the same passkey always lands on the same wallet address.
   async function createPasskey() {
-    if (!passkeyOn() || pkBusy) return;
+    if (pkBusy) return;
+    const blocker = passkeyBlocker();
+    if (blocker) { setStatus(blocker, 'bad'); return; }
     pkBusy = true; updateIdControls();
     try {
       setStatus('waiting for your passkey…');
@@ -3882,7 +3882,9 @@
   // sign in with a passkey this browser has never seen: the platform picks it,
   // the chain's credential lookup names the wallet it already owns
   async function usePasskey() {
-    if (!passkeyOn() || pkBusy) return;
+    if (pkBusy) return;
+    const blocker = passkeyBlocker();
+    if (blocker) { setStatus(blocker, 'bad'); return; }
     pkBusy = true; updateIdControls();
     try {
       setStatus('waiting for your passkey…');
@@ -3912,13 +3914,15 @@
 
   // submitting is offered only for a run the local engine already verified — the program
   // re-runs it anyway and reverts otherwise, but there is no point paying that trip
-  const submittable = () => mode === 'run' && !!sim && !sim.state.fault && sim.state.cycles !== null;
+  const verified = () => mode === 'run' && !!sim && !sim.state.fault && sim.state.cycles !== null;
+  const submittable = () => verified() && !!passkeyId;
   function updateSubmitBtn() {
     const b = $('btnSubmit'); if (!b) return;
     if (!chainOn()) { b.disabled = true; b.title = CHAIN_OFF; return; }
     b.disabled = submitting || claiming || !submittable();
     b.title = submitting ? 'submitting…'
       : submittable() ? 'submit this verified solution to alphanet'
+      : !passkeyId ? 'create or use a passkey to submit'
       : 'test a solution to verification first';
   }
 

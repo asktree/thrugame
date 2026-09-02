@@ -14,8 +14,9 @@ step reads the machine from instruction data and the puzzle from an account.
 
 ## Building
 
-Needs the Thru devkit (https://docs.thru.org/program-development). The prebuilt
-toolchain and C SDK ship as GitHub release assets on `Unto-Labs/thru`:
+Needs the Thru devkit (https://docs.thru.org/program-development): the `thru`
+CLI installs the prebuilt toolchain and C SDK (`thru dev toolchain install`,
+`thru dev sdk install`), or unpack the release archives by hand:
 
 ```sh
 # one-time: install the toolchain (~1 GB) and C SDK to ~/.thru/sdk
