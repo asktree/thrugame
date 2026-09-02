@@ -29,8 +29,8 @@ function init() {
   }
 }
 
-// the service's own pacing: a whole run, not the editor's 12-second clip
-const PACE = { tickMs: 100, frameMs: 80, maxFrames: 600 };
+// the service's own pacing: the game's 1x tick, 33 frames a second, a whole run
+const PACE = { tickMs: 140, frameMs: 30, maxFrames: 1500 };
 
 export async function render(code, pace) {
   init();

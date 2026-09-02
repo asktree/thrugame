@@ -3,7 +3,7 @@
 Renders a solution code to an animated GIF on demand, so every leaderboard entry
 has a stable image link and nothing is ever uploaded.
 
-    GET /gif/<puzzle>/<code>.gif   the run, 480px wide, 12.5 fps, 10 ticks a second
+    GET /gif/<puzzle>/<code>.gif   the run, 480px wide, at the game's 1x speed, 33 fps
     GET /png/<puzzle>/<code>.png   the last frame
 
 The renderer is the editor page itself (`page/editor.html`, written by
@@ -24,8 +24,8 @@ vendored in `fonts/` (Courier Prime and EB Garamond, both OFL).
 Responses are immutable per code and cached at the CDN for a year, so a solution
 is rendered once. A render takes a few seconds for a typical run; the function
 allows 60. Frames after the first store only the pixels that changed, so a
-whole run is well under 2 MB (courier 0.6 MB, goldladder 1.3 MB), and the body
-is streamed so the platform's response cap does not apply.
+whole run stays small (courier 1.6 MB, goldladder 3.7 MB for 39 seconds), and
+the body is streamed so the platform's response cap does not apply.
 
 ## Local
 
