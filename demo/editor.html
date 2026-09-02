@@ -2683,9 +2683,20 @@
   // neighbour's plate: every base first (board furniture, under the cargo), then every
   // shaft and claw (moving machinery, over everything). A selected base keeps its own
   // highlight on the base pass; the rotation handle stays above both.
-  function drawArmBase(basePx, elbow, selected, ghost) {
+  function drawArmBase(basePx, elbow, selected, ghost, label) {
     const [bx, by] = basePx;
     ctx.globalAlpha = ghost ? 0.45 : 1;
+    // the arm's name on its plate (or beside its pin), so the board and the tape
+    // rows read as one
+    const name = () => {
+      if (!label) return;
+      ctx.save();
+      ctx.font = `700 ${Math.max(8, Math.round(view.s * 0.24))}px 'Courier Prime', monospace`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#2A2318';
+      ctx.fillText(label, bx + (elbow ? view.s * 0.30 : 0), by + view.s * (elbow ? 0.20 : 0.30) * PITCH);
+      ctx.restore();
+    };
     // ground bases are solid, collidable plates; elbows are pins. Both are grid-aligned
     // hexagons — the plate never turns with the arm it carries.
     if (elbow) {
@@ -2700,6 +2711,7 @@
       ctx.beginPath(); ctx.arc(bx, by, view.s * 0.1, 0, Math.PI * 2);
       ctx.fillStyle = '#2A2318'; ctx.fill();
     }
+    name();
     ctx.globalAlpha = 1;
   }
 
@@ -2795,7 +2807,7 @@
     const isSel = (arm) => !!(sel && sel.kind === 'arm' && sel.id === arm.id);
     // pass 1 — all base plates and elbow pins
     for (const arm of layout.arms) {
-      drawArmBase(Pc(poses[arm.id].pos), !!arm.mount.elbow, isSel(arm), false);
+      drawArmBase(Pc(poses[arm.id].pos), !!arm.mount.elbow, isSel(arm), false, arm.id);
     }
     // pass 2 — all shafts and claws, above every plate
     const flags = armFlags(layout.arms);
@@ -2846,7 +2858,7 @@
     FX.noteAtoms(rs.atoms);
     FX.draw('under', atomPx, armPx);
     // pass 1 — every base plate and elbow pin, beneath the cargo
-    for (const arm of rs.arms) drawArmBase(armPx[arm.id], arm.elbow, false, false);
+    for (const arm of rs.arms) drawArmBase(armPx[arm.id], arm.elbow, false, false, arm.id);
     ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2; ctx.lineCap = 'round';
     for (const [i, j] of rs.bonds) {
       if (!atomPx[i] || !atomPx[j]) continue;
