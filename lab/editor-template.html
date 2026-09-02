@@ -1338,7 +1338,7 @@
   }
   function stamp() {
     const el = $('stamp'), inner = $('stampInner');
-    updateSubmitBtn();             // submitting is offered exactly while the stamp reads Verified
+    updateSubmitBtn();             // submitting is offered exactly while the stamp reads Great Work!
     if (mode !== 'run' || !sim) { el.classList.remove('show'); return; }
     const st = sim.state;
     if (st.fault) {
@@ -1348,7 +1348,7 @@
     } else if (st.cycles !== null) {
       const m = sim.metrics();
       inner.className = 'stamp-inner';
-      inner.innerHTML = `Verified · ${st.products} of ${st.caps.goal}<small>${m.cost}g + ${m.cycles}c + ${m.area}a = SUM ${m.sum}</small>`;
+      inner.innerHTML = `Great Work! · ${st.products} of ${st.caps.goal}<small>${m.cost}g + ${m.cycles}c + ${m.area}a = SUM ${m.sum}</small>`;
       el.classList.add('show'); done = true;
     } else { el.classList.remove('show'); done = false; }
   }
@@ -1863,37 +1863,6 @@
     return { canvas: cv, ctx: cv.getContext('2d', { willReadFrequently: true }), w: GIF_W, h: h };
   }
 
-  // the verdict, painted onto the held last frame — the on-page stamp is a DOM overlay
-  // and never reaches the canvas, so the GIF gets its own parchment badge
-  function drawGifStamp(surf, rsim) {
-    const st = rsim.state;
-    const good = !st.fault && st.cycles !== null;
-    if (!good && !st.fault) return;
-    const m = rsim.metrics();
-    const title = good ? 'Verified · sum ' + m.sum : 'Rejected · ' + st.fault.kind;
-    const sub = good ? (m.cost + 'g + ' + m.cycles + 'c + ' + m.area + 'a')
-      : ('tick ' + st.fault.tick + (st.fault.detail ? ' · ' + st.fault.detail : ''));
-    const c = surf.ctx;
-    const TITLE = "700 20px 'Cinzel', 'Times New Roman', serif";
-    const SUB = "400 11px 'Courier Prime', 'Courier New', monospace";
-    c.save();
-    c.translate(surf.w / 2, surf.h / 2);
-    c.rotate(-7 * Math.PI / 180);
-    c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.font = TITLE; const w1 = c.measureText(title).width;
-    c.font = SUB; const w2 = c.measureText(sub).width;
-    const bw = Math.min(surf.w - 26, Math.max(w1, w2) + 44), bh = 62;
-    c.beginPath(); c.rect(-bw / 2, -bh / 2, bw, bh);
-    c.fillStyle = 'rgba(241,233,214,0.9)'; c.fill();
-    c.strokeStyle = good ? '#8A6A1E' : '#8C3B2E'; c.lineWidth = 2.5; c.stroke();
-    c.save(); c.clip();
-    c.fillStyle = good ? '#8A6A1E' : '#8C3B2E'; c.font = TITLE;
-    c.fillText(title.toUpperCase(), 0, -bh / 2 + 22);
-    c.fillStyle = '#6B5F49'; c.font = SUB;
-    c.fillText(sub, 0, bh / 2 - 17);
-    c.restore();
-    c.restore();
-  }
 
   function downloadBlob(blob, name) {
     const url = URL.createObjectURL(blob);
@@ -1910,7 +1879,7 @@
     const good = !st.fault && st.cycles !== null;
     if (!good && !st.fault) return;
     const m = rsim.metrics();
-    const title = good ? 'Verified · sum ' + m.sum : 'Rejected · ' + st.fault.kind;
+    const title = good ? 'Great Work! · sum ' + m.sum : 'Rejected · ' + st.fault.kind;
     const sub = good ? (m.cost + 'g + ' + m.cycles + 'c + ' + m.area + 'a')
       : ('tick ' + st.fault.tick + (st.fault.detail ? ' · ' + st.fault.detail : ''));
     const c = surf.ctx;
@@ -1920,7 +1889,7 @@
     c.translate(surf.w / 2, surf.h / 2);
     c.rotate(-7 * Math.PI / 180);
     c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.font = TITLE; const w1 = c.measureText(title).width;
+    c.font = TITLE; const w1 = c.measureText(title.toUpperCase()).width;   // drawn in caps, so measured in caps
     c.font = SUB; const w2 = c.measureText(sub).width;
     const bw = Math.min(surf.w - 26, Math.max(w1, w2) + 44), bh = 62;
     c.beginPath(); c.rect(-bw / 2, -bh / 2, bw, bh);
@@ -1971,11 +1940,13 @@
       w: surf.w, h: surf.h, sim: rsim, dt: FRAME,
       layout: clone(layout), pIdx: pIdx,
     };
-    // the recording's own overlay, bound to the recording's surface. Effects are
-    // wall-clock creatures and this run is encoded far faster than it plays, so the
-    // overlay is harvested with enabled:false — the event index still advances, a
-    // collision still freezes the frame it was found at, but nothing is enqueued.
+    // the recording's own overlay, bound to the recording's surface. Effects live in
+    // wall time and this run is encoded far faster than it plays, so the overlay is
+    // given a clock of its own that advances one frame per frame: every pulse, ring
+    // and ease plays out exactly as it does on the page, just at the GIF's pace.
+    let clock = 0;
     rec.fx = GWFX.create({
+      now: () => clock,
       ctx: surf.ctx,
       s: () => rec.view.s,
       P: (x, y) => P(x, y),
@@ -2018,7 +1989,7 @@
     const yieldSlice = () => new Promise(r => setTimeout(r, 0));
 
     for (;;) {
-      rec.fx.harvest(rsim.state, { stepMs: TICK, enabled: false, motion: false });
+      rec.fx.harvest(rsim.state, { stepMs: TICK, enabled: true, motion: true });
       rec.fx.prune();
       const frozen = rec.fx.freezeF();
       const f = frozen !== null ? frozen : (ph >= 1 ? 1 : GWFX.phaseEase(ph));
@@ -2028,7 +1999,7 @@
       encodeFrame(last ? FRAME + GIF_HOLD_MS : FRAME);
       frames++;
       if (last) break;
-      ph += FRAME / TICK;
+      ph += FRAME / TICK; clock += FRAME;
       while (ph >= 1 && !ended) {
         rsim.step();
         ended = !!(rsim.state.fault || rsim.state.cycles !== null);

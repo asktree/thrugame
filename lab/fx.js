@@ -86,7 +86,9 @@
     const grips = new Map();    // armId:grip -> smoothed claw closure, 0..1
     let evIdx = 0, enabled = true, motion = true, stepMs = 140, seeded = false, fault = null;
 
-    const now = () => performance.now();
+    // the clock: wall time on the page; a recording hands in its own, so effects
+    // play out in the recording's time rather than in the encoder's
+    const now = env.now || (() => performance.now());
     const dur = (ticks) => { const d = ticks * stepMs; return d < 110 ? 110 : d > 900 ? 900 : d; };
     function push(fx) {
       if (list.length >= CAP) list.shift();
