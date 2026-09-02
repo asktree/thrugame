@@ -5,3 +5,4 @@ client/node_modules/
 
 # GIF service dependencies
 gifsvc/node_modules/
+gifsvc/.vercel/
