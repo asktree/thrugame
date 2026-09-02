@@ -52,7 +52,7 @@
   // zero, so the on-chain oracle must implement an explicit floored divide for
   // negative operands or it will disagree by one ulp and, eventually, by a verdict.
   //
-  // The constants in this block (SQRT3, HALF_SQRT3, THRESH2, COS5, SIN5) are
+  // The constants in this block (SQRT3, HALF_SQRT3, THRESH2_*, COS, SIN) are
   // NORMATIVE: the verifier must copy the literals verbatim rather than recompute
   // them from a math library. Collision, area accrual and therefore cycles/SUM all
   // fall out of these operations, so the on-chain verifier must reproduce them
@@ -75,28 +75,30 @@
 
   const SQRT3 = 113512;        // round(sqrt(3) * 65536) = round(113511.6817...)
   const HALF_SQRT3 = 56756;    // round(sqrt(3)/2 * 65536) = round(56755.8409...) = SQRT3/2
-  // Collision threshold, compared as SQUARED distance so no sqrt is ever needed.
-  // Centers collide closer than 2*RADIUS*PITCH = 2*0.35*sqrt(3) = 0.7*sqrt(3) px.
-  // (0.7*sqrt(3))^2 = 0.49*3 = 1.47 exactly, so
-  //   THRESH2 = round(((0.7*sqrt(3))*65536)^2 / 65536) = round(1.47 * 65536)
-  //           = round(96337.92) = 96338.
-  const THRESH2 = 96338;
-  // Sweep samples land on multiples of 60°/K_SAMPLES = 5°, so all trigonometry is
-  // table lookup at 5° granularity. 13 entries cover one sextant, 0°..60°:
-  // COS5[k] = round(cos(k*5°) * 65536), SIN5[k] = round(sin(k*5°) * 65536).
-  const COS5 = [65536, 65287, 64540, 63303, 61584, 59396, 56756, 53684, 50203, 46341, 42126, 37590, 32768];
-  const SIN5 = [0, 5712, 11380, 16962, 22415, 27697, 32768, 37590, 42126, 46341, 50203, 53684, 56756];
-  const ANG_TURN = 72;                            // 5° units in a full turn
-  const ANG_DIR = 12;                             // 5° units in one lattice direction (60°)
+  // Collision discs are Opus Magnum's, taken from the game's hex tile texture:
+  // 82 px between hex centers, atoms 29 px, arm bases 20 px. Radii in pitches:
+  // atom 29/82, base 20/82. Compared as SQUARED distance so no sqrt is ever needed;
+  // one pitch is sqrt(3) px here, so for radii ra, rb the threshold is
+  //   T2 = round(3 * (ra + rb)^2 * 65536)
+  const THRESH2_AA = 98362;   // atom-atom:  3*(58/82)^2 = 1.5008923... -> round(98362.48)
+  const THRESH2_AB = 70205;   // atom-base:  3*(49/82)^2 = 1.0712374... -> round(70204.61)
+  const THRESH2_BB = 46784;   // base-base:  3*(40/82)^2 = 0.7138608... -> round(46783.58)
+  // Sweep instants land on multiples of 60°/64 = 0.9375°, so all trigonometry is
+  // table lookup at that granularity. 65 entries cover one sextant, 0°..60°:
+  // COS[k] = round(cos(k*0.9375°) * 65536), SIN[k] = round(sin(k*0.9375°) * 65536).
+  const COS = [65536, 65527, 65501, 65457, 65396, 65317, 65220, 65107, 64975, 64827, 64661, 64477, 64277, 64059, 63824, 63572, 63303, 63017, 62714, 62394, 62058, 61705, 61336, 60950, 60547, 60129, 59694, 59244, 58777, 58295, 57798, 57284, 56756, 56212, 55653, 55080, 54491, 53888, 53271, 52639, 51993, 51333, 50660, 49973, 49273, 48559, 47832, 47093, 46341, 45577, 44800, 44011, 43211, 42399, 41576, 40741, 39896, 39040, 38173, 37297, 36410, 35513, 34607, 33692, 32768];
+  const SIN = [0, 1072, 2144, 3216, 4286, 5356, 6424, 7490, 8554, 9616, 10676, 11732, 12785, 13835, 14882, 15924, 16962, 17995, 19024, 20048, 21066, 22078, 23085, 24086, 25080, 26067, 27047, 28020, 28986, 29944, 30893, 31835, 32768, 33692, 34607, 35513, 36410, 37297, 38173, 39040, 39896, 40741, 41576, 42399, 43211, 44011, 44800, 45577, 46341, 47093, 47832, 48559, 49273, 49973, 50660, 51333, 51993, 52639, 53271, 53888, 54491, 55080, 55653, 56212, 56756];
+  const ANG_TURN = 384;                           // angle units in a full turn
+  const ANG_DIR = 64;                             // angle units in one lattice direction (60°)
   const modA = (u) => ((u % ANG_TURN) + ANG_TURN) % ANG_TURN;
-  // trigQ(u) = [cos, sin] in Q16.16 of the angle u*5°, u any integer.
+  // trigQ(u) = [cos, sin] in Q16.16 of the angle u*0.9375°, u any integer.
   // The sextant (the whole-lattice-direction part) is applied as an exact 60°
   // rotation using cos60 = 1/2 and sin60 = sqrt(3)/2 = HALF_SQRT3; only the
-  // remaining 0..55° reads the table.
+  // remaining 0..59.0625° reads the table.
   function trigQ(u) {
     u = modA(u);
-    const s = fdiv(u, ANG_DIR), k = u - s * ANG_DIR;   // s in 0..5, k in 0..11
-    const c = COS5[k], n = SIN5[k];
+    const s = fdiv(u, ANG_DIR), k = u - s * ANG_DIR;   // s in 0..5, k in 0..63
+    const c = COS[k], n = SIN[k];
     switch (s) {
       case 0: return [c, n];
       case 1: return [fdiv(c, 2) - fmul(HALF_SQRT3, n), fmul(HALF_SQRT3, c) + fdiv(n, 2)];
@@ -109,23 +111,38 @@
   // lattice cell -> pixel, in Q16.16. x = sqrt(3)*(q + r/2) = sqrt(3)*(2q+r)/2;
   // y = 1.5*r is exact (r * 98304) with no rounding at all.
   const toPxQ = (q, r) => [fdiv(SQRT3 * (2 * q + r), 2), r * 98304];
-  // step of `n` lattice units along the direction u (in 5° units), in Q16.16 px.
+  // step of `n` lattice units along the direction u (in angle units), in Q16.16 px.
   // One pitch is sqrt(3) px, so the leg length is n*SQRT3 (n <= 3 here).
   function stepQ(n, u) {
     const t = trigQ(u);
     return [fmul(SQRT3 * n, t[0]), fmul(SQRT3 * n, t[1])];
   }
-  // rotate the Q16.16 offset (dx,dy) by u*5° about the origin.
+  // rotate the Q16.16 offset (dx,dy) by u angle units about the origin.
   function rotQ(dx, dy, u) {
     const t = trigQ(u);
     return [fmul(t[0], dx) - fmul(t[1], dy), fmul(t[1], dx) + fmul(t[0], dy)];
   }
   // THE collision predicate. Squared distance in Q16.16 (Q32.32 descaled back by
-  // fmul) against the normative squared threshold. No sqrt, no epsilon: `<` means
-  // exactly-touching is not a collision, matching the float rule's -1e-9 slack.
-  function tooCloseQ(ax, ay, bx, by) {
+  // fmul) against the normative squared threshold for the pair of disc kinds.
+  // No sqrt, no epsilon: `<` means exactly-touching is not a collision.
+  function tooCloseQ(ax, ay, bx, by, t2 = THRESH2_AA) {
     const dx = ax - bx, dy = ay - by;
-    return fmul(dx, dx) + fmul(dy, dy) < THRESH2;
+    return fmul(dx, dx) + fmul(dy, dy) < t2;
+  }
+  // How many sweep instants a tick gets — Opus Magnum's rule. d is the largest
+  // rotation radius in the tick: the farthest any moving atom ends up from the
+  // pivot it turned about, in hex steps (hexicab). The game's increment is
+  // 0.25 / 2^round(log2 d), at most 0.125, i.e. N = 4 * 2^round(log2 d) instants,
+  // at least 8. Capped at 64, the trig table's resolution (out of reach anyway:
+  // no machine within the caps has a rotation radius above ~15).
+  const K_MAX = 64;
+  function roundLog2(d) {                 // round(log2(d)), integer d >= 1, exactly
+    let f = 0;
+    while ((2 << f) <= d) f++;            // f = floor(log2 d)
+    return d * d >= (2 << (2 * f)) ? f + 1 : f;   // up when d >= 2^(f + 1/2)
+  }
+  function samplesFor(maxDist) {
+    return Math.min(K_MAX, Math.max(8, 4 * (1 << roundLog2(Math.max(1, maxDist)))));
   }
   // inverse of toPxQ + cube rounding, for area accrual. Q16.16 in, lattice cell out.
   function axialRoundQ(x, y) {
@@ -169,10 +186,11 @@
   const CARDINALS = ['Ai', 'Ea', 'Fi', 'Wa'];
   const GLYPH_PRICE = { bonders: 10, debonders: 15, calcifiers: 10, duplicators: 20,
     projectors: 20, purifiers: 20, animismus: 20, disposals: 0 };
-  // RADIUS is documentation/export only — the simulation compares against THRESH2,
-  // which is the normative Q16.16 form of (2*RADIUS*PITCH)^2. K_SAMPLES = 12 is what
-  // makes every sweep angle an exact multiple of 60/12 = 5°, hence the COS5/SIN5 table.
-  const RADIUS = 0.35, K_SAMPLES = 12;
+  // RADIUS (atoms) and BASE_RADIUS are render/export only, in pitches — the simulation
+  // compares against THRESH2_*, their normative Q16.16 squared-sum forms. The number of
+  // sweep instants per tick is samplesFor(...) (8..64), so every sweep angle is an exact
+  // multiple of 60/64 = 0.9375°, hence the 65-entry COS/SIN table.
+  const RADIUS = 29 / 82, BASE_RADIUS = 20 / 82, K_SAMPLES = K_MAX;
   const OPS = 'GD+-PQWR';
   const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 9 };
 
@@ -406,37 +424,37 @@
 
     // -- fractional kinematics, DETERMINISTIC (Q16.16), valid during a cached motion --
     // These are the simulation's own kinematics: the sweep, the collision test and area
-    // accrual all read them. They are sampled only at the K_SAMPLES instants f = k/K, and
-    // since one dir step is 60° and K = 12, every angle is an exact multiple of 5°.
-    // Angles are therefore carried as INTEGER counts of 5° units ("rotU"/"dU"), never radians:
-    // a float dF of (n + m*k/12) is exactly the integer 12n + m*k here.
+    // accrual all read them. They are sampled only at the N instants f = k/N of a tick,
+    // N dividing 64, so every angle is an exact multiple of 60°/64. Angles are therefore
+    // carried as INTEGER counts of that unit ("rotU"/"dU"/"u"), never radians: a float
+    // dF of (n + m*k/N) is exactly the integer 64n + m*u with u = 64k/N here.
     // M = S.motion: {angle0:{id:θ}, delta:{id:±1|0}, pivot:{id:±1|0}, carryRel0:{id}, snapshot atoms}
-    function poseQ(arm, k, M) {
+    function poseQ(arm, u, M) {
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
-        const pp = poseQ(p, k, M);
-        const dU = pp.rotU + ANG_DIR * M.angle0[p.id] + M.delta[p.id] * k;
+        const pp = poseQ(p, u, M);
+        const dU = pp.rotU + ANG_DIR * M.angle0[p.id] + M.delta[p.id] * u;
         const v = stepQ(arm.mount.elbow.at, dU);
         return { x: pp.x + v[0], y: pp.y + v[1], rotU: dU };
       }
       if (M.carriers0[arm.id] && M.carriers0[arm.id].length) {
         const { arm: hid, grip } = M.carriers0[arm.id][0];
         const h = byId[hid];
-        const hp = poseQ(h, k, M);
-        const hdU = hp.rotU + ANG_DIR * (M.angle0[h.id] + OFFSETS[h.grippers][grip]) + M.delta[h.id] * k;
+        const hp = poseQ(h, u, M);
+        const hdU = hp.rotU + ANG_DIR * (M.angle0[h.id] + OFFSETS[h.grippers][grip]) + M.delta[h.id] * u;
         const v = stepQ(h.len, hdU);
         return {
           x: hp.x + v[0], y: hp.y + v[1],
-          rotU: hdU + ANG_DIR * M.carryRel0[arm.id] + (M.pivot[hid] || 0) * k,
+          rotU: hdU + ANG_DIR * M.carryRel0[arm.id] + (M.pivot[hid] || 0) * u,
         };
       }
       const b = M.basePos0[arm.id];
       const px = toPxQ(b[0], b[1]);
       return { x: px[0], y: px[1], rotU: ANG_DIR * M.baseRot0[arm.id] };
     }
-    function handQ(arm, grip, k, M) {
-      const p = poseQ(arm, k, M);
-      const dU = p.rotU + ANG_DIR * (M.angle0[arm.id] + OFFSETS[arm.grippers][grip]) + M.delta[arm.id] * k;
+    function handQ(arm, grip, u, M) {
+      const p = poseQ(arm, u, M);
+      const dU = p.rotU + ANG_DIR * (M.angle0[arm.id] + OFFSETS[arm.grippers][grip]) + M.delta[arm.id] * u;
       const v = stepQ(arm.len, dU);
       return { x: p.x + v[0], y: p.y + v[1], dU };
     }
@@ -628,19 +646,47 @@
         a.cell = add(rotK(a.cell, xf.k), xf.b);
       }
 
-      // 3b. sweep — K sample instants, full pair check + area accumulation
+      // 3b. sweep — N sample instants, full pair check + area accumulation
       S.motion = M;
-      // Sample index k is the whole sweep instant; every position below is Q16.16.
-      const collidables = (k) => {
+      // How many instants: Opus Magnum's rule on the largest rotation radius of the
+      // tick. For every held atom, walk its carrier chain to the ground: if any joint
+      // on the way turns, the radius is measured from the root base; if only the
+      // gripper pivots, from that gripper. (see samplesFor)
+      let maxDist = 1;
+      const hexicab = (c) => Math.max(Math.abs(c[0]), Math.abs(c[1]), Math.abs(c[0] + c[1]));
+      for (const m of M.atoms) {
+        if (!m.holder) continue;
+        const atom = S.atoms.find(x => x.id === m.id);
+        if (!atom) continue;
+        const holder = byId[m.holder.armId];
+        // turn: a joint anywhere in the chain turns (the whole chain swings about the
+        // root base); selfPivot: only the holder's own gripper pivots the molecule
+        let arm = holder, turn = false;
+        for (;;) {
+          if (M.delta[arm.id] || (arm !== holder && M.pivot[arm.id])) turn = true;
+          if (arm.mount.elbow) arm = byId[arm.mount.elbow.parent];
+          else if (M.carriers0[arm.id] && M.carriers0[arm.id].length) arm = byId[M.carriers0[arm.id][0].arm];
+          else break;
+        }
+        const selfPivot = !!M.pivot[holder.id];
+        if (!turn && !selfPivot) continue;                // nothing rotates this atom
+        let pivot;
+        if (turn) pivot = M.basePos0[arm.id];
+        else { const h = handQ(holder, m.holder.grip, ANG_DIR, M); pivot = axialRoundQ(h.x, h.y); }
+        maxDist = Math.max(maxDist, hexicab(sub(atom.cell, pivot)));
+      }
+      const N = samplesFor(maxDist), step = ANG_DIR / N;
+      // Angle u = k*step is the whole sweep instant; every position below is Q16.16.
+      const collidables = (u) => {
         const out = [];
         for (const m of M.atoms) {
           if (m.holder) {
             const arm = byId[m.holder.armId];
-            const hK = handQ(arm, m.holder.grip, k, M);
+            const hK = handQ(arm, m.holder.grip, u, M);
             const h0 = handQ(arm, m.holder.grip, 0, M);
             const p0 = toPxQ(m.cell0[0], m.cell0[1]);
-            // angle swept by the held molecule, in 5° units (s is the gripper pivot)
-            const dU = hK.dU - h0.dU + m.holder.s * k;
+            // angle swept by the held molecule, in angle units (s is the gripper pivot)
+            const dU = hK.dU - h0.dU + m.holder.s * u;
             const rel = rotQ(p0[0] - h0.x, p0[1] - h0.y, dU);
             out.push({ kind: 'atom', id: m.id, elem: m.elem, x: hK.x + rel[0], y: hK.y + rel[1] });
           } else {
@@ -650,20 +696,23 @@
         }
         for (const arm of S.arms) {
           if (arm.mount.elbow) continue; // elbows don't collide
-          const p = poseQ(arm, k, M);
+          const p = poseQ(arm, u, M);
           out.push({ kind: 'base', id: arm.id, x: p.x, y: p.y });
         }
         return out;
       };
-      for (let k = 1; k <= K_SAMPLES && !S.fault; k++) {
-        const objs = collidables(k);
+      const pairT2 = (a, b) => a.kind === 'atom' ? (b.kind === 'atom' ? THRESH2_AA : THRESH2_AB)
+        : (b.kind === 'atom' ? THRESH2_AB : THRESH2_BB);
+      for (let k = 1; k <= N && !S.fault; k++) {
+        const u = k * step;
+        const objs = collidables(u);
         for (const o of objs) S.area.add(cellKey(axialRoundQ(o.x, o.y)));
         for (const arm of S.arms) OFFSETS[arm.grippers].forEach((_, gi) => {
-          const h = handQ(arm, gi, k, M); S.area.add(cellKey(axialRoundQ(h.x, h.y)));
+          const h = handQ(arm, gi, u, M); S.area.add(cellKey(axialRoundQ(h.x, h.y)));
         });
         for (let i = 0; i < objs.length; i++) for (let j = i + 1; j < objs.length; j++) {
-          if (tooCloseQ(objs[i].x, objs[i].y, objs[j].x, objs[j].y)) {
-            S.fault = { kind: 'collision', tick: S.tick, detail: `${objs[i].kind} ${objs[i].id} × ${objs[j].kind} ${objs[j].id} @ f=${k}/${K_SAMPLES}` };
+          if (tooCloseQ(objs[i].x, objs[i].y, objs[j].x, objs[j].y, pairT2(objs[i], objs[j]))) {
+            S.fault = { kind: 'collision', tick: S.tick, detail: `${objs[i].kind} ${objs[i].id} × ${objs[j].kind} ${objs[j].id} @ f=${k}/${N}` };
             break;
           }
         }
@@ -815,12 +864,12 @@
 
   const GW = {
     createSim, expandTape, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_COST, GRABBER_COST,
-    armsCost, tipParentIds, RADIUS, K_SAMPLES, DEFAULT_CAPS,
+    armsCost, tipParentIds, RADIUS, BASE_RADIUS, K_SAMPLES, DEFAULT_CAPS,
     toPx, fromPx: axialRound,   // float, render/editor-pointer use only (see note above)
     // the deterministic core, exported so a C reimplementation can be conformance-tested
     // primitive by primitive against this oracle.
-    Q: { ONE, fdiv, fmul, SQRT3, HALF_SQRT3, THRESH2, COS5, SIN5, ANG_TURN, ANG_DIR,
-      trigQ, toPxQ, stepQ, rotQ, tooCloseQ, axialRoundQ },
+    Q: { ONE, fdiv, fmul, SQRT3, HALF_SQRT3, THRESH2_AA, THRESH2_AB, THRESH2_BB, COS, SIN, ANG_TURN, ANG_DIR,
+      K_MAX, roundLog2, samplesFor, trigQ, toPxQ, stepQ, rotQ, tooCloseQ, axialRoundQ },
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = GW;
   else root.GW = GW;

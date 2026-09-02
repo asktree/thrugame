@@ -3,11 +3,9 @@
  * oracle, never recomputed. */
 #include "gw.h"
 
-/* COS5[k] = round(cos(k*5°)*65536), SIN5 likewise, k = 0..12 */
-static const int64_t COS5[13] = { 65536, 65287, 64540, 63303, 61584, 59396, 56756,
-  53684, 50203, 46341, 42126, 37590, 32768 };
-static const int64_t SIN5[13] = { 0, 5712, 11380, 16962, 22415, 27697, 32768,
-  37590, 42126, 46341, 50203, 53684, 56756 };
+/* COS[k] = round(cos(k*0.9375°)*65536), SIN likewise, k = 0..64 (one sextant) */
+static const int64_t COS[65] = { 65536, 65527, 65501, 65457, 65396, 65317, 65220, 65107, 64975, 64827, 64661, 64477, 64277, 64059, 63824, 63572, 63303, 63017, 62714, 62394, 62058, 61705, 61336, 60950, 60547, 60129, 59694, 59244, 58777, 58295, 57798, 57284, 56756, 56212, 55653, 55080, 54491, 53888, 53271, 52639, 51993, 51333, 50660, 49973, 49273, 48559, 47832, 47093, 46341, 45577, 44800, 44011, 43211, 42399, 41576, 40741, 39896, 39040, 38173, 37297, 36410, 35513, 34607, 33692, 32768 };
+static const int64_t SIN[65] = { 0, 1072, 2144, 3216, 4286, 5356, 6424, 7490, 8554, 9616, 10676, 11732, 12785, 13835, 14882, 15924, 16962, 17995, 19024, 20048, 21066, 22078, 23085, 24086, 25080, 26067, 27047, 28020, 28986, 29944, 30893, 31835, 32768, 33692, 34607, 35513, 36410, 37297, 38173, 39040, 39896, 40741, 41576, 42399, 43211, 44011, 44800, 45577, 46341, 47093, 47832, 48559, 49273, 49973, 50660, 51333, 51993, 52639, 53271, 53888, 54491, 55080, 55653, 56212, 56756 };
 
 const int32_t GW_DIRS[6][2] = { {1,0}, {0,1}, {-1,1}, {-1,0}, {0,-1}, {1,-1} };
 
@@ -15,8 +13,8 @@ static int32_t mod_a(int32_t u) { return ((u % GW_ANG_TURN) + GW_ANG_TURN) % GW_
 
 void gw_trig(int32_t u, int64_t *co, int64_t *si) {
   u = mod_a(u);
-  int32_t s = u / GW_ANG_DIR, k = u - s * GW_ANG_DIR;   /* s in 0..5, k in 0..11 */
-  int64_t c = COS5[k], n = SIN5[k];
+  int32_t s = u / GW_ANG_DIR, k = u - s * GW_ANG_DIR;   /* s in 0..5, k in 0..63 */
+  int64_t c = COS[k], n = SIN[k];
   switch (s) {
     case 0:  *co = c;                                       *si = n; break;
     case 1:  *co =  gw_fdiv(c, 2) - gw_fmul(GW_HALF_SQRT3, n);
@@ -50,9 +48,24 @@ void gw_rot_q(int64_t dx, int64_t dy, int32_t u, int64_t *ox, int64_t *oy) {
   *oy = gw_fmul(s, dx) + gw_fmul(c, dy);
 }
 
-int gw_too_close(int64_t ax, int64_t ay, int64_t bx, int64_t by) {
+int gw_too_close(int64_t ax, int64_t ay, int64_t bx, int64_t by, int64_t t2) {
   int64_t dx = ax - bx, dy = ay - by;
-  return gw_fmul(dx, dx) + gw_fmul(dy, dy) < GW_THRESH2;
+  return gw_fmul(dx, dx) + gw_fmul(dy, dy) < t2;
+}
+
+/* Opus Magnum's sweep resolution: increment 0.25 / 2^round(log2 d), at most
+   0.125, i.e. N = 4 * 2^round(log2 d) instants, at least 8; capped at 64. */
+int32_t gw_round_log2(int32_t d) {
+  int32_t f = 0;
+  while ((2 << f) <= d) f++;                              /* floor(log2 d) */
+  return ((int64_t)d * d >= (int64_t)(2 << (2 * f))) ? f + 1 : f;
+}
+int32_t gw_samples_for(int32_t max_dist) {
+  if (max_dist < 1) max_dist = 1;
+  int32_t n = 4 * (1 << gw_round_log2(max_dist));
+  if (n < 8) n = 8;
+  if (n > GW_K_MAX) n = GW_K_MAX;
+  return n;
 }
 
 static int64_t iabs64(int64_t a) { return a < 0 ? -a : a; }

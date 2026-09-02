@@ -103,6 +103,11 @@
   .tape-cells span.on { background: var(--ink); color: var(--parch); border-color: var(--ink); opacity: 1; }
   .tape-cells span.cursor { border-color: var(--gold); box-shadow: 0 0 0 1.5px var(--gold); }
   .tape-cells span.ghostcell { opacity: .4; border-style: dashed; }
+  /* a repeat marker's span: ⟲ then one bar over the rest of the repeated run (OM style) */
+  .tape-cells span.repeat-bar { padding: 0; border: 0; border-top: 2px solid var(--ink-dim); background: none;
+    align-self: center; height: 0; opacity: .7; cursor: default; }
+  /* in run mode the repeat unfurls into its real ops */
+  .tape-cells span.unfurled { border-style: dotted; }
 
   .sharebox { border: 1px solid var(--line); border-top: 0; background: var(--parch-2); padding: 9px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .sharebox input { flex: 1; min-width: 220px; font-family: var(--mono); font-size: 11px; padding: 6px 8px; border: 1px solid var(--line); background: var(--parch); color: var(--ink); }
@@ -227,6 +232,7 @@
 
   <div class="sharebox">
     <button class="ctl" id="btnCopy">Copy code</button>
+    <button class="ctl" id="btnGif" disabled title="record this machine as an animated GIF — for pasting into Discord">Export GIF</button>
     <input id="shareIn" placeholder="paste a solution code — e.g. amalgam.AgEAAA…" spellcheck="false">
     <button class="ctl" id="btnImport">Import</button>
     <span class="sep"></span>
@@ -286,6 +292,10 @@
 <script>
 /*__FX__*/
 </script>
+<!-- the GIF encoder (gifenc), inlined by the build: window.GIFENC -->
+<script>
+/*__GIFENC__*/
+</script>
 <script>
 (() => {
   'use strict';
@@ -307,10 +317,13 @@
   const SINGLE_CELL = { calcifiers: 1, disposals: 1 };
   const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·', R: '⟲' };
   const PITCH = Math.sqrt(3);
-  const CW = 980, CH = 560;
+  // The playmat renderer draws into whatever ctx/view/size these name. They are the
+  // live canvas all the time except inside renderPlaymat(), which points them at an
+  // offscreen surface for one synchronous frame (the GIF recorder) and puts them back.
+  let CW = 980, CH = 560;
   const canvas = document.getElementById('field');
-  const ctx = canvas.getContext('2d');
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  let ctx = canvas.getContext('2d');
+  let dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = CW * dpr; canvas.height = CH * dpr;
   canvas.style.aspectRatio = `${CW} / ${CH}`;
   const $ = (id) => document.getElementById(id);
@@ -366,7 +379,7 @@
   // the run-mode effects overlay: it reads the sim's event log and paints over the
   // playmat, and can touch nothing the sim reads. `view` is reassigned by fitView,
   // so hand it live accessors rather than the object.
-  const FX = GWFX.create({
+  let FX = GWFX.create({
     ctx: ctx,
     s: () => view.s,
     P: (x, y) => P(x, y),
@@ -491,7 +504,9 @@
   }
 
   // ---------- view fitting ----------
-  function fitView() {
+  // the machine's footprint in board pixels, padded — the box both the live view and
+  // the GIF recorder frame themselves on
+  function footprintBox() {
     const cells = [];
     for (const g of layout.glyphs) glyphFootprint(g).forEach(c => cells.push(c));
     for (const g of layout.inputs) inputCells(g).forEach(c => cells.push(c));
@@ -500,11 +515,18 @@
     if (!cells.length) cells.push([0, 0]);
     const pts = cells.map(GW.toPx);
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-    const minX = Math.min(...xs) - 3.2, maxX = Math.max(...xs) + 3.2;
-    const minY = Math.min(...ys) - 3.2, maxY = Math.max(...ys) + 3.2;
-    const s = Math.min(42, CW / (maxX - minX), CH / (maxY - minY));
-    view = { s, ox: CW / 2 - s * (minX + maxX) / 2, oy: CH / 2 - s * (minY + maxY) / 2 };
+    return {
+      minX: Math.min(...xs) - 3.2, maxX: Math.max(...xs) + 3.2,
+      minY: Math.min(...ys) - 3.2, maxY: Math.max(...ys) + 3.2,
+    };
   }
+  // the same fit, against an arbitrary surface size
+  function fitViewFor(w, h) {
+    const b = footprintBox();
+    const s = Math.min(42, w / (b.maxX - b.minX), h / (b.maxY - b.minY));
+    return { s, ox: w / 2 - s * (b.minX + b.maxX) / 2, oy: h / 2 - s * (b.minY + b.maxY) / 2 };
+  }
+  function fitView() { view = fitViewFor(CW, CH); }
 
   // arm bases are hex fixtures bolted to the board, not discs: vertex radius as a
   // fraction of the cell pitch, sized to sit just inside the field line of its cell.
@@ -839,6 +861,25 @@
     }
   }
 
+  // Draw one run frame onto a surface that is NOT the page's canvas. The draw* family
+  // reads module-level ctx/view/CW/CH/dpr/sim/FX; this points them at the target for
+  // one synchronous frame and puts them back, so the live view never sees the swap.
+  // target: { ctx, view, w, h, sim, fx, dt, layout, pIdx } — layout/pIdx too, so a
+  // recording keeps drawing the machine it started with even if the page is edited
+  // between its chunks.
+  function renderPlaymat(target, f) {
+    const keep = { ctx, view, CW, CH, dpr, sim, FX, frameDt, layout, pIdx };
+    ctx = target.ctx; view = target.view; CW = target.w; CH = target.h; dpr = 1;
+    sim = target.sim; FX = target.fx; frameDt = target.dt || 50;
+    if (target.layout) { layout = target.layout; pIdx = target.pIdx; }
+    try { drawRun(f); }
+    finally {
+      ctx = keep.ctx; view = keep.view; CW = keep.CW; CH = keep.CH; dpr = keep.dpr;
+      sim = keep.sim; FX = keep.FX; frameDt = keep.frameDt;
+      layout = keep.layout; pIdx = keep.pIdx;
+    }
+  }
+
   // ---------- hit testing ----------
   function baseAt(cell) {
     const poses = initPoses();
@@ -1056,16 +1097,37 @@
       for (let i = 0; i < arm.tape.delay; i++) {
         const sp = document.createElement('span'); sp.className = 'delay'; sp.textContent = '»'; cells.appendChild(sp);
       }
-      ex.cells.forEach(c => {
+      // Repeat markers, Opus Magnum style: while editing, ⟲ followed by one bar stretched
+      // over the rest of the repeated run (its length minus the marker's own cell); while
+      // playing, the marker vanishes and the run unfurls into its actual ops.
+      for (let ci = 0; ci < ex.cells.length; ci++) {
+        const c = ex.cells[ci];
+        if (c.ghost) {
+          if (mode === 'edit') continue;                     // covered by the bar below
+          const sp = document.createElement('span'); sp.textContent = GLYPH[c.op] || c.op;
+          sp.dataset.eng = c.engine; sp.classList.add('unfurled');
+          cells.appendChild(sp);
+          continue;
+        }
+        const marker = c.op === '⟲';
+        if (marker && mode !== 'edit') continue;             // takes no time: not shown in play
         const sp = document.createElement('span'); sp.textContent = GLYPH[c.op] || c.op;
         if (c.engine !== null) sp.dataset.eng = c.engine;
-        if (c.ghost) sp.classList.add('ghostcell');
-        else if (mode === 'edit') {
+        if (mode === 'edit') {
           if (cursor && cursor.armId === arm.id && cursor.pos === c.src) sp.classList.add('cursor');
           sp.addEventListener('click', () => { sel = { kind: 'arm', id: arm.id }; cursor = { armId: arm.id, pos: c.src }; refreshAll(); });
         }
         cells.appendChild(sp);
-      });
+        if (marker && mode === 'edit') {
+          let n = 0;
+          while (ci + 1 + n < ex.cells.length && ex.cells[ci + 1 + n].ghost) n++;
+          if (n > 1) {
+            const bar = document.createElement('span'); bar.className = 'repeat-bar';
+            bar.dataset.cells = n - 1; bar.title = 'repeats the last ' + n + ' ops';
+            cells.appendChild(bar);
+          }
+        }
+      }
       if (mode === 'edit') {
         const add = document.createElement('span'); add.textContent = '+'; add.className = 'ghostcell';
         add.title = 'append a cell';
@@ -1077,6 +1139,12 @@
         cells.appendChild(add);
       }
       row.appendChild(lab); row.appendChild(cells); host.appendChild(row);
+      // size each bar from a real cell, now that the row is in the document
+      cells.querySelectorAll('.repeat-bar').forEach(bar => {
+        const n = +bar.dataset.cells, ref = bar.previousElementSibling;
+        const w = ref ? ref.getBoundingClientRect().width : 19;
+        bar.style.width = (n * w + (n - 1) * 3) + 'px';
+      });
     }
     if (!arms.length) host.innerHTML += `<div class="tape-row"><span class="tape-label" style="width:auto">no arms yet — drag one from the tray onto the board</span></div>`;
   }
@@ -1187,7 +1255,7 @@
     $('btnMode').textContent = '▶ Test';
     $('btnPlay').disabled = true; $('btnStep').disabled = true;
     $('tray').style.display = '';
-    stamp();
+    stamp(); syncGifBtn();
   }
   function enterRun() {
     const bad = validate();
@@ -1200,7 +1268,7 @@
     $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
     $('btnStep').disabled = false;
     $('tray').style.display = 'none';
-    buildTapes(); updateRunTapes(); hud(); stamp();
+    buildTapes(); updateRunTapes(); hud(); stamp(); syncGifBtn(null);
     setStatus('testing — the verifier is watching every sweep');
   }
 
@@ -1212,9 +1280,10 @@
     buildTapes(); hud();
     if (mode === 'edit') {
       const bad = validate();
+      syncGifBtn(bad);
       const note = sel && sel.kind === 'arm' && isTipParent(sel.id) ? ` · <span class="bad">${TIP_NOTE}</span>` : '';
       setStatus((bad ? `<span class="bad">✗ ${bad}</span>` : `<span class="good">✓ layout legal</span> · ${layout.arms.length} arm(s), ${layout.glyphs.length} glyph(s) · code ${code().length} chars`) + note);
-    }
+    } else syncGifBtn(null);
   }
 
   // ---------- pointer input ----------
@@ -1460,6 +1529,211 @@
     try { history.replaceState(null, '', '#' + c); } catch (e) {}
   });
   $('btnImport').addEventListener('click', () => importCode($('shareIn').value.trim()));
+
+  // ---------- export: the run as an animated GIF ----------
+  // Discord takes a GIF; a browser clipboard does not (the async Clipboard API only
+  // carries PNG and text), so the deliverable is a file — offered to the share sheet
+  // where there is one, downloaded where there isn't — plus a PNG of the last frame on
+  // the clipboard so a bare paste still shows the finished machine.
+  //
+  // The recording never touches the on-screen run: it builds its OWN sim from the
+  // current layout and paints it onto an offscreen canvas through renderPlaymat().
+  const GIF_W = 480;              // Discord's inline width; height follows the board
+  const GIF_TICK_MS = 140;        // playback at 1x — the editor's default stepMs
+  const GIF_FRAME_MS = 50;        // 20 fps
+  const GIF_MAX_FRAMES = 240;     // 12 seconds of playback, then we stop wherever we are
+  const GIF_HOLD_MS = 1000;       // the last frame lingers so a loop reads as an ending
+  // the badge's own inks, kept out of the quantizer's hands (see encodeFrame)
+  const STAMP_INKS = [[138, 106, 30], [140, 59, 46], [107, 95, 73], [241, 233, 214]];
+  let gifBusy = false;
+
+  // `bad` is validate()'s answer when the caller already has it — validation builds a
+  // throwaway sim, and refreshAll runs on every drag frame
+  function syncGifBtn(bad) {
+    const b = $('btnGif'); if (!b) return;
+    b.disabled = gifBusy || !window.GIFENC || !!(bad === undefined ? validate() : bad);
+    b.title = gifBusy ? 'recording…'
+      : !window.GIFENC ? 'the GIF encoder did not load'
+      : b.disabled ? 'build a legal machine first'
+      : 'record this machine as an animated GIF — for pasting into Discord';
+  }
+
+  // an offscreen surface framed on the machine's footprint: 480 wide, height by the
+  // board's aspect (capped), scale 1 — no dpr, the GIF has no retina to serve
+  function gifSurface() {
+    const b = footprintBox();
+    const aspect = (b.maxY - b.minY) / (b.maxX - b.minX);
+    const h = Math.max(200, Math.min(480, Math.round(GIF_W * aspect)));
+    const cv = document.createElement('canvas');
+    cv.width = GIF_W; cv.height = h;
+    return { canvas: cv, ctx: cv.getContext('2d', { willReadFrequently: true }), w: GIF_W, h: h };
+  }
+
+  // the verdict, painted onto the held last frame — the on-page stamp is a DOM overlay
+  // and never reaches the canvas, so the GIF gets its own parchment badge
+  function drawGifStamp(surf, rsim) {
+    const st = rsim.state;
+    const good = !st.fault && st.cycles !== null;
+    if (!good && !st.fault) return;
+    const m = rsim.metrics();
+    const title = good ? 'Verified · sum ' + m.sum : 'Rejected · ' + st.fault.kind;
+    const sub = good ? (m.cost + 'g + ' + m.cycles + 'c + ' + m.area + 'a')
+      : ('tick ' + st.fault.tick + (st.fault.detail ? ' · ' + st.fault.detail : ''));
+    const c = surf.ctx;
+    const TITLE = "700 20px 'Cinzel', 'Times New Roman', serif";
+    const SUB = "400 11px 'Courier Prime', 'Courier New', monospace";
+    c.save();
+    c.translate(surf.w / 2, surf.h / 2);
+    c.rotate(-7 * Math.PI / 180);
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = TITLE; const w1 = c.measureText(title).width;
+    c.font = SUB; const w2 = c.measureText(sub).width;
+    const bw = Math.min(surf.w - 26, Math.max(w1, w2) + 44), bh = 62;
+    c.beginPath(); c.rect(-bw / 2, -bh / 2, bw, bh);
+    c.fillStyle = 'rgba(241,233,214,0.9)'; c.fill();
+    c.strokeStyle = good ? '#8A6A1E' : '#8C3B2E'; c.lineWidth = 2.5; c.stroke();
+    c.save(); c.clip();
+    c.fillStyle = good ? '#8A6A1E' : '#8C3B2E'; c.font = TITLE;
+    c.fillText(title.toUpperCase(), 0, -bh / 2 + 22);
+    c.fillStyle = '#6B5F49'; c.font = SUB;
+    c.fillText(sub, 0, bh / 2 - 17);
+    c.restore();
+    c.restore();
+  }
+
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  // the consolation prize for a clipboard that will not carry animation
+  function copyStillPng(cv) {
+    return new Promise((resolve) => {
+      if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === 'undefined') return resolve(false);
+      try {
+        cv.toBlob((png) => {
+          if (!png) return resolve(false);
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+            .then(() => resolve(true), () => resolve(false));
+        }, 'image/png');
+      } catch (e) { resolve(false); }
+    });
+  }
+
+  async function exportGif() {
+    const bad = validate();
+    if (bad) { setStatus('cannot record: ' + bad, 'bad'); return; }
+    const G = window.GIFENC;
+    if (!G) { setStatus('the GIF encoder did not load', 'bad'); return; }
+
+    const surf = gifSurface();
+    const rsim = GW.createSim(matPuzzle(), clone({ arms: machineArms() }));
+    const rec = {
+      ctx: surf.ctx, view: fitViewFor(surf.w, surf.h),
+      w: surf.w, h: surf.h, sim: rsim, dt: GIF_FRAME_MS,
+      layout: clone(layout), pIdx: pIdx,
+    };
+    // the recording's own overlay, bound to the recording's surface. Effects are
+    // wall-clock creatures and this run is encoded far faster than it plays, so the
+    // overlay is harvested with enabled:false — the event index still advances, a
+    // collision still freezes the frame it was found at, but nothing is enqueued.
+    rec.fx = GWFX.create({
+      ctx: surf.ctx,
+      s: () => rec.view.s,
+      P: (x, y) => P(x, y),
+      Pc: (cell) => Pc(cell),
+      hex: (x, y, r) => hexPath(x, y, r),
+      fill: (elem) => (ELEMS[elem] || { fill: '#999' }).fill,
+    });
+    rec.fx.reset(rsim.state);
+
+    const gif = G.GIFEncoder();
+    let palette = null, frames = 0, ph = 1, ended = false;
+    // one frame in, one frame encoded: the RGBA never piles up
+    const encodeFrame = (delay) => {
+      const rgba = surf.ctx.getImageData(0, 0, surf.w, surf.h).data;
+      if (!palette) {
+        // one palette for the whole animation, quantized off frame 1 — but the verdict
+        // badge only appears on the LAST frame, so its inks are reserved by hand or
+        // they would be snapped to whatever brown the opening frame happened to have
+        palette = G.quantize(rgba, 256 - STAMP_INKS.length);
+        for (const ink of STAMP_INKS) {
+          if (!palette.some(c => c[0] === ink[0] && c[1] === ink[1] && c[2] === ink[2])) palette.push(ink);
+        }
+        gif.writeFrame(G.applyPalette(rgba, palette), surf.w, surf.h,
+          { palette: palette, delay: delay, repeat: 0, first: true });
+      } else {
+        // no per-frame palette: every later frame reads the global colour table
+        gif.writeFrame(G.applyPalette(rgba, palette), surf.w, surf.h, { delay: delay, first: false });
+      }
+    };
+    const yieldSlice = () => new Promise(r => setTimeout(r, 0));
+
+    for (;;) {
+      rec.fx.harvest(rsim.state, { stepMs: GIF_TICK_MS, enabled: false, motion: false });
+      rec.fx.prune();
+      const frozen = rec.fx.freezeF();
+      const f = frozen !== null ? frozen : (ph >= 1 ? 1 : GWFX.phaseEase(ph));
+      renderPlaymat(rec, f);
+      const last = (ended && ph >= 1) || frames + 1 >= GIF_MAX_FRAMES;
+      if (last) drawGifStamp(surf, rsim);
+      encodeFrame(last ? GIF_FRAME_MS + GIF_HOLD_MS : GIF_FRAME_MS);
+      frames++;
+      if (last) break;
+      ph += GIF_FRAME_MS / GIF_TICK_MS;
+      while (ph >= 1 && !ended) {
+        rsim.step();
+        ended = !!(rsim.state.fault || rsim.state.cycles !== null);
+        ph -= 1;
+      }
+      if (frames % 5 === 0) {
+        setStatus('rendering GIF ' + Math.min(99, Math.round(frames / GIF_MAX_FRAMES * 100)) + '%');
+        await yieldSlice();          // the live view keeps its frames while we encode
+      }
+    }
+
+    gif.finish();
+    const bytes = gif.bytes();
+    const blob = new Blob([bytes], { type: 'image/gif' });
+    const m = rsim.metrics();
+    const tag = (rsim.state.cycles !== null && m.sum !== null) ? String(m.sum) : 'run';
+    const name = 'great-work-' + key() + '-' + tag + '.gif';
+    const mb = (blob.size / 1048576).toFixed(1);
+
+    const copied = await copyStillPng(surf.canvas);
+
+    let how = 'downloaded';
+    try {
+      const file = new File([bytes], name, { type: 'image/gif' });
+      if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Great Work! · ' + base().name });
+        how = 'shared';
+      }
+    } catch (e) {
+      // a cancelled sheet is an answer, not a failure: don't spring a download on them
+      how = (e && e.name === 'AbortError') ? 'cancelled' : 'downloaded';
+    }
+    if (how === 'downloaded') downloadBlob(blob, name);
+
+    const bits = [how === 'shared' ? 'GIF shared · ' + mb + ' MB'
+      : how === 'cancelled' ? 'GIF ready · ' + mb + ' MB · sharing cancelled'
+      : 'GIF downloaded · ' + mb + ' MB'];
+    if (how === 'downloaded') bits.push('drag it into Discord');
+    if (copied) bits.push('still frame copied to clipboard');
+    setStatus(bits.join(' · '), 'good');
+  }
+
+  $('btnGif').addEventListener('click', () => {
+    if (gifBusy) return;
+    gifBusy = true; syncGifBtn();
+    setStatus('rendering GIF 0%');
+    exportGif()
+      .catch((e) => setStatus('could not record a GIF: ' + String((e && e.message) || e), 'bad'))
+      .then(() => { gifBusy = false; syncGifBtn(); });
+  });
 
   // ---------- the chain: submit a verified run, read the record back ----------
   // Everything below is render-only. window.GWChain is the prebuilt browser bundle

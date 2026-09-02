@@ -105,12 +105,12 @@ emit('');
 // ---- section 1: primitives ----
 {
   const rows = [];
-  for (let u = -12; u < 84; u++) { const t = Q.trigQ(u); rows.push(`{${u},${t[0]},${t[1]}}`); }
+  for (let u = -64; u < 448; u++) { const t = Q.trigQ(u); rows.push(`{${u},${t[0]},${t[1]}}`); }
   emit(`static const struct { int32_t u; int64_t c, s; } VEC_TRIG[] = {\n  ${rows.join(', ')}\n};`);
 
   const rot = [];
   for (let i = 0; i < 96; i++) {
-    const dx = rint(-500000, 500000), dy = rint(-500000, 500000), u = rint(-100, 200);
+    const dx = rint(-500000, 500000), dy = rint(-500000, 500000), u = rint(-500, 900);
     const r = Q.rotQ(dx, dy, u);
     rot.push(`{${dx},${dy},${u},${r[0]},${r[1]}}`);
   }
@@ -138,11 +138,11 @@ emit('');
     let bx, by;
     if (i % 2 === 0) { bx = rint(-300000, 300000); by = rint(-300000, 300000); }
     else {
-      const u = rint(0, 71), t = Q.trigQ(u);
-      const rr = 79000 + rint(-2000, 2000); // |d| ≈ sqrt(THRESH2*ONE) ≈ 79457
+      const u = rint(0, 383), t = Q.trigQ(u);
+      const rr = 80300 + rint(-2000, 2000); // |d| ≈ sqrt(THRESH2_AA*ONE) ≈ 80289
       bx = ax_ + Q.fmul(rr, t[0]); by = ay + Q.fmul(rr, t[1]);
     }
-    tc.push(`{${ax_},${ay},${bx},${by},${Q.tooCloseQ(ax_, ay, bx, by) ? 1 : 0}}`);
+    tc.push(`{${ax_},${ay},${bx},${by},${Q.tooCloseQ(ax_, ay, bx, by, Q.THRESH2_AA) ? 1 : 0}}`);
   }
   emit(`static const struct { int64_t ax, ay, bx, by; int32_t close; } VEC_TOOCLOSE[] = {\n  ${tc.join(',\n  ')}\n};`);
   emit('');

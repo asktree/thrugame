@@ -209,13 +209,13 @@ static scratch_t *scratch_of(gw_sim_t *S) { uintptr_t p = (uintptr_t)S->scratch;
 
 typedef struct { int64_t x, y; int32_t rot_u; } poseq_t;
 
-/* deterministic fractional kinematics at sweep instant k (0..K), Q16.16 px */
-static poseq_t pose_q(gw_sim_t *S, int ai, int k, const motion_t *M) {
+/* deterministic fractional kinematics at sweep angle u (0..GW_ANG_DIR), Q16.16 px */
+static poseq_t pose_q(gw_sim_t *S, int ai, int32_t u, const motion_t *M) {
   gw_arm_t *arm = &S->arms[ai];
   poseq_t out;
   if (arm->is_elbow) {
-    poseq_t pp = pose_q(S, arm->parent, k, M);
-    int32_t du = pp.rot_u + GW_ANG_DIR * M->angle0[arm->parent] + M->delta[arm->parent] * k;
+    poseq_t pp = pose_q(S, arm->parent, u, M);
+    int32_t du = pp.rot_u + GW_ANG_DIR * M->angle0[arm->parent] + M->delta[arm->parent] * u;
     int64_t vx, vy;
     gw_step_q(arm->at, du, &vx, &vy);
     out.x = pp.x + vx; out.y = pp.y + vy; out.rot_u = du;
@@ -224,23 +224,23 @@ static poseq_t pose_q(gw_sim_t *S, int ai, int k, const motion_t *M) {
   if (M->ncarriers0[ai]) {
     int hi = M->carriers0[ai][0].arm, grip = M->carriers0[ai][0].grip;
     gw_arm_t *h = &S->arms[hi];
-    poseq_t hp = pose_q(S, hi, k, M);
-    int32_t hdu = hp.rot_u + GW_ANG_DIR * (M->angle0[hi] + offsets_of(h->grippers)[grip]) + M->delta[hi] * k;
+    poseq_t hp = pose_q(S, hi, u, M);
+    int32_t hdu = hp.rot_u + GW_ANG_DIR * (M->angle0[hi] + offsets_of(h->grippers)[grip]) + M->delta[hi] * u;
     int64_t vx, vy;
     gw_step_q(h->len, hdu, &vx, &vy);
     out.x = hp.x + vx; out.y = hp.y + vy;
-    out.rot_u = hdu + GW_ANG_DIR * M->carry_rel0[ai] + M->pivot[hi] * k;
+    out.rot_u = hdu + GW_ANG_DIR * M->carry_rel0[ai] + M->pivot[hi] * u;
     return out;
   }
   gw_to_px(M->base_q0[ai], M->base_r0[ai], &out.x, &out.y);
   out.rot_u = GW_ANG_DIR * M->base_rot0[ai];
   return out;
 }
-static void hand_q(gw_sim_t *S, int ai, int gi, int k, const motion_t *M,
+static void hand_q(gw_sim_t *S, int ai, int gi, int32_t u, const motion_t *M,
                    int64_t *x, int64_t *y, int32_t *du) {
   gw_arm_t *arm = &S->arms[ai];
-  poseq_t p = pose_q(S, ai, k, M);
-  int32_t d = p.rot_u + GW_ANG_DIR * (M->angle0[ai] + offsets_of(arm->grippers)[gi]) + M->delta[ai] * k;
+  poseq_t p = pose_q(S, ai, u, M);
+  int32_t d = p.rot_u + GW_ANG_DIR * (M->angle0[ai] + offsets_of(arm->grippers)[gi]) + M->delta[ai] * u;
   int64_t vx, vy;
   gw_step_q(arm->len, d, &vx, &vy);
   *x = p.x + vx; *y = p.y + vy; *du = d;
@@ -669,20 +669,49 @@ void gw_sim_step(gw_sim_t *S) {
     S->atoms[a].r = rr + xfs[mol_of[a]].br;
   }
 
-  /* 3b. sweep — K sample instants, full pair check + area accumulation */
+  /* 3b. sweep — N sample instants (Opus Magnum's rule on the largest rotation
+     radius of the tick, see the oracle), full pair check + area accumulation */
+  int32_t max_dist = 1;
+  for (int a = 0; a < M->natoms; a++) {
+    if (M->atoms[a].holder_arm < 0) continue;
+    int slot = -1;
+    for (int i = 0; i < S->natoms; i++) if (S->atoms[i].id == M->atoms[a].id) { slot = i; break; }
+    if (slot < 0) continue;
+    int holder = M->atoms[a].holder_arm, ai = holder, turn = 0;
+    for (;;) {
+      if (M->delta[ai] || (ai != holder && M->pivot[ai])) turn = 1;
+      if (S->arms[ai].is_elbow) ai = S->arms[ai].parent;
+      else if (M->ncarriers0[ai]) ai = M->carriers0[ai][0].arm;
+      else break;
+    }
+    if (!turn && !M->pivot[holder]) continue;         /* nothing rotates this atom */
+    int32_t pq, pr;
+    if (turn) { pq = M->base_q0[ai]; pr = M->base_r0[ai]; }
+    else {                                             /* a lone pivot swings about the gripper */
+      int32_t hd;
+      hand_cell(S, holder, M->atoms[a].holder_grip, &pq, &pr, &hd);
+    }
+    int32_t dq = S->atoms[slot].q - pq, dr = S->atoms[slot].r - pr;
+    int32_t h = dq < 0 ? -dq : dq;
+    if ((dr < 0 ? -dr : dr) > h) h = dr < 0 ? -dr : dr;
+    if ((dq + dr < 0 ? -(dq + dr) : dq + dr) > h) h = dq + dr < 0 ? -(dq + dr) : dq + dr;
+    if (h > max_dist) max_dist = h;
+  }
+  const int32_t nsamp = gw_samples_for(max_dist), ustep = GW_ANG_DIR / nsamp;
   obj_t *objs = scratch_of(S)->objs;
-  for (int k = 1; k <= GW_K_SAMPLES && S->fault_kind == GW_FAULT_NONE; k++) {
+  for (int k = 1; k <= nsamp && S->fault_kind == GW_FAULT_NONE; k++) {
+    const int32_t u = k * ustep;
     int nobjs = 0;
     for (int a = 0; a < M->natoms; a++) {
       int64_t x, y;
       if (M->atoms[a].holder_arm >= 0) {
         int ai = M->atoms[a].holder_arm, gi = M->atoms[a].holder_grip;
         int64_t hkx, hky, h0x, h0y; int32_t hkd, h0d;
-        hand_q(S, ai, gi, k, M, &hkx, &hky, &hkd);
+        hand_q(S, ai, gi, u, M, &hkx, &hky, &hkd);
         hand_q(S, ai, gi, 0, M, &h0x, &h0y, &h0d);
         int64_t p0x, p0y;
         gw_to_px(M->atoms[a].q0, M->atoms[a].r0, &p0x, &p0y);
-        int32_t du = hkd - h0d + M->atoms[a].s * k;
+        int32_t du = hkd - h0d + M->atoms[a].s * u;
         int64_t relx, rely;
         gw_rot_q(p0x - h0x, p0y - h0y, du, &relx, &rely);
         x = hkx + relx; y = hky + rely;
@@ -694,7 +723,7 @@ void gw_sim_step(gw_sim_t *S) {
     }
     for (int i = 0; i < S->narms; i++) {
       if (S->arms[i].is_elbow) continue;    /* elbows don't collide */
-      poseq_t p = pose_q(S, i, k, M);
+      poseq_t p = pose_q(S, i, u, M);
       objs[nobjs].kind = 1; objs[nobjs].id = (uint32_t)i;
       objs[nobjs].x = p.x; objs[nobjs].y = p.y; nobjs++;
     }
@@ -706,17 +735,20 @@ void gw_sim_step(gw_sim_t *S) {
     for (int i = 0; i < S->narms; i++)
       for (int gi = 0; gi < S->arms[i].ngrips; gi++) {
         int64_t hx, hy; int32_t hd;
-        hand_q(S, i, gi, k, M, &hx, &hy, &hd);
+        hand_q(S, i, gi, u, M, &hx, &hy, &hd);
         int32_t cq, cr;
         gw_axial_round(hx, hy, &cq, &cr);
         area_add(S, cq, cr);
       }
     for (int o = 0; o < nobjs && S->fault_kind == GW_FAULT_NONE; o++)
-      for (int p = o + 1; p < nobjs; p++)
-        if (gw_too_close(objs[o].x, objs[o].y, objs[p].x, objs[p].y)) {
+      for (int p = o + 1; p < nobjs; p++) {
+        int64_t t2 = objs[o].kind == 0 ? (objs[p].kind == 0 ? GW_THRESH2_AA : GW_THRESH2_AB)
+                                       : (objs[p].kind == 0 ? GW_THRESH2_AB : GW_THRESH2_BB);
+        if (gw_too_close(objs[o].x, objs[o].y, objs[p].x, objs[p].y, t2)) {
           S->fault_kind = GW_FAULT_COLLISION; S->fault_tick = S->tick;
           break;
         }
+      }
   }
   if (S->fault_kind != GW_FAULT_NONE) return;
 

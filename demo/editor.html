@@ -103,6 +103,11 @@
   .tape-cells span.on { background: var(--ink); color: var(--parch); border-color: var(--ink); opacity: 1; }
   .tape-cells span.cursor { border-color: var(--gold); box-shadow: 0 0 0 1.5px var(--gold); }
   .tape-cells span.ghostcell { opacity: .4; border-style: dashed; }
+  /* a repeat marker's span: ⟲ then one bar over the rest of the repeated run (OM style) */
+  .tape-cells span.repeat-bar { padding: 0; border: 0; border-top: 2px solid var(--ink-dim); background: none;
+    align-self: center; height: 0; opacity: .7; cursor: default; }
+  /* in run mode the repeat unfurls into its real ops */
+  .tape-cells span.unfurled { border-style: dotted; }
 
   .sharebox { border: 1px solid var(--line); border-top: 0; background: var(--parch-2); padding: 9px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .sharebox input { flex: 1; min-width: 220px; font-family: var(--mono); font-size: 11px; padding: 6px 8px; border: 1px solid var(--line); background: var(--parch); color: var(--ink); }
@@ -227,6 +232,7 @@
 
   <div class="sharebox">
     <button class="ctl" id="btnCopy">Copy code</button>
+    <button class="ctl" id="btnGif" disabled title="record this machine as an animated GIF — for pasting into Discord">Export GIF</button>
     <input id="shareIn" placeholder="paste a solution code — e.g. amalgam.AgEAAA…" spellcheck="false">
     <button class="ctl" id="btnImport">Import</button>
     <span class="sep"></span>
@@ -329,7 +335,7 @@
   // zero, so the on-chain oracle must implement an explicit floored divide for
   // negative operands or it will disagree by one ulp and, eventually, by a verdict.
   //
-  // The constants in this block (SQRT3, HALF_SQRT3, THRESH2, COS5, SIN5) are
+  // The constants in this block (SQRT3, HALF_SQRT3, THRESH2_*, COS, SIN) are
   // NORMATIVE: the verifier must copy the literals verbatim rather than recompute
   // them from a math library. Collision, area accrual and therefore cycles/SUM all
   // fall out of these operations, so the on-chain verifier must reproduce them
@@ -352,28 +358,30 @@
 
   const SQRT3 = 113512;        // round(sqrt(3) * 65536) = round(113511.6817...)
   const HALF_SQRT3 = 56756;    // round(sqrt(3)/2 * 65536) = round(56755.8409...) = SQRT3/2
-  // Collision threshold, compared as SQUARED distance so no sqrt is ever needed.
-  // Centers collide closer than 2*RADIUS*PITCH = 2*0.35*sqrt(3) = 0.7*sqrt(3) px.
-  // (0.7*sqrt(3))^2 = 0.49*3 = 1.47 exactly, so
-  //   THRESH2 = round(((0.7*sqrt(3))*65536)^2 / 65536) = round(1.47 * 65536)
-  //           = round(96337.92) = 96338.
-  const THRESH2 = 96338;
-  // Sweep samples land on multiples of 60°/K_SAMPLES = 5°, so all trigonometry is
-  // table lookup at 5° granularity. 13 entries cover one sextant, 0°..60°:
-  // COS5[k] = round(cos(k*5°) * 65536), SIN5[k] = round(sin(k*5°) * 65536).
-  const COS5 = [65536, 65287, 64540, 63303, 61584, 59396, 56756, 53684, 50203, 46341, 42126, 37590, 32768];
-  const SIN5 = [0, 5712, 11380, 16962, 22415, 27697, 32768, 37590, 42126, 46341, 50203, 53684, 56756];
-  const ANG_TURN = 72;                            // 5° units in a full turn
-  const ANG_DIR = 12;                             // 5° units in one lattice direction (60°)
+  // Collision discs are Opus Magnum's, taken from the game's hex tile texture:
+  // 82 px between hex centers, atoms 29 px, arm bases 20 px. Radii in pitches:
+  // atom 29/82, base 20/82. Compared as SQUARED distance so no sqrt is ever needed;
+  // one pitch is sqrt(3) px here, so for radii ra, rb the threshold is
+  //   T2 = round(3 * (ra + rb)^2 * 65536)
+  const THRESH2_AA = 98362;   // atom-atom:  3*(58/82)^2 = 1.5008923... -> round(98362.48)
+  const THRESH2_AB = 70205;   // atom-base:  3*(49/82)^2 = 1.0712374... -> round(70204.61)
+  const THRESH2_BB = 46784;   // base-base:  3*(40/82)^2 = 0.7138608... -> round(46783.58)
+  // Sweep instants land on multiples of 60°/64 = 0.9375°, so all trigonometry is
+  // table lookup at that granularity. 65 entries cover one sextant, 0°..60°:
+  // COS[k] = round(cos(k*0.9375°) * 65536), SIN[k] = round(sin(k*0.9375°) * 65536).
+  const COS = [65536, 65527, 65501, 65457, 65396, 65317, 65220, 65107, 64975, 64827, 64661, 64477, 64277, 64059, 63824, 63572, 63303, 63017, 62714, 62394, 62058, 61705, 61336, 60950, 60547, 60129, 59694, 59244, 58777, 58295, 57798, 57284, 56756, 56212, 55653, 55080, 54491, 53888, 53271, 52639, 51993, 51333, 50660, 49973, 49273, 48559, 47832, 47093, 46341, 45577, 44800, 44011, 43211, 42399, 41576, 40741, 39896, 39040, 38173, 37297, 36410, 35513, 34607, 33692, 32768];
+  const SIN = [0, 1072, 2144, 3216, 4286, 5356, 6424, 7490, 8554, 9616, 10676, 11732, 12785, 13835, 14882, 15924, 16962, 17995, 19024, 20048, 21066, 22078, 23085, 24086, 25080, 26067, 27047, 28020, 28986, 29944, 30893, 31835, 32768, 33692, 34607, 35513, 36410, 37297, 38173, 39040, 39896, 40741, 41576, 42399, 43211, 44011, 44800, 45577, 46341, 47093, 47832, 48559, 49273, 49973, 50660, 51333, 51993, 52639, 53271, 53888, 54491, 55080, 55653, 56212, 56756];
+  const ANG_TURN = 384;                           // angle units in a full turn
+  const ANG_DIR = 64;                             // angle units in one lattice direction (60°)
   const modA = (u) => ((u % ANG_TURN) + ANG_TURN) % ANG_TURN;
-  // trigQ(u) = [cos, sin] in Q16.16 of the angle u*5°, u any integer.
+  // trigQ(u) = [cos, sin] in Q16.16 of the angle u*0.9375°, u any integer.
   // The sextant (the whole-lattice-direction part) is applied as an exact 60°
   // rotation using cos60 = 1/2 and sin60 = sqrt(3)/2 = HALF_SQRT3; only the
-  // remaining 0..55° reads the table.
+  // remaining 0..59.0625° reads the table.
   function trigQ(u) {
     u = modA(u);
-    const s = fdiv(u, ANG_DIR), k = u - s * ANG_DIR;   // s in 0..5, k in 0..11
-    const c = COS5[k], n = SIN5[k];
+    const s = fdiv(u, ANG_DIR), k = u - s * ANG_DIR;   // s in 0..5, k in 0..63
+    const c = COS[k], n = SIN[k];
     switch (s) {
       case 0: return [c, n];
       case 1: return [fdiv(c, 2) - fmul(HALF_SQRT3, n), fmul(HALF_SQRT3, c) + fdiv(n, 2)];
@@ -386,23 +394,38 @@
   // lattice cell -> pixel, in Q16.16. x = sqrt(3)*(q + r/2) = sqrt(3)*(2q+r)/2;
   // y = 1.5*r is exact (r * 98304) with no rounding at all.
   const toPxQ = (q, r) => [fdiv(SQRT3 * (2 * q + r), 2), r * 98304];
-  // step of `n` lattice units along the direction u (in 5° units), in Q16.16 px.
+  // step of `n` lattice units along the direction u (in angle units), in Q16.16 px.
   // One pitch is sqrt(3) px, so the leg length is n*SQRT3 (n <= 3 here).
   function stepQ(n, u) {
     const t = trigQ(u);
     return [fmul(SQRT3 * n, t[0]), fmul(SQRT3 * n, t[1])];
   }
-  // rotate the Q16.16 offset (dx,dy) by u*5° about the origin.
+  // rotate the Q16.16 offset (dx,dy) by u angle units about the origin.
   function rotQ(dx, dy, u) {
     const t = trigQ(u);
     return [fmul(t[0], dx) - fmul(t[1], dy), fmul(t[1], dx) + fmul(t[0], dy)];
   }
   // THE collision predicate. Squared distance in Q16.16 (Q32.32 descaled back by
-  // fmul) against the normative squared threshold. No sqrt, no epsilon: `<` means
-  // exactly-touching is not a collision, matching the float rule's -1e-9 slack.
-  function tooCloseQ(ax, ay, bx, by) {
+  // fmul) against the normative squared threshold for the pair of disc kinds.
+  // No sqrt, no epsilon: `<` means exactly-touching is not a collision.
+  function tooCloseQ(ax, ay, bx, by, t2 = THRESH2_AA) {
     const dx = ax - bx, dy = ay - by;
-    return fmul(dx, dx) + fmul(dy, dy) < THRESH2;
+    return fmul(dx, dx) + fmul(dy, dy) < t2;
+  }
+  // How many sweep instants a tick gets — Opus Magnum's rule. d is the largest
+  // rotation radius in the tick: the farthest any moving atom ends up from the
+  // pivot it turned about, in hex steps (hexicab). The game's increment is
+  // 0.25 / 2^round(log2 d), at most 0.125, i.e. N = 4 * 2^round(log2 d) instants,
+  // at least 8. Capped at 64, the trig table's resolution (out of reach anyway:
+  // no machine within the caps has a rotation radius above ~15).
+  const K_MAX = 64;
+  function roundLog2(d) {                 // round(log2(d)), integer d >= 1, exactly
+    let f = 0;
+    while ((2 << f) <= d) f++;            // f = floor(log2 d)
+    return d * d >= (2 << (2 * f)) ? f + 1 : f;   // up when d >= 2^(f + 1/2)
+  }
+  function samplesFor(maxDist) {
+    return Math.min(K_MAX, Math.max(8, 4 * (1 << roundLog2(Math.max(1, maxDist)))));
   }
   // inverse of toPxQ + cube rounding, for area accrual. Q16.16 in, lattice cell out.
   function axialRoundQ(x, y) {
@@ -446,10 +469,11 @@
   const CARDINALS = ['Ai', 'Ea', 'Fi', 'Wa'];
   const GLYPH_PRICE = { bonders: 10, debonders: 15, calcifiers: 10, duplicators: 20,
     projectors: 20, purifiers: 20, animismus: 20, disposals: 0 };
-  // RADIUS is documentation/export only — the simulation compares against THRESH2,
-  // which is the normative Q16.16 form of (2*RADIUS*PITCH)^2. K_SAMPLES = 12 is what
-  // makes every sweep angle an exact multiple of 60/12 = 5°, hence the COS5/SIN5 table.
-  const RADIUS = 0.35, K_SAMPLES = 12;
+  // RADIUS (atoms) and BASE_RADIUS are render/export only, in pitches — the simulation
+  // compares against THRESH2_*, their normative Q16.16 squared-sum forms. The number of
+  // sweep instants per tick is samplesFor(...) (8..64), so every sweep angle is an exact
+  // multiple of 60/64 = 0.9375°, hence the 65-entry COS/SIN table.
+  const RADIUS = 29 / 82, BASE_RADIUS = 20 / 82, K_SAMPLES = K_MAX;
   const OPS = 'GD+-PQWR';
   const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 9 };
 
@@ -683,37 +707,37 @@
 
     // -- fractional kinematics, DETERMINISTIC (Q16.16), valid during a cached motion --
     // These are the simulation's own kinematics: the sweep, the collision test and area
-    // accrual all read them. They are sampled only at the K_SAMPLES instants f = k/K, and
-    // since one dir step is 60° and K = 12, every angle is an exact multiple of 5°.
-    // Angles are therefore carried as INTEGER counts of 5° units ("rotU"/"dU"), never radians:
-    // a float dF of (n + m*k/12) is exactly the integer 12n + m*k here.
+    // accrual all read them. They are sampled only at the N instants f = k/N of a tick,
+    // N dividing 64, so every angle is an exact multiple of 60°/64. Angles are therefore
+    // carried as INTEGER counts of that unit ("rotU"/"dU"/"u"), never radians: a float
+    // dF of (n + m*k/N) is exactly the integer 64n + m*u with u = 64k/N here.
     // M = S.motion: {angle0:{id:θ}, delta:{id:±1|0}, pivot:{id:±1|0}, carryRel0:{id}, snapshot atoms}
-    function poseQ(arm, k, M) {
+    function poseQ(arm, u, M) {
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
-        const pp = poseQ(p, k, M);
-        const dU = pp.rotU + ANG_DIR * M.angle0[p.id] + M.delta[p.id] * k;
+        const pp = poseQ(p, u, M);
+        const dU = pp.rotU + ANG_DIR * M.angle0[p.id] + M.delta[p.id] * u;
         const v = stepQ(arm.mount.elbow.at, dU);
         return { x: pp.x + v[0], y: pp.y + v[1], rotU: dU };
       }
       if (M.carriers0[arm.id] && M.carriers0[arm.id].length) {
         const { arm: hid, grip } = M.carriers0[arm.id][0];
         const h = byId[hid];
-        const hp = poseQ(h, k, M);
-        const hdU = hp.rotU + ANG_DIR * (M.angle0[h.id] + OFFSETS[h.grippers][grip]) + M.delta[h.id] * k;
+        const hp = poseQ(h, u, M);
+        const hdU = hp.rotU + ANG_DIR * (M.angle0[h.id] + OFFSETS[h.grippers][grip]) + M.delta[h.id] * u;
         const v = stepQ(h.len, hdU);
         return {
           x: hp.x + v[0], y: hp.y + v[1],
-          rotU: hdU + ANG_DIR * M.carryRel0[arm.id] + (M.pivot[hid] || 0) * k,
+          rotU: hdU + ANG_DIR * M.carryRel0[arm.id] + (M.pivot[hid] || 0) * u,
         };
       }
       const b = M.basePos0[arm.id];
       const px = toPxQ(b[0], b[1]);
       return { x: px[0], y: px[1], rotU: ANG_DIR * M.baseRot0[arm.id] };
     }
-    function handQ(arm, grip, k, M) {
-      const p = poseQ(arm, k, M);
-      const dU = p.rotU + ANG_DIR * (M.angle0[arm.id] + OFFSETS[arm.grippers][grip]) + M.delta[arm.id] * k;
+    function handQ(arm, grip, u, M) {
+      const p = poseQ(arm, u, M);
+      const dU = p.rotU + ANG_DIR * (M.angle0[arm.id] + OFFSETS[arm.grippers][grip]) + M.delta[arm.id] * u;
       const v = stepQ(arm.len, dU);
       return { x: p.x + v[0], y: p.y + v[1], dU };
     }
@@ -905,19 +929,47 @@
         a.cell = add(rotK(a.cell, xf.k), xf.b);
       }
 
-      // 3b. sweep — K sample instants, full pair check + area accumulation
+      // 3b. sweep — N sample instants, full pair check + area accumulation
       S.motion = M;
-      // Sample index k is the whole sweep instant; every position below is Q16.16.
-      const collidables = (k) => {
+      // How many instants: Opus Magnum's rule on the largest rotation radius of the
+      // tick. For every held atom, walk its carrier chain to the ground: if any joint
+      // on the way turns, the radius is measured from the root base; if only the
+      // gripper pivots, from that gripper. (see samplesFor)
+      let maxDist = 1;
+      const hexicab = (c) => Math.max(Math.abs(c[0]), Math.abs(c[1]), Math.abs(c[0] + c[1]));
+      for (const m of M.atoms) {
+        if (!m.holder) continue;
+        const atom = S.atoms.find(x => x.id === m.id);
+        if (!atom) continue;
+        const holder = byId[m.holder.armId];
+        // turn: a joint anywhere in the chain turns (the whole chain swings about the
+        // root base); selfPivot: only the holder's own gripper pivots the molecule
+        let arm = holder, turn = false;
+        for (;;) {
+          if (M.delta[arm.id] || (arm !== holder && M.pivot[arm.id])) turn = true;
+          if (arm.mount.elbow) arm = byId[arm.mount.elbow.parent];
+          else if (M.carriers0[arm.id] && M.carriers0[arm.id].length) arm = byId[M.carriers0[arm.id][0].arm];
+          else break;
+        }
+        const selfPivot = !!M.pivot[holder.id];
+        if (!turn && !selfPivot) continue;                // nothing rotates this atom
+        let pivot;
+        if (turn) pivot = M.basePos0[arm.id];
+        else { const h = handQ(holder, m.holder.grip, ANG_DIR, M); pivot = axialRoundQ(h.x, h.y); }
+        maxDist = Math.max(maxDist, hexicab(sub(atom.cell, pivot)));
+      }
+      const N = samplesFor(maxDist), step = ANG_DIR / N;
+      // Angle u = k*step is the whole sweep instant; every position below is Q16.16.
+      const collidables = (u) => {
         const out = [];
         for (const m of M.atoms) {
           if (m.holder) {
             const arm = byId[m.holder.armId];
-            const hK = handQ(arm, m.holder.grip, k, M);
+            const hK = handQ(arm, m.holder.grip, u, M);
             const h0 = handQ(arm, m.holder.grip, 0, M);
             const p0 = toPxQ(m.cell0[0], m.cell0[1]);
-            // angle swept by the held molecule, in 5° units (s is the gripper pivot)
-            const dU = hK.dU - h0.dU + m.holder.s * k;
+            // angle swept by the held molecule, in angle units (s is the gripper pivot)
+            const dU = hK.dU - h0.dU + m.holder.s * u;
             const rel = rotQ(p0[0] - h0.x, p0[1] - h0.y, dU);
             out.push({ kind: 'atom', id: m.id, elem: m.elem, x: hK.x + rel[0], y: hK.y + rel[1] });
           } else {
@@ -927,20 +979,23 @@
         }
         for (const arm of S.arms) {
           if (arm.mount.elbow) continue; // elbows don't collide
-          const p = poseQ(arm, k, M);
+          const p = poseQ(arm, u, M);
           out.push({ kind: 'base', id: arm.id, x: p.x, y: p.y });
         }
         return out;
       };
-      for (let k = 1; k <= K_SAMPLES && !S.fault; k++) {
-        const objs = collidables(k);
+      const pairT2 = (a, b) => a.kind === 'atom' ? (b.kind === 'atom' ? THRESH2_AA : THRESH2_AB)
+        : (b.kind === 'atom' ? THRESH2_AB : THRESH2_BB);
+      for (let k = 1; k <= N && !S.fault; k++) {
+        const u = k * step;
+        const objs = collidables(u);
         for (const o of objs) S.area.add(cellKey(axialRoundQ(o.x, o.y)));
         for (const arm of S.arms) OFFSETS[arm.grippers].forEach((_, gi) => {
-          const h = handQ(arm, gi, k, M); S.area.add(cellKey(axialRoundQ(h.x, h.y)));
+          const h = handQ(arm, gi, u, M); S.area.add(cellKey(axialRoundQ(h.x, h.y)));
         });
         for (let i = 0; i < objs.length; i++) for (let j = i + 1; j < objs.length; j++) {
-          if (tooCloseQ(objs[i].x, objs[i].y, objs[j].x, objs[j].y)) {
-            S.fault = { kind: 'collision', tick: S.tick, detail: `${objs[i].kind} ${objs[i].id} × ${objs[j].kind} ${objs[j].id} @ f=${k}/${K_SAMPLES}` };
+          if (tooCloseQ(objs[i].x, objs[i].y, objs[j].x, objs[j].y, pairT2(objs[i], objs[j]))) {
+            S.fault = { kind: 'collision', tick: S.tick, detail: `${objs[i].kind} ${objs[i].id} × ${objs[j].kind} ${objs[j].id} @ f=${k}/${N}` };
             break;
           }
         }
@@ -1092,12 +1147,12 @@
 
   const GW = {
     createSim, expandTape, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_COST, GRABBER_COST,
-    armsCost, tipParentIds, RADIUS, K_SAMPLES, DEFAULT_CAPS,
+    armsCost, tipParentIds, RADIUS, BASE_RADIUS, K_SAMPLES, DEFAULT_CAPS,
     toPx, fromPx: axialRound,   // float, render/editor-pointer use only (see note above)
     // the deterministic core, exported so a C reimplementation can be conformance-tested
     // primitive by primitive against this oracle.
-    Q: { ONE, fdiv, fmul, SQRT3, HALF_SQRT3, THRESH2, COS5, SIN5, ANG_TURN, ANG_DIR,
-      trigQ, toPxQ, stepQ, rotQ, tooCloseQ, axialRoundQ },
+    Q: { ONE, fdiv, fmul, SQRT3, HALF_SQRT3, THRESH2_AA, THRESH2_AB, THRESH2_BB, COS, SIN, ANG_TURN, ANG_DIR,
+      K_MAX, roundLog2, samplesFor, trigQ, toPxQ, stepQ, rotQ, tooCloseQ, axialRoundQ },
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = GW;
   else root.GW = GW;
@@ -2174,6 +2229,11 @@
 })(typeof self !== 'undefined' ? self : this);
 
 </script>
+<!-- the GIF encoder (gifenc), inlined by the build: window.GIFENC -->
+<script>
+(()=>{var ct=Object.create;var W=Object.defineProperty;var lt=Object.getOwnPropertyDescriptor;var st=Object.getOwnPropertyNames;var at=Object.getPrototypeOf,ft=Object.prototype.hasOwnProperty;var ut=(t,e)=>()=>(e||t((e={exports:{}}).exports,e),e.exports);var gt=(t,e,o,n)=>{if(e&&typeof e=="object"||typeof e=="function")for(let r of st(e))!ft.call(t,r)&&r!==o&&W(t,r,{get:()=>e[r],enumerable:!(n=lt(e,r))||n.enumerable});return t};var wt=(t,e,o)=>(o=t!=null?ct(at(t)):{},gt(e||!t||!t.__esModule?W(o,"default",{value:t,enumerable:!0}):o,t));var it=ut(j=>{var Y=Object.defineProperty,dt=t=>Y(t,"__esModule",{value:!0}),ht=(t,e)=>{for(var o in e)Y(t,o,{get:e[o],enumerable:!0})};dt(j);ht(j,{GIFEncoder:()=>rt,applyPalette:()=>Mt,default:()=>St,nearestColor:()=>zt,nearestColorIndex:()=>et,nearestColorIndexWithDistance:()=>nt,prequantize:()=>It,quantize:()=>xt,snapColorsToPalette:()=>kt});var yt={signature:"GIF",version:"89a",trailer:59,extensionIntroducer:33,applicationExtensionLabel:255,graphicControlExtensionLabel:249,imageSeparator:44,signatureSize:3,versionSize:3,globalColorTableFlagMask:128,colorResolutionMask:112,sortFlagMask:8,globalColorTableSizeMask:7,applicationIdentifierSize:8,applicationAuthCodeSize:3,disposalMethodMask:28,userInputFlagMask:2,transparentColorFlagMask:1,localColorTableFlagMask:128,interlaceFlagMask:64,idSortFlagMask:32,localColorTableSizeMask:7};function J(t=256){let e=0,o=new Uint8Array(t);return{get buffer(){return o.buffer},reset(){e=0},bytesView(){return o.subarray(0,e)},bytes(){return o.slice(0,e)},writeByte(r){n(e+1),o[e]=r,e++},writeBytes(r,i=0,c=r.length){n(e+c);for(let s=0;s<c;s++)o[e++]=r[s+i]},writeBytesView(r,i=0,c=r.byteLength){n(e+c),o.set(r.subarray(i,i+c),e),e+=c}};function n(r){var i=o.length;if(i>=r)return;var c=1024*1024;r=Math.max(r,i*(i<c?2:1.125)>>>0),i!=0&&(r=Math.max(r,256));let s=o;o=new Uint8Array(r),e>0&&o.set(s.subarray(0,e),0)}}var L=12,Z=5003,bt=[0,1,3,7,15,31,63,127,255,511,1023,2047,4095,8191,16383,32767,65535];function pt(t,e,o,n,r=J(512),i=new Uint8Array(256),c=new Int32Array(Z),s=new Int32Array(Z)){let g=c.length,f=Math.max(2,n);i.fill(0),s.fill(0),c.fill(-1);let a=0,l=0,w=f+1,p=w,d=!1,h=p,x=(1<<h)-1,u=1<<w-1,C=u+1,A=u+2,y=0,v=o[0],E=0;for(let B=g;B<65536;B*=2)++E;E=8-E,r.writeByte(f),M(u);let b=o.length;for(let B=1;B<b;B++)t:{let k=o[B],z=(k<<L)+v,I=k<<E^v;if(c[I]===z){v=s[I];break t}let m=I===0?1:g-I;for(;c[I]>=0;)if(I-=m,I<0&&(I+=g),c[I]===z){v=s[I];break t}M(v),v=k,A<1<<L?(s[I]=A++,c[I]=z):(c.fill(-1),A=u+2,d=!0,M(u))}return M(v),M(C),r.writeByte(0),r.bytesView();function M(B){for(a&=bt[l],l>0?a|=B<<l:a=B,l+=h;l>=8;)i[y++]=a&255,y>=254&&(r.writeByte(y),r.writeBytesView(i,0,y),y=0),a>>=8,l-=8;if((A>x||d)&&(d?(h=p,x=(1<<h)-1,d=!1):(++h,x=h===L?1<<h:(1<<h)-1)),B==C){for(;l>0;)i[y++]=a&255,y>=254&&(r.writeByte(y),r.writeBytesView(i,0,y),y=0),a>>=8,l-=8;y>0&&(r.writeByte(y),r.writeBytesView(i,0,y),y=0)}}}var Bt=pt;function Q(t,e,o){return t<<8&63488|e<<2&992|o>>3}function $(t,e,o,n){return t>>4|e&240|(o&240)<<4|(n&240)<<8}function tt(t,e,o){return t>>4<<8|e&240|o>>4}function G(t,e,o){return t<e?e:t>o?o:t}function S(t){return t*t}function K(t,e,o){var n=0,r=1e100;let i=t[e],c=i.cnt,s=i.ac,g=i.rc,f=i.gc,a=i.bc;for(var l=i.fw;l!=0;l=t[l].fw){let p=t[l],d=p.cnt,h=c*d/(c+d);if(!(h>=r)){var w=0;o&&(w+=h*S(p.ac-s),w>=r)||(w+=h*S(p.rc-g),!(w>=r)&&(w+=h*S(p.gc-f),!(w>=r)&&(w+=h*S(p.bc-a),!(w>=r)&&(r=w,n=l))))}}i.err=r,i.nn=n}function N(){return{ac:0,rc:0,gc:0,bc:0,cnt:0,nn:0,fw:0,bk:0,tm:0,mtm:0,err:0}}function At(t,e){let o=e==="rgb444"?4096:65536,n=new Array(o),r=t.length;if(e==="rgba4444")for(let i=0;i<r;++i){let c=t[i],s=c>>24&255,g=c>>16&255,f=c>>8&255,a=c&255,l=$(a,f,g,s),w=l in n?n[l]:n[l]=N();w.rc+=a,w.gc+=f,w.bc+=g,w.ac+=s,w.cnt++}else if(e==="rgb444")for(let i=0;i<r;++i){let c=t[i],s=c>>16&255,g=c>>8&255,f=c&255,a=tt(f,g,s),l=a in n?n[a]:n[a]=N();l.rc+=f,l.gc+=g,l.bc+=s,l.cnt++}else for(let i=0;i<r;++i){let c=t[i],s=c>>16&255,g=c>>8&255,f=c&255,a=Q(f,g,s),l=a in n?n[a]:n[a]=N();l.rc+=f,l.gc+=g,l.bc+=s,l.cnt++}return n}function xt(t,e,o={}){let{format:n="rgb565",clearAlpha:r=!0,clearAlphaColor:i=0,clearAlphaThreshold:c=0,oneBitAlpha:s=!1}=o;if(!t||!t.buffer)throw new Error("quantize() expected RGBA Uint8Array data");if(!(t instanceof Uint8Array)&&!(t instanceof Uint8ClampedArray))throw new Error("quantize() expected RGBA Uint8Array data");let g=new Uint32Array(t.buffer),f=o.useSqrt!==!1,a=n==="rgba4444",l=At(g,n),w=l.length,p=w-1,d=new Uint32Array(w+1);for(var h=0,u=0;u<w;++u){let _=l[u];if(_!=null){var x=1/_.cnt;a&&(_.ac*=x),_.rc*=x,_.gc*=x,_.bc*=x,l[h++]=_}}S(e)/h<.022&&(f=!1);for(var u=0;u<h-1;++u)l[u].fw=u+1,l[u+1].bk=u,f&&(l[u].cnt=Math.sqrt(l[u].cnt));f&&(l[u].cnt=Math.sqrt(l[u].cnt));var C,A,y;for(u=0;u<h;++u){K(l,u,!1);var v=l[u].err;for(A=++d[0];A>1&&(y=A>>1,!(l[C=d[y]].err<=v));A=y)d[A]=C;d[A]=u}var E=h-e;for(u=0;u<E;){for(var b;;){var M=d[1];if(b=l[M],b.tm>=b.mtm&&l[b.nn].mtm<=b.tm)break;b.mtm==p?M=d[1]=d[d[0]--]:(K(l,M,!1),b.tm=u);var v=l[M].err;for(A=1;(y=A+A)<=d[0]&&(y<d[0]&&l[d[y]].err>l[d[y+1]].err&&y++,!(v<=l[C=d[y]].err));A=y)d[A]=C;d[A]=M}var B=l[b.nn],k=b.cnt,z=B.cnt,x=1/(k+z);a&&(b.ac=x*(k*b.ac+z*B.ac)),b.rc=x*(k*b.rc+z*B.rc),b.gc=x*(k*b.gc+z*B.gc),b.bc=x*(k*b.bc+z*B.bc),b.cnt+=B.cnt,b.mtm=++u,l[B.bk].fw=B.fw,l[B.fw].bk=B.bk,B.mtm=p}let I=[];var m=0;for(u=0;;++m){let R=G(Math.round(l[u].rc),0,255),_=G(Math.round(l[u].gc),0,255),V=G(Math.round(l[u].bc),0,255),q=255;a&&(q=G(Math.round(l[u].ac),0,255),s&&(q=q<=(typeof s=="number"?s:127)?0:255),r&&q<=c&&(R=_=V=i,q=0));let H=a?[R,_,V,q]:[R,_,V];if(vt(I,H)||I.push(H),(u=l[u].fw)==0)break}return I}function vt(t,e){for(let o=0;o<t.length;o++){let n=t[o],r=n[0]===e[0]&&n[1]===e[1]&&n[2]===e[2],i=n.length>=4&&e.length>=4?n[3]===e[3]:!0;if(r&&i)return!0}return!1}function P(t,e){var o=0,n;for(n=0;n<t.length;n++){let r=t[n]-e[n];o+=r*r}return o}function D(t,e){return e>1?Math.round(t/e)*e:t}function It(t,{roundRGB:e=5,roundAlpha:o=10,oneBitAlpha:n=null}={}){let r=new Uint32Array(t.buffer);for(let i=0;i<r.length;i++){let c=r[i],s=c>>24&255,g=c>>16&255,f=c>>8&255,a=c&255;s=D(s,o),n&&(s=s<=(typeof n=="number"?n:127)?0:255),a=D(a,e),f=D(f,e),g=D(g,e),r[i]=s<<24|g<<16|f<<8|a<<0}}function Mt(t,e,o="rgb565"){if(!t||!t.buffer)throw new Error("quantize() expected RGBA Uint8Array data");if(!(t instanceof Uint8Array)&&!(t instanceof Uint8ClampedArray))throw new Error("quantize() expected RGBA Uint8Array data");if(e.length>256)throw new Error("applyPalette() only works with 256 colors or less");let n=new Uint32Array(t.buffer),r=n.length,i=o==="rgb444"?4096:65536,c=new Uint8Array(r),s=new Array(i),g=o==="rgba4444";if(o==="rgba4444")for(let f=0;f<r;f++){let a=n[f],l=a>>24&255,w=a>>16&255,p=a>>8&255,d=a&255,h=$(d,p,w,l),x=h in s?s[h]:s[h]=_t(d,p,w,l,e);c[f]=x}else{let f=o==="rgb444"?tt:Q;for(let a=0;a<r;a++){let l=n[a],w=l>>16&255,p=l>>8&255,d=l&255,h=f(d,p,w),x=h in s?s[h]:s[h]=Ct(d,p,w,e);c[a]=x}}return c}function _t(t,e,o,n,r){let i=0,c=1e100;for(let s=0;s<r.length;s++){let g=r[s],f=g[3],a=T(f-n);if(a>c)continue;let l=g[0];if(a+=T(l-t),a>c)continue;let w=g[1];if(a+=T(w-e),a>c)continue;let p=g[2];a+=T(p-o),!(a>c)&&(c=a,i=s)}return i}function Ct(t,e,o,n){let r=0,i=1e100;for(let c=0;c<n.length;c++){let s=n[c],g=s[0],f=T(g-t);if(f>i)continue;let a=s[1];if(f+=T(a-e),f>i)continue;let l=s[2];f+=T(l-o),!(f>i)&&(i=f,r=c)}return r}function kt(t,e,o=5){if(!t.length||!e.length)return;let n=t.map(c=>c.slice(0,3)),r=o*o,i=t[0].length;for(let c=0;c<e.length;c++){let s=e[c];s.length<i?s=[s[0],s[1],s[2],255]:s.length>i?s=s.slice(0,3):s=s.slice();let g=nt(n,s.slice(0,3),P),f=g[0],a=g[1];a>0&&a<=r&&(t[f]=s)}}function T(t){return t*t}function et(t,e,o=P){let n=1/0,r=-1;for(let i=0;i<t.length;i++){let c=t[i],s=o(e,c);s<n&&(n=s,r=i)}return r}function nt(t,e,o=P){let n=1/0,r=-1;for(let i=0;i<t.length;i++){let c=t[i],s=o(e,c);s<n&&(n=s,r=i)}return[r,n]}function zt(t,e,o=P){return t[et(t,e,o)]}function rt(t={}){let{initialCapacity:e=4096,auto:o=!0}=t,n=J(e),r=5003,i=new Uint8Array(256),c=new Int32Array(r),s=new Int32Array(r),g=!1;return{reset(){n.reset(),g=!1},finish(){n.writeByte(yt.trailer)},bytes(){return n.bytes()},bytesView(){return n.bytesView()},get buffer(){return n.buffer},get stream(){return n},writeHeader:f,writeFrame(a,l,w,p={}){let{transparent:d=!1,transparentIndex:h=0,delay:x=0,palette:u=null,repeat:C=0,colorDepth:A=8,dispose:y=-1}=p,v=!1;if(o?g||(v=!0,f(),g=!0):v=!!p.first,l=Math.max(0,Math.floor(l)),w=Math.max(0,Math.floor(w)),v){if(!u)throw new Error("First frame must include a { palette } option");Ft(n,l,w,u,A),X(n,u),C>=0&&Ut(n,C)}let E=Math.round(x/10);Et(n,y,E,d,h);let b=!!u&&!v;Tt(n,l,w,b?u:null),b&&X(n,u),qt(n,a,l,w,A,i,c,s)}};function f(){ot(n,"GIF89a")}}function Et(t,e,o,n,r){t.writeByte(33),t.writeByte(249),t.writeByte(4),r<0&&(r=0,n=!1);var i,c;n?(i=1,c=2):(i=0,c=0),e>=0&&(c=e&7),c<<=2,t.writeByte(0|c|0|i),F(t,o),t.writeByte(r||0),t.writeByte(0)}function Ft(t,e,o,n,r=8){let s=O(n.length)-1,g=128|r-1<<4|0|s,f=0,a=0;F(t,e),F(t,o),t.writeBytes([g,f,a])}function Ut(t,e){t.writeByte(33),t.writeByte(255),t.writeByte(11),ot(t,"NETSCAPE2.0"),t.writeByte(3),t.writeByte(1),F(t,e),t.writeByte(0)}function X(t,e){let o=1<<O(e.length);for(let n=0;n<o;n++){let r=[0,0,0];n<e.length&&(r=e[n]),t.writeByte(r[0]),t.writeByte(r[1]),t.writeByte(r[2])}}function Tt(t,e,o,n){if(t.writeByte(44),F(t,0),F(t,0),F(t,e),F(t,o),n){let c=O(n.length)-1;t.writeByte(128|c)}else t.writeByte(0)}function qt(t,e,o,n,r=8,i,c,s){Bt(o,n,e,r,t,i,c,s)}function F(t,e){t.writeByte(e&255),t.writeByte(e>>8&255)}function ot(t,e){for(var o=0;o<e.length;o++)t.writeByte(e.charCodeAt(o))}function O(t){return Math.max(Math.ceil(Math.log2(t)),1)}var St=rt});var U=wt(it(),1);window.GIFENC={GIFEncoder:U.GIFEncoder,quantize:U.quantize,applyPalette:U.applyPalette,nearestColorIndex:U.nearestColorIndex};})();
+
+</script>
 <script>
 (() => {
   'use strict';
@@ -2195,10 +2255,13 @@
   const SINGLE_CELL = { calcifiers: 1, disposals: 1 };
   const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·', R: '⟲' };
   const PITCH = Math.sqrt(3);
-  const CW = 980, CH = 560;
+  // The playmat renderer draws into whatever ctx/view/size these name. They are the
+  // live canvas all the time except inside renderPlaymat(), which points them at an
+  // offscreen surface for one synchronous frame (the GIF recorder) and puts them back.
+  let CW = 980, CH = 560;
   const canvas = document.getElementById('field');
-  const ctx = canvas.getContext('2d');
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  let ctx = canvas.getContext('2d');
+  let dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = CW * dpr; canvas.height = CH * dpr;
   canvas.style.aspectRatio = `${CW} / ${CH}`;
   const $ = (id) => document.getElementById(id);
@@ -2254,7 +2317,7 @@
   // the run-mode effects overlay: it reads the sim's event log and paints over the
   // playmat, and can touch nothing the sim reads. `view` is reassigned by fitView,
   // so hand it live accessors rather than the object.
-  const FX = GWFX.create({
+  let FX = GWFX.create({
     ctx: ctx,
     s: () => view.s,
     P: (x, y) => P(x, y),
@@ -2379,7 +2442,9 @@
   }
 
   // ---------- view fitting ----------
-  function fitView() {
+  // the machine's footprint in board pixels, padded — the box both the live view and
+  // the GIF recorder frame themselves on
+  function footprintBox() {
     const cells = [];
     for (const g of layout.glyphs) glyphFootprint(g).forEach(c => cells.push(c));
     for (const g of layout.inputs) inputCells(g).forEach(c => cells.push(c));
@@ -2388,11 +2453,18 @@
     if (!cells.length) cells.push([0, 0]);
     const pts = cells.map(GW.toPx);
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-    const minX = Math.min(...xs) - 3.2, maxX = Math.max(...xs) + 3.2;
-    const minY = Math.min(...ys) - 3.2, maxY = Math.max(...ys) + 3.2;
-    const s = Math.min(42, CW / (maxX - minX), CH / (maxY - minY));
-    view = { s, ox: CW / 2 - s * (minX + maxX) / 2, oy: CH / 2 - s * (minY + maxY) / 2 };
+    return {
+      minX: Math.min(...xs) - 3.2, maxX: Math.max(...xs) + 3.2,
+      minY: Math.min(...ys) - 3.2, maxY: Math.max(...ys) + 3.2,
+    };
   }
+  // the same fit, against an arbitrary surface size
+  function fitViewFor(w, h) {
+    const b = footprintBox();
+    const s = Math.min(42, w / (b.maxX - b.minX), h / (b.maxY - b.minY));
+    return { s, ox: w / 2 - s * (b.minX + b.maxX) / 2, oy: h / 2 - s * (b.minY + b.maxY) / 2 };
+  }
+  function fitView() { view = fitViewFor(CW, CH); }
 
   // arm bases are hex fixtures bolted to the board, not discs: vertex radius as a
   // fraction of the cell pitch, sized to sit just inside the field line of its cell.
@@ -2727,6 +2799,25 @@
     }
   }
 
+  // Draw one run frame onto a surface that is NOT the page's canvas. The draw* family
+  // reads module-level ctx/view/CW/CH/dpr/sim/FX; this points them at the target for
+  // one synchronous frame and puts them back, so the live view never sees the swap.
+  // target: { ctx, view, w, h, sim, fx, dt, layout, pIdx } — layout/pIdx too, so a
+  // recording keeps drawing the machine it started with even if the page is edited
+  // between its chunks.
+  function renderPlaymat(target, f) {
+    const keep = { ctx, view, CW, CH, dpr, sim, FX, frameDt, layout, pIdx };
+    ctx = target.ctx; view = target.view; CW = target.w; CH = target.h; dpr = 1;
+    sim = target.sim; FX = target.fx; frameDt = target.dt || 50;
+    if (target.layout) { layout = target.layout; pIdx = target.pIdx; }
+    try { drawRun(f); }
+    finally {
+      ctx = keep.ctx; view = keep.view; CW = keep.CW; CH = keep.CH; dpr = keep.dpr;
+      sim = keep.sim; FX = keep.FX; frameDt = keep.frameDt;
+      layout = keep.layout; pIdx = keep.pIdx;
+    }
+  }
+
   // ---------- hit testing ----------
   function baseAt(cell) {
     const poses = initPoses();
@@ -2944,16 +3035,37 @@
       for (let i = 0; i < arm.tape.delay; i++) {
         const sp = document.createElement('span'); sp.className = 'delay'; sp.textContent = '»'; cells.appendChild(sp);
       }
-      ex.cells.forEach(c => {
+      // Repeat markers, Opus Magnum style: while editing, ⟲ followed by one bar stretched
+      // over the rest of the repeated run (its length minus the marker's own cell); while
+      // playing, the marker vanishes and the run unfurls into its actual ops.
+      for (let ci = 0; ci < ex.cells.length; ci++) {
+        const c = ex.cells[ci];
+        if (c.ghost) {
+          if (mode === 'edit') continue;                     // covered by the bar below
+          const sp = document.createElement('span'); sp.textContent = GLYPH[c.op] || c.op;
+          sp.dataset.eng = c.engine; sp.classList.add('unfurled');
+          cells.appendChild(sp);
+          continue;
+        }
+        const marker = c.op === '⟲';
+        if (marker && mode !== 'edit') continue;             // takes no time: not shown in play
         const sp = document.createElement('span'); sp.textContent = GLYPH[c.op] || c.op;
         if (c.engine !== null) sp.dataset.eng = c.engine;
-        if (c.ghost) sp.classList.add('ghostcell');
-        else if (mode === 'edit') {
+        if (mode === 'edit') {
           if (cursor && cursor.armId === arm.id && cursor.pos === c.src) sp.classList.add('cursor');
           sp.addEventListener('click', () => { sel = { kind: 'arm', id: arm.id }; cursor = { armId: arm.id, pos: c.src }; refreshAll(); });
         }
         cells.appendChild(sp);
-      });
+        if (marker && mode === 'edit') {
+          let n = 0;
+          while (ci + 1 + n < ex.cells.length && ex.cells[ci + 1 + n].ghost) n++;
+          if (n > 1) {
+            const bar = document.createElement('span'); bar.className = 'repeat-bar';
+            bar.dataset.cells = n - 1; bar.title = 'repeats the last ' + n + ' ops';
+            cells.appendChild(bar);
+          }
+        }
+      }
       if (mode === 'edit') {
         const add = document.createElement('span'); add.textContent = '+'; add.className = 'ghostcell';
         add.title = 'append a cell';
@@ -2965,6 +3077,12 @@
         cells.appendChild(add);
       }
       row.appendChild(lab); row.appendChild(cells); host.appendChild(row);
+      // size each bar from a real cell, now that the row is in the document
+      cells.querySelectorAll('.repeat-bar').forEach(bar => {
+        const n = +bar.dataset.cells, ref = bar.previousElementSibling;
+        const w = ref ? ref.getBoundingClientRect().width : 19;
+        bar.style.width = (n * w + (n - 1) * 3) + 'px';
+      });
     }
     if (!arms.length) host.innerHTML += `<div class="tape-row"><span class="tape-label" style="width:auto">no arms yet — drag one from the tray onto the board</span></div>`;
   }
@@ -3075,7 +3193,7 @@
     $('btnMode').textContent = '▶ Test';
     $('btnPlay').disabled = true; $('btnStep').disabled = true;
     $('tray').style.display = '';
-    stamp();
+    stamp(); syncGifBtn();
   }
   function enterRun() {
     const bad = validate();
@@ -3088,7 +3206,7 @@
     $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
     $('btnStep').disabled = false;
     $('tray').style.display = 'none';
-    buildTapes(); updateRunTapes(); hud(); stamp();
+    buildTapes(); updateRunTapes(); hud(); stamp(); syncGifBtn(null);
     setStatus('testing — the verifier is watching every sweep');
   }
 
@@ -3100,9 +3218,10 @@
     buildTapes(); hud();
     if (mode === 'edit') {
       const bad = validate();
+      syncGifBtn(bad);
       const note = sel && sel.kind === 'arm' && isTipParent(sel.id) ? ` · <span class="bad">${TIP_NOTE}</span>` : '';
       setStatus((bad ? `<span class="bad">✗ ${bad}</span>` : `<span class="good">✓ layout legal</span> · ${layout.arms.length} arm(s), ${layout.glyphs.length} glyph(s) · code ${code().length} chars`) + note);
-    }
+    } else syncGifBtn(null);
   }
 
   // ---------- pointer input ----------
@@ -3348,6 +3467,211 @@
     try { history.replaceState(null, '', '#' + c); } catch (e) {}
   });
   $('btnImport').addEventListener('click', () => importCode($('shareIn').value.trim()));
+
+  // ---------- export: the run as an animated GIF ----------
+  // Discord takes a GIF; a browser clipboard does not (the async Clipboard API only
+  // carries PNG and text), so the deliverable is a file — offered to the share sheet
+  // where there is one, downloaded where there isn't — plus a PNG of the last frame on
+  // the clipboard so a bare paste still shows the finished machine.
+  //
+  // The recording never touches the on-screen run: it builds its OWN sim from the
+  // current layout and paints it onto an offscreen canvas through renderPlaymat().
+  const GIF_W = 480;              // Discord's inline width; height follows the board
+  const GIF_TICK_MS = 140;        // playback at 1x — the editor's default stepMs
+  const GIF_FRAME_MS = 50;        // 20 fps
+  const GIF_MAX_FRAMES = 240;     // 12 seconds of playback, then we stop wherever we are
+  const GIF_HOLD_MS = 1000;       // the last frame lingers so a loop reads as an ending
+  // the badge's own inks, kept out of the quantizer's hands (see encodeFrame)
+  const STAMP_INKS = [[138, 106, 30], [140, 59, 46], [107, 95, 73], [241, 233, 214]];
+  let gifBusy = false;
+
+  // `bad` is validate()'s answer when the caller already has it — validation builds a
+  // throwaway sim, and refreshAll runs on every drag frame
+  function syncGifBtn(bad) {
+    const b = $('btnGif'); if (!b) return;
+    b.disabled = gifBusy || !window.GIFENC || !!(bad === undefined ? validate() : bad);
+    b.title = gifBusy ? 'recording…'
+      : !window.GIFENC ? 'the GIF encoder did not load'
+      : b.disabled ? 'build a legal machine first'
+      : 'record this machine as an animated GIF — for pasting into Discord';
+  }
+
+  // an offscreen surface framed on the machine's footprint: 480 wide, height by the
+  // board's aspect (capped), scale 1 — no dpr, the GIF has no retina to serve
+  function gifSurface() {
+    const b = footprintBox();
+    const aspect = (b.maxY - b.minY) / (b.maxX - b.minX);
+    const h = Math.max(200, Math.min(480, Math.round(GIF_W * aspect)));
+    const cv = document.createElement('canvas');
+    cv.width = GIF_W; cv.height = h;
+    return { canvas: cv, ctx: cv.getContext('2d', { willReadFrequently: true }), w: GIF_W, h: h };
+  }
+
+  // the verdict, painted onto the held last frame — the on-page stamp is a DOM overlay
+  // and never reaches the canvas, so the GIF gets its own parchment badge
+  function drawGifStamp(surf, rsim) {
+    const st = rsim.state;
+    const good = !st.fault && st.cycles !== null;
+    if (!good && !st.fault) return;
+    const m = rsim.metrics();
+    const title = good ? 'Verified · sum ' + m.sum : 'Rejected · ' + st.fault.kind;
+    const sub = good ? (m.cost + 'g + ' + m.cycles + 'c + ' + m.area + 'a')
+      : ('tick ' + st.fault.tick + (st.fault.detail ? ' · ' + st.fault.detail : ''));
+    const c = surf.ctx;
+    const TITLE = "700 20px 'Cinzel', 'Times New Roman', serif";
+    const SUB = "400 11px 'Courier Prime', 'Courier New', monospace";
+    c.save();
+    c.translate(surf.w / 2, surf.h / 2);
+    c.rotate(-7 * Math.PI / 180);
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = TITLE; const w1 = c.measureText(title).width;
+    c.font = SUB; const w2 = c.measureText(sub).width;
+    const bw = Math.min(surf.w - 26, Math.max(w1, w2) + 44), bh = 62;
+    c.beginPath(); c.rect(-bw / 2, -bh / 2, bw, bh);
+    c.fillStyle = 'rgba(241,233,214,0.9)'; c.fill();
+    c.strokeStyle = good ? '#8A6A1E' : '#8C3B2E'; c.lineWidth = 2.5; c.stroke();
+    c.save(); c.clip();
+    c.fillStyle = good ? '#8A6A1E' : '#8C3B2E'; c.font = TITLE;
+    c.fillText(title.toUpperCase(), 0, -bh / 2 + 22);
+    c.fillStyle = '#6B5F49'; c.font = SUB;
+    c.fillText(sub, 0, bh / 2 - 17);
+    c.restore();
+    c.restore();
+  }
+
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  // the consolation prize for a clipboard that will not carry animation
+  function copyStillPng(cv) {
+    return new Promise((resolve) => {
+      if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === 'undefined') return resolve(false);
+      try {
+        cv.toBlob((png) => {
+          if (!png) return resolve(false);
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+            .then(() => resolve(true), () => resolve(false));
+        }, 'image/png');
+      } catch (e) { resolve(false); }
+    });
+  }
+
+  async function exportGif() {
+    const bad = validate();
+    if (bad) { setStatus('cannot record: ' + bad, 'bad'); return; }
+    const G = window.GIFENC;
+    if (!G) { setStatus('the GIF encoder did not load', 'bad'); return; }
+
+    const surf = gifSurface();
+    const rsim = GW.createSim(matPuzzle(), clone({ arms: machineArms() }));
+    const rec = {
+      ctx: surf.ctx, view: fitViewFor(surf.w, surf.h),
+      w: surf.w, h: surf.h, sim: rsim, dt: GIF_FRAME_MS,
+      layout: clone(layout), pIdx: pIdx,
+    };
+    // the recording's own overlay, bound to the recording's surface. Effects are
+    // wall-clock creatures and this run is encoded far faster than it plays, so the
+    // overlay is harvested with enabled:false — the event index still advances, a
+    // collision still freezes the frame it was found at, but nothing is enqueued.
+    rec.fx = GWFX.create({
+      ctx: surf.ctx,
+      s: () => rec.view.s,
+      P: (x, y) => P(x, y),
+      Pc: (cell) => Pc(cell),
+      hex: (x, y, r) => hexPath(x, y, r),
+      fill: (elem) => (ELEMS[elem] || { fill: '#999' }).fill,
+    });
+    rec.fx.reset(rsim.state);
+
+    const gif = G.GIFEncoder();
+    let palette = null, frames = 0, ph = 1, ended = false;
+    // one frame in, one frame encoded: the RGBA never piles up
+    const encodeFrame = (delay) => {
+      const rgba = surf.ctx.getImageData(0, 0, surf.w, surf.h).data;
+      if (!palette) {
+        // one palette for the whole animation, quantized off frame 1 — but the verdict
+        // badge only appears on the LAST frame, so its inks are reserved by hand or
+        // they would be snapped to whatever brown the opening frame happened to have
+        palette = G.quantize(rgba, 256 - STAMP_INKS.length);
+        for (const ink of STAMP_INKS) {
+          if (!palette.some(c => c[0] === ink[0] && c[1] === ink[1] && c[2] === ink[2])) palette.push(ink);
+        }
+        gif.writeFrame(G.applyPalette(rgba, palette), surf.w, surf.h,
+          { palette: palette, delay: delay, repeat: 0, first: true });
+      } else {
+        // no per-frame palette: every later frame reads the global colour table
+        gif.writeFrame(G.applyPalette(rgba, palette), surf.w, surf.h, { delay: delay, first: false });
+      }
+    };
+    const yieldSlice = () => new Promise(r => setTimeout(r, 0));
+
+    for (;;) {
+      rec.fx.harvest(rsim.state, { stepMs: GIF_TICK_MS, enabled: false, motion: false });
+      rec.fx.prune();
+      const frozen = rec.fx.freezeF();
+      const f = frozen !== null ? frozen : (ph >= 1 ? 1 : GWFX.phaseEase(ph));
+      renderPlaymat(rec, f);
+      const last = (ended && ph >= 1) || frames + 1 >= GIF_MAX_FRAMES;
+      if (last) drawGifStamp(surf, rsim);
+      encodeFrame(last ? GIF_FRAME_MS + GIF_HOLD_MS : GIF_FRAME_MS);
+      frames++;
+      if (last) break;
+      ph += GIF_FRAME_MS / GIF_TICK_MS;
+      while (ph >= 1 && !ended) {
+        rsim.step();
+        ended = !!(rsim.state.fault || rsim.state.cycles !== null);
+        ph -= 1;
+      }
+      if (frames % 5 === 0) {
+        setStatus('rendering GIF ' + Math.min(99, Math.round(frames / GIF_MAX_FRAMES * 100)) + '%');
+        await yieldSlice();          // the live view keeps its frames while we encode
+      }
+    }
+
+    gif.finish();
+    const bytes = gif.bytes();
+    const blob = new Blob([bytes], { type: 'image/gif' });
+    const m = rsim.metrics();
+    const tag = (rsim.state.cycles !== null && m.sum !== null) ? String(m.sum) : 'run';
+    const name = 'great-work-' + key() + '-' + tag + '.gif';
+    const mb = (blob.size / 1048576).toFixed(1);
+
+    const copied = await copyStillPng(surf.canvas);
+
+    let how = 'downloaded';
+    try {
+      const file = new File([bytes], name, { type: 'image/gif' });
+      if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Great Work! · ' + base().name });
+        how = 'shared';
+      }
+    } catch (e) {
+      // a cancelled sheet is an answer, not a failure: don't spring a download on them
+      how = (e && e.name === 'AbortError') ? 'cancelled' : 'downloaded';
+    }
+    if (how === 'downloaded') downloadBlob(blob, name);
+
+    const bits = [how === 'shared' ? 'GIF shared · ' + mb + ' MB'
+      : how === 'cancelled' ? 'GIF ready · ' + mb + ' MB · sharing cancelled'
+      : 'GIF downloaded · ' + mb + ' MB'];
+    if (how === 'downloaded') bits.push('drag it into Discord');
+    if (copied) bits.push('still frame copied to clipboard');
+    setStatus(bits.join(' · '), 'good');
+  }
+
+  $('btnGif').addEventListener('click', () => {
+    if (gifBusy) return;
+    gifBusy = true; syncGifBtn();
+    setStatus('rendering GIF 0%');
+    exportGif()
+      .catch((e) => setStatus('could not record a GIF: ' + String((e && e.message) || e), 'bad'))
+      .then(() => { gifBusy = false; syncGifBtn(); });
+  });
 
   // ---------- the chain: submit a verified run, read the record back ----------
   // Everything below is render-only. window.GWChain is the prebuilt browser bundle

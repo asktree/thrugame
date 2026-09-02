@@ -48,7 +48,7 @@ static void primitives(void) {
   }
   n = sizeof(VEC_TOOCLOSE) / sizeof(VEC_TOOCLOSE[0]);
   for (int i = 0; i < n; i++) {
-    int got = gw_too_close(VEC_TOOCLOSE[i].ax, VEC_TOOCLOSE[i].ay, VEC_TOOCLOSE[i].bx, VEC_TOOCLOSE[i].by);
+    int got = gw_too_close(VEC_TOOCLOSE[i].ax, VEC_TOOCLOSE[i].ay, VEC_TOOCLOSE[i].bx, VEC_TOOCLOSE[i].by, GW_THRESH2_AA);
     CHECK(got == VEC_TOOCLOSE[i].close, "tooCloseQ case %d", i);
   }
   printf("primitives: trig/rot/px/axial/tooclose vectors checked\n");

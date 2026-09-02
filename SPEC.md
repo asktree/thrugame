@@ -175,30 +175,52 @@ Simultaneity is real: there is no arm execution order, and no rule may depend on
 Motion within a tick follows ideal geometry: a turning arm sweeps its downstream
 through a 60° arc; nested joints compose; carried cargo follows its carrier exactly.
 
-**Collision is checked at K = 12 uniformly spaced sample instants within each tick.**
-At each sample instant, if any two collidable discs (atoms, occupying bases) overlap,
-the machine faults. This sampled check **is** the collision rule — it is exact and
-complete, not an approximation of some finer rule. Motion that threads between sample
-instants is legal, by definition.
+**Collision is checked at N uniformly spaced sample instants within each tick**, where
+N follows Opus Magnum's rule: it grows with the largest rotation radius of the tick.
+At each sample instant, if any two collidable discs overlap, the machine faults. This
+sampled check **is** the collision rule — it is exact and complete, not an
+approximation of some finer rule. Motion that threads between sample instants is
+legal, by definition.
+
+### Discs
+
+Disc sizes are Opus Magnum's, read off the game's hex tile texture (82 px between hex
+centers): **atoms 29/82 of a pitch, arm bases 20/82.** Two discs collide when their
+centers are closer than the sum of their radii — strictly closer; exactly touching is
+not a collision.
+
+### Sample count
+
+Let *d* be the rotation radius of the tick: for every held atom, walk its carrier
+chain to the ground; if any joint on the way turns, measure from the root base cell to
+the atom's final cell, if only its gripper pivots, measure from that gripper's final
+cell; take the largest such distance in hex steps (hexicab), at least 1. Then
+
+    N = 4 · 2^round(log2 d), at least 8, at most 64
+
+(the game's collision increment 0.25 / 2^round(log2 d), capped at 0.125). So d ≤ 2
+gives 8 instants, 3–5 gives 16, 6–11 gives 32, 12 and up gives 64; the cap is out of
+reach for any machine within the caps (§12). round(log2 d) is evaluated exactly in
+integers: the exponent rounds up when d² ≥ 2^(2·floor(log2 d)+1).
 
 ### Deterministic arithmetic
 
 The sweep is defined over **Q16.16 fixed-point integers**, not real numbers: every
 value is an integer equal to round(real · 65536), every product is descaled by
 **floor** division, and all trigonometry is table lookup. Because one direction step
-is 60° and K = 12, every angle a sample instant can ask about is an exact multiple
-of 5° — angles are integers counting 5° units, and a 13-entry cos/sin table for
-0°–60° (extended by exact sextant rotations, cos 60° = ½ and sin 60° = √3/2) covers
-all of them.
+is 60° and N divides 64, every angle a sample instant can ask about is an exact
+multiple of 60°/64 = 0.9375° — angles are integers counting that unit, and a
+65-entry cos/sin table for 0°–60° (extended by exact sextant rotations,
+cos 60° = ½ and sin 60° = √3/2) covers all of them.
 
 The constants are **normative** — a verifier copies the literals, never recomputes
 them from a math library:
 
 - `SQRT3 = 113512`, `HALF_SQRT3 = 56756` (√3 and √3/2, scaled)
-- `THRESH2 = 96338` — the collision comparison is squared distance
-  < THRESH2, where (0.7·√3)² = 1.47 exactly and round(1.47 · 65536) = 96338.
-  Strict less-than: exactly-touching discs do not collide.
-- the `COS5`/`SIN5` tables, `round(cos/sin(k·5°) · 65536)` for k = 0..12.
+- squared collision thresholds, one pitch being √3 px so T2 = round(3·(ra+rb)²·65536):
+  `THRESH2_AA = 98362` (atom–atom), `THRESH2_AB = 70205` (atom–base),
+  `THRESH2_BB = 46784` (base–base). The comparison is squared distance < T2.
+- the `COS`/`SIN` tables, `round(cos/sin(k·0.9375°) · 65536)` for k = 0..64.
 
 Every implementation — the reference JS engine and the on-chain verifier — must
 reproduce these operations bit-for-bit in 64-bit integers; the JS engine

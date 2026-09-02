@@ -27,16 +27,18 @@
 #define GW_MAX_SHAPE_BONDS 32
 #define GW_MAX_GLYPHS    8    /* per family */
 #define GW_AREA_CAP      4096 /* linear-probe cell set; must exceed any real area */
-#define GW_K_SAMPLES     12
+#define GW_K_MAX         64   /* sweep instants per tick: 8..64, gw_samples_for() */
 #define GW_SCRATCH_WORDS 4096 /* 32 KB step scratch arena (gw_engine.c static-asserts fit) */
 
 /* ---- normative Q16.16 constants (SPEC.md; copy verbatim, never recompute) ---- */
 #define GW_ONE        65536
 #define GW_SQRT3      113512
 #define GW_HALF_SQRT3 56756
-#define GW_THRESH2    96338
-#define GW_ANG_TURN   72
-#define GW_ANG_DIR    12
+#define GW_THRESH2_AA 98362   /* atom-atom, base-base, atom-base squared thresholds */
+#define GW_THRESH2_AB 70205
+#define GW_THRESH2_BB 46784
+#define GW_ANG_TURN   384     /* angle units (60/64 degree) in a turn */
+#define GW_ANG_DIR    64
 
 /* ---- elements: indices into the normative roster (matches gen-vectors.js) ---- */
 enum {
@@ -240,11 +242,13 @@ static inline int64_t gw_fmul(int64_t a, int64_t b) { return gw_fdiv(a * b, GW_O
 extern const int32_t GW_DIRS[6][2];
 
 /* deterministic geometry core (gw_q.c) — mirrors GW.Q in the JS oracle */
-void    gw_trig(int32_t u, int64_t *c, int64_t *s);       /* angle in 5° units */
+void    gw_trig(int32_t u, int64_t *c, int64_t *s);       /* angle in 60/64-degree units */
 void    gw_to_px(int32_t q, int32_t r, int64_t *x, int64_t *y);
 void    gw_step_q(int32_t n, int32_t u, int64_t *x, int64_t *y);
 void    gw_rot_q(int64_t dx, int64_t dy, int32_t u, int64_t *ox, int64_t *oy);
-int     gw_too_close(int64_t ax, int64_t ay, int64_t bx, int64_t by);
+int     gw_too_close(int64_t ax, int64_t ay, int64_t bx, int64_t by, int64_t t2);
+int32_t gw_round_log2(int32_t d);                          /* round(log2 d), d >= 1 */
+int32_t gw_samples_for(int32_t max_dist);                  /* 8..64, Opus Magnum's rule */
 void    gw_axial_round(int64_t x, int64_t y, int32_t *q, int32_t *r);
 void    gw_rot_cell(int32_t q, int32_t r, int32_t k, int32_t *oq, int32_t *orr);
 
