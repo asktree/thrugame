@@ -47,12 +47,13 @@
   .tray .hint { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .04em; margin-left: auto; align-self: center; text-align: right; line-height: 1.5; }
   .tray .sep { width: 1px; background: var(--line); margin: 0 3px; }
 
-  button.ctl {
+  button.ctl, a.ctl {
     font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
     color: var(--ink); background: var(--parch); border: 1px solid var(--ink-dim);
     padding: 6px 11px; cursor: pointer;
   }
-  button.ctl:hover { background: var(--ink); color: var(--parch); }
+  a.ctl { text-decoration: none; display: inline-block; line-height: 1; }
+  button.ctl:hover, a.ctl:hover { background: var(--ink); color: var(--parch); }
   button.ctl.on { background: var(--ink); color: var(--parch); }
   button.ctl.warn { border-color: var(--oxblood); color: var(--oxblood); }
   button.ctl.warn:hover { background: var(--oxblood); color: var(--parch); }
@@ -169,9 +170,9 @@
      in an inline-block so one long name cannot widen the table */
   table.board .clip { display: inline-block; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
   table.board td.who .clip { max-width: 170px; }
-  table.board td.act { width: 1%; text-align: right; padding-right: 0; }
+  table.board td.act { width: 1%; text-align: right; padding-right: 0; white-space: nowrap; }
   table.board td.act .ctl { padding: 3px 8px; font-size: 9.5px; }
-  table.board td.act a.ctl { display: inline-block; text-decoration: none; margin-left: 4px; }
+  table.board td.act a.ctl { margin-left: 4px; }
 
   dialog.submitdlg {
     border: 1px solid var(--ink-dim); background: var(--parch); color: var(--ink); padding: 0;
@@ -257,7 +258,7 @@
 
   <div class="sharebox">
     <button class="ctl" id="btnCopy">Copy code</button>
-    <button class="ctl" id="btnGif" disabled title="record this machine as an animated GIF — for pasting into Discord">Export GIF</button>
+    <button class="ctl" id="btnGif" disabled title="copy a link to this machine as an animated GIF — paste it in Discord">GIF link</button>
     <input id="shareIn" placeholder="paste a solution code — e.g. amalgam.AgEAAA…" spellcheck="false">
     <button class="ctl" id="btnImport">Import</button>
     <span class="sep"></span>
@@ -3819,10 +3820,11 @@
   // throwaway sim, and refreshAll runs on every drag frame
   function syncGifBtn(bad) {
     const b = $('btnGif'); if (!b) return;
-    b.disabled = gifBusy || !window.GIFENC || !!(bad === undefined ? validate() : bad);
+    b.disabled = gifBusy || (!GIF_SERVICE && !window.GIFENC) || !!(bad === undefined ? validate() : bad);
     b.title = gifBusy ? 'recording…'
-      : !window.GIFENC ? 'the GIF encoder did not load'
+      : (!GIF_SERVICE && !window.GIFENC) ? 'the GIF encoder did not load'
       : b.disabled ? 'build a legal machine first'
+      : GIF_SERVICE ? 'copy a link to this machine as an animated GIF — paste it in Discord'
       : 'record this machine as an animated GIF — for pasting into Discord';
   }
 
@@ -3835,6 +3837,46 @@
     const cv = document.createElement('canvas');
     cv.width = GIF_W; cv.height = h;
     return { canvas: cv, ctx: cv.getContext('2d', { willReadFrequently: true }), w: GIF_W, h: h };
+  }
+
+  // the verdict, painted onto the held last frame — the on-page stamp is a DOM overlay
+  // and never reaches the canvas, so the GIF gets its own parchment badge
+  function drawGifStamp(surf, rsim) {
+    const st = rsim.state;
+    const good = !st.fault && st.cycles !== null;
+    if (!good && !st.fault) return;
+    const m = rsim.metrics();
+    const title = good ? 'Verified · sum ' + m.sum : 'Rejected · ' + st.fault.kind;
+    const sub = good ? (m.cost + 'g + ' + m.cycles + 'c + ' + m.area + 'a')
+      : ('tick ' + st.fault.tick + (st.fault.detail ? ' · ' + st.fault.detail : ''));
+    const c = surf.ctx;
+    const TITLE = "700 20px 'Cinzel', 'Times New Roman', serif";
+    const SUB = "400 11px 'Courier Prime', 'Courier New', monospace";
+    c.save();
+    c.translate(surf.w / 2, surf.h / 2);
+    c.rotate(-7 * Math.PI / 180);
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = TITLE; const w1 = c.measureText(title).width;
+    c.font = SUB; const w2 = c.measureText(sub).width;
+    const bw = Math.min(surf.w - 26, Math.max(w1, w2) + 44), bh = 62;
+    c.beginPath(); c.rect(-bw / 2, -bh / 2, bw, bh);
+    c.fillStyle = 'rgba(241,233,214,0.9)'; c.fill();
+    c.strokeStyle = good ? '#8A6A1E' : '#8C3B2E'; c.lineWidth = 2.5; c.stroke();
+    c.save(); c.clip();
+    c.fillStyle = good ? '#8A6A1E' : '#8C3B2E'; c.font = TITLE;
+    c.fillText(title.toUpperCase(), 0, -bh / 2 + 22);
+    c.fillStyle = '#6B5F49'; c.font = SUB;
+    c.fillText(sub, 0, bh / 2 - 17);
+    c.restore();
+    c.restore();
+  }
+
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   // the verdict, painted onto the held last frame — the on-page stamp is a DOM overlay
@@ -3971,35 +4013,24 @@
   async function exportGif() {
     const bad = validate();
     if (bad) { setStatus('cannot record: ' + bad, 'bad'); return; }
+    // the service renders this exact machine on demand: a link is the whole export,
+    // and Discord unfurls it into the animation
+    if (GIF_SERVICE) {
+      const url = gifUrlFor(key(), code().split('.')[1]);
+      let copied = false;
+      try { await navigator.clipboard.writeText(url); copied = true; } catch (e) {}
+      const link = '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>';
+      setStatus((copied ? 'GIF link copied — paste it in Discord · ' : 'GIF link · ') + link, 'good');
+      return;
+    }
+    // no service: record here and download the file
     if (!window.GIFENC) { setStatus('the GIF encoder did not load', 'bad'); return; }
-    const { bytes, surf, rsim } = await renderGif((pct) => setStatus('rendering GIF ' + pct + '%'));
+    const { bytes, rsim } = await renderGif((pct) => setStatus('rendering GIF ' + pct + '%'));
     const blob = new Blob([bytes], { type: 'image/gif' });
     const m = rsim.metrics();
     const tag = (rsim.state.cycles !== null && m.sum !== null) ? String(m.sum) : 'run';
-    const name = 'great-work-' + key() + '-' + tag + '.gif';
-    const mb = (blob.size / 1048576).toFixed(1);
-
-    const copied = await copyStillPng(surf.canvas);
-
-    let how = 'downloaded';
-    try {
-      const file = new File([bytes], name, { type: 'image/gif' });
-      if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Great Work! · ' + base().name });
-        how = 'shared';
-      }
-    } catch (e) {
-      // a cancelled sheet is an answer, not a failure: don't spring a download on them
-      how = (e && e.name === 'AbortError') ? 'cancelled' : 'downloaded';
-    }
-    if (how === 'downloaded') downloadBlob(blob, name);
-
-    const bits = [how === 'shared' ? 'GIF shared · ' + mb + ' MB'
-      : how === 'cancelled' ? 'GIF ready · ' + mb + ' MB · sharing cancelled'
-      : 'GIF downloaded · ' + mb + ' MB'];
-    if (how === 'downloaded') bits.push('drag it into Discord');
-    if (copied) bits.push('still frame copied to clipboard');
-    setStatus(bits.join(' · '), 'good');
+    downloadBlob(blob, 'great-work-' + key() + '-' + tag + '.gif');
+    setStatus('GIF downloaded · ' + (blob.size / 1048576).toFixed(1) + ' MB · drag it into Discord', 'good');
   }
 
   // Headless rendering, for the GIF service: load a solution code, record it, hand
@@ -4030,6 +4061,7 @@
   const CHAIN_OFF = 'chain client unavailable';
   // the GIF service (gifsvc/): renders any solution code on demand; '' = no links
   const GIF_SERVICE = 'https://gif.greatwork.quest';
+  const gifUrlFor = (puzzleKey, codeStr) => GIF_SERVICE + '/gif/' + puzzleKey + '/' + codeStr + '.gif';
   const WALLET_KEY = 'gw-wallet', USER_KEY = 'gw-user', PASSKEY_KEY = 'gw-passkey';
   const NAME_MAX = (window.GWChain && GWChain.NAME_MAX) || 32;
   const USER_MAX = (window.GWChain && GWChain.USER_MAX) || 24;
@@ -4438,7 +4470,7 @@
         const g = document.createElement('a'); g.className = 'ctl'; g.textContent = 'gif';
         g.title = 'this solution as an animated GIF — link it anywhere';
         g.target = '_blank'; g.rel = 'noopener';
-        try { g.href = GIF_SERVICE + '/gif/' + (BASES[puzIdx] || base()).key + '/' + CODEC.toString(r.machine) + '.gif'; act.appendChild(g); } catch (e) {}
+        try { g.href = gifUrlFor((BASES[puzIdx] || base()).key, CODEC.toString(r.machine)); act.appendChild(g); } catch (e) {}
       }
 
       tr.appendChild(rk); tr.appendChild(sm); tr.appendChild(nm); tr.appendChild(who); tr.appendChild(act);
