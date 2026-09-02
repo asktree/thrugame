@@ -1,4 +1,4 @@
-name: Deploy demo to GitHub Pages
+name: Deploy greatwork.quest
 
 on:
   push:
@@ -26,9 +26,7 @@ jobs:
       - name: Stage demo pages only
         run: |
           mkdir _site
-          cp demo/great-work.html _site/index.html
-          cp demo/halting-problem.html _site/halting-problem.html
-          cp demo/lab.html _site/lab.html
+          cp demo/editor.html _site/index.html
           cp demo/editor.html _site/editor.html
           cp demo/gw-chain.js _site/gw-chain.js
           echo greatwork.quest > _site/CNAME

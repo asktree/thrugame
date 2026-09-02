@@ -1,4 +1,4 @@
-/* Builds demo/lab.html and demo/editor.html: inlines engine + codec + examples into the templates. */
+/* Builds demo/editor.html: inlines engine + codec + examples + fx + the GIF encoder into the template. */
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +10,7 @@ const examples = fs.readFileSync(path.join(root, 'engine/examples.js'), 'utf8');
 const fx = fs.readFileSync(path.join(__dirname, 'fx.js'), 'utf8');
 const gifenc = fs.readFileSync(path.join(__dirname, 'vendor', 'gifenc.js'), 'utf8');   // client/gif-entry.js via `npm run bundle:gif`
 
-for (const [tplName, outName] of [['template.html', 'lab.html'], ['editor-template.html', 'editor.html']]) {
+for (const [tplName, outName] of [['editor-template.html', 'editor.html']]) {
   let tpl = fs.readFileSync(path.join(__dirname, tplName), 'utf8');
   tpl = tpl.replace('/*__ENGINE__*/', () => engine);
   tpl = tpl.replace('/*__CODEC__*/', () => codec);

@@ -12,8 +12,8 @@ the record.
 | `engine/` | The JavaScript rules engine — the conformance **oracle** — plus the codec, the example puzzles, the test suite and the vector/catalog generators. |
 | `contract/` | The C rules engine (a line-faithful port of the oracle), the submission verifier, the host conformance harness, and under `program/` the ThruVM program shell. |
 | `client/` | `@thru/sdk` client: seal a solution on-chain, read the leaderboard; bundles into the editor. |
-| `lab/` | Sources for the two demo pages (`demo/lab.html`, `demo/editor.html`); `node lab/build.js` inlines the engine into them. |
-| `demo/` | Built pages. `editor.html` is the game client; `gw-chain.js` is the chain bundle it loads. |
+| `lab/` | Source of the game client (`lab/editor-template.html`, effects in `fx.js`); `node lab/build.js` inlines the engine into `demo/editor.html`. |
+| `demo/` | Built pages. `editor.html` is the game client (deployed as https://greatwork.quest); `gw-chain.js` is the chain bundle it loads; `great-work.html` is the grant proposal, kept but not deployed. |
 
 ## Run the tests
 
