@@ -87,11 +87,12 @@
   .status .bad { color: var(--oxblood); font-weight: 700; }
   .status .good { color: var(--verdigris); font-weight: 700; }
 
-  .tapes { border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 8px 14px 10px; }
+  .tapes { position: relative; border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 8px 14px 10px; user-select: none; }
   .oppal { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding-bottom: 7px; margin-bottom: 6px; border-bottom: 1px solid var(--line-soft); }
   .oppal .seg-label { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .1em; margin-right: 3px; }
   .oppal button { font-family: var(--mono); font-size: 13px; font-weight: 700; padding: 3px 9px; border: 1px solid var(--ink-dim); background: var(--parch); cursor: pointer; color: var(--ink); }
   .oppal button:hover { background: var(--ink); color: var(--parch); }
+  .oppal .hint { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .04em; margin-left: auto; }
   .tape-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
   .tape-label { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); min-width: 58px; flex: none; cursor: pointer; }
   .tape-row.sel .tape-label { color: var(--gold); }
@@ -103,17 +104,28 @@
   .tape-cells span {
     font-family: var(--mono); font-size: 12px; line-height: 1; padding: 3px 0; width: 22px; box-sizing: border-box; text-align: center;
     border: 1px solid var(--line); color: var(--ink-dim); background: var(--parch-2); flex: none; cursor: pointer;
+    touch-action: none;
   }
   .tape-cells span.delay { opacity: .45; border-style: dashed; }
   .tape-cells span.spent { opacity: .25; }
   .tape-cells span.on { background: var(--ink); color: var(--parch); border-color: var(--ink); opacity: 1; }
   .tape-cells span.cursor { border-color: var(--gold); box-shadow: 0 0 0 1.5px var(--gold); }
   .tape-cells span.ghostcell { opacity: .4; border-style: dashed; }
-  /* a repeat marker's span: ⟲ then one bar over the rest of the repeated run (OM style) */
+  /* a repeat marker's span: ↪ then one bar over the rest of the repeated run (OM style) */
   .tape-cells span.repeat-bar { padding: 0; border: 0; border-top: 2px solid var(--ink-dim); background: none;
     align-self: center; height: 0; opacity: .7; cursor: default; }
   /* in run mode the repeat unfurls into its real ops */
   .tape-cells span.unfurled { border-style: dotted; }
+  .tape-cells span.pad { opacity: .3; border-style: dotted; cursor: default; }
+  /* box-selected cells, the marquee that picks them and the caret/ghost of a move drag */
+  .tape-cells span.picked { background: rgba(138, 106, 30, .22); border-color: var(--gold); color: var(--ink); opacity: 1; }
+  .tape-marquee { position: absolute; border: 1px solid var(--gold); background: rgba(138, 106, 30, .10); pointer-events: none; z-index: 5; }
+  .tape-caret { position: absolute; width: 2px; background: var(--gold); pointer-events: none; z-index: 6; }
+  .tape-dragghost { position: fixed; display: flex; gap: 3px; pointer-events: none; opacity: .6; z-index: 40; }
+  .tape-dragghost span {
+    font-family: var(--mono); font-size: 12px; line-height: 1; padding: 3px 0; width: 22px; box-sizing: border-box;
+    text-align: center; border: 1px solid var(--gold); background: var(--parch); color: var(--ink);
+  }
 
   .sharebox { border: 1px solid var(--line); border-top: 0; background: var(--parch-2); padding: 9px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .sharebox input { flex: 1; min-width: 220px; font-family: var(--mono); font-size: 11px; padding: 6px 8px; border: 1px solid var(--line); background: var(--parch); color: var(--ink); }
@@ -249,7 +261,7 @@
     <button class="ctl" id="btnImport">Import</button>
     <span class="sep"></span>
     <button class="ctl" id="btnSubmit" disabled title="test a solution to verification first">Submit</button>
-    <span class="chip" id="walletChip" title="your alphanet key">…</span>
+    <span class="chip" id="walletChip" title="your passkey wallet">…</span>
     <button class="ctl idctl" id="btnPkNew" hidden>Create passkey</button>
     <button class="ctl idctl" id="btnPkUse" hidden>Use my passkey</button>
     <button class="ctl idctl" id="btnPkOut" hidden title="forget this passkey in this browser">Sign out</button>
@@ -278,7 +290,6 @@
         <li>Some gold costs are different &mdash; namely bi-arms and tri-arms are slightly cheaper.</li>
         <li>You need to make 9 products instead of 6</li>
         <li>The leaderboard only cares about Sum. Since you need 9 products, Sum in this game is more weighted towards cycles.</li>
-        <li>Instruction tapes don't auto-pad &mdash; let me know what you think of this!</li>
       </ul>
       <p>This game is currently in playtesting. I am not very good at Opus Magnum, tried to make something thought provoking and familiar, let me know what you think.</p>
       <p>In the future, I plan to run longform contests with cash prizes! So stay tuned.</p>
@@ -290,7 +301,7 @@
   </dialog>
   <dialog class="submitdlg" id="submitDlg">
     <form method="dialog" id="submitForm">
-      <h2>Submit to alphanet</h2>
+      <h2>Submit solution</h2>
       <div class="sd-note" id="sdNote">—</div>
       <label for="sdName">Solution name</label>
       <input id="sdName" placeholder="Twin ferris" spellcheck="false" autocomplete="off">
@@ -344,7 +355,7 @@
     projectors: 'PROJECT', purifiers: 'PURIFY', animismus: 'ANIMA', disposals: 'DISPOSE',
   };
   const SINGLE_CELL = { calcifiers: 1, disposals: 1 };
-  const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·', R: '⟲' };
+  const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·', R: '↪' };
   const PITCH = Math.sqrt(3);
   // The playmat renderer draws into whatever ctx/view/size these name. They are the
   // live canvas all the time except inside renderPlaymat(), which points them at an
@@ -399,6 +410,7 @@
   let view = { s: 40, ox: CW / 2, oy: CH / 2 };
   let sel = null;                      // {kind:'arm'|'glyph'|'input'|'output', id?|i?}
   let cursor = null;                   // tape cursor {armId, pos}
+  let tapeSel = [];                    // box-selected tape cells [{armId, pos}] — pos is the authored index
   let hoverCell = null, mousePx = null;
   let running = false, stepMs = 140, phase = 1, done = false, frameDt = 16;
   let drag = null;
@@ -517,14 +529,14 @@
     if (!undoStack.length) return;
     redoStack.push(snapshot());
     layout = JSON.parse(undoStack.pop());
-    sel = null; cursor = null;
+    sel = null; cursor = null; tapeSel = [];
     syncUndoButtons(); touched();
   }
   function redo() {
     if (!redoStack.length) return;
     undoStack.push(snapshot());
     layout = JSON.parse(redoStack.pop());
-    sel = null; cursor = null;
+    sel = null; cursor = null; tapeSel = [];
     syncUndoButtons(); touched();
   }
   function syncUndoButtons() {
@@ -1026,7 +1038,7 @@
       } else {
         const seg = ops.slice(segStart);                 // frozen once per run of consecutive R's
         while (i < src.length && src[i] === 'R') {
-          cells.push({ src: i, op: '⟲', ghost: false, engine: null });
+          cells.push({ src: i, op: '↪', ghost: false, engine: null });
           // display guard: past this cap every ghost is far over the engine's 64-op ceiling
           // anyway — keep walking the source so every authored cell stays editable
           if (ops.length < EXPAND_CAP) {
@@ -1043,8 +1055,38 @@
   const tapeCap = () => (base().caps && base().caps.tapeLen) || GW.DEFAULT_CAPS.tapeLen;
   // tapes go to the engine and the codec AS AUTHORED — repeat markers included.
   // The engine expands internally; the codec keeps them symbolic on the wire.
-  const machineArms = () => layout.arms.map(a =>
-    Object.assign({}, a, { tape: { delay: a.tape.delay || 0, ops: (a.tape.ops || ['W']).slice() } }));
+  // Opus Magnum pads every tape to the longest, so all arms share one loop period.
+  // The padding is laid down here, on the way to the engine and the codec: the
+  // authored tapes stay as written, and what is shared or submitted is what ran.
+  const loopLen = (t) => expandTape(t.ops || ['W']).ops.length;
+  const loopPeriod = () => Math.max(1, ...layout.arms.map(a => loopLen(a.tape)));
+  const machineArms = () => {
+    const P = loopPeriod();
+    return layout.arms.map(a => {
+      const ops = (a.tape.ops || ['W']).slice();
+      for (let n = loopLen(a.tape); n < P; n++) ops.push('W');
+      return Object.assign({}, a, { tape: { delay: a.tape.delay || 0, ops } });
+    });
+  };
+  // Tapes that arrive from outside (codes, the record, drafts) may loop at different
+  // lengths: unroll each to the common period so the padded machine runs exactly as
+  // it did. Then trailing waits come off every tape that does not set the period —
+  // they are padding again the moment the machine is built.
+  function normalizeLoops(arms) {
+    if (!arms.length) return;
+    const lens = arms.map(a => loopLen(a.tape) || 1);
+    const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+    const L = lens.reduce((acc, n) => acc / gcd(acc, n) * n, 1);
+    arms.forEach((a, i) => {
+      if (lens[i] === L || (a.tape.delay || 0) + L > tapeCap()) return;
+      const ops = expandTape(a.tape.ops).ops; if (!ops.length) ops.push('W');
+      a.tape.ops = []; for (let k = 0; k < L / lens[i]; k++) a.tape.ops.push(...ops);
+    });
+    const P = Math.max(...arms.map(a => loopLen(a.tape)));
+    const stripped = arms.map(a => { const o = a.tape.ops.slice(); while (o.length > 1 && o[o.length - 1] === 'W') o.pop(); return o; });
+    const keep = Math.max(...stripped.map(o => expandTape(o).ops.length)) < P;   // the period must survive
+    arms.forEach((a, i) => { if (!(keep && loopLen(a.tape) === P)) a.tape.ops = stripped[i]; });
+  }
 
   // ---------- tape editing ----------
   function tapeOf(id) { return armById(id).tape; }
@@ -1084,9 +1126,68 @@
     });
   }
 
+  // ---------- box selection over the tape cells ----------
+  // tapeSel names authored cells by {armId, pos}; it outlives buildTapes(), so it is
+  // pruned against the live tapes whenever it is read back into the DOM.
+  const tapeSelHas = (armId, pos) => tapeSel.some(s => s.armId === armId && s.pos === pos);
+  function pruneTapeSel() {
+    tapeSel = tapeSel.filter(s => { const a = armById(s.armId); return !!a && s.pos < (a.tape.ops || []).length; });
+  }
+  // row order, then position along the tape — the order moved ops are laid down in
+  function tapeSelOrdered(items) {
+    const rank = new Map(layout.arms.map((a, i) => [a.id, i]));
+    return items.slice().sort((x, y) => (rank.get(x.armId) - rank.get(y.armId)) || (x.pos - y.pos));
+  }
+  function byArmGroups(items) {
+    const m = new Map();
+    for (const s of items) { if (!m.has(s.armId)) m.set(s.armId, []); m.get(s.armId).push(s.pos); }
+    for (const poss of m.values()) poss.sort((a, b) => a - b);
+    return m;
+  }
+  function deleteTapeSel() {
+    pruneTapeSel();
+    if (!tapeSel.length) return;
+    const groups = byArmGroups(tapeSel);
+    withUndo(() => {
+      for (const [armId, poss] of groups) {
+        const t = tapeOf(armId); if (!t) continue;
+        for (let i = poss.length - 1; i >= 0; i--) t.ops.splice(poss[i], 1);
+        if (!t.ops.length) t.ops.push('W');            // a tape is never empty
+      }
+      tapeSel = []; cursor = null;
+    });
+    tapeSel = []; cursor = null;
+    refreshAll();
+  }
+  // move the selected ops into targetArmId at the authored slot targetIdx (0..ops.length)
+  function moveTapeOps(items, targetArmId, targetIdx) {
+    const ordered = tapeSelOrdered(items);
+    const ops = ordered.map(s => { const t = tapeOf(s.armId); return t && t.ops[s.pos]; }).filter(o => o !== undefined && o !== null);
+    if (!ops.length || !armById(targetArmId)) return;
+    const groups = byArmGroups(ordered);
+    withUndo(() => {
+      let idx = targetIdx;
+      for (const [armId, poss] of groups) {
+        const t = tapeOf(armId); if (!t) continue;
+        // removals before the target slot in the same tape pull it back
+        if (armId === targetArmId) idx -= poss.filter(pp => pp < targetIdx).length;
+        for (let i = poss.length - 1; i >= 0; i--) t.ops.splice(poss[i], 1);
+      }
+      const tt = tapeOf(targetArmId);
+      idx = Math.max(0, Math.min(idx, tt.ops.length));
+      tt.ops.splice(idx, 0, ...ops);
+      for (const [armId] of groups) { const t = tapeOf(armId); if (t && !t.ops.length) t.ops.push('W'); }
+      tapeSel = ops.map((_, i) => ({ armId: targetArmId, pos: idx + i }));
+      cursor = { armId: targetArmId, pos: idx };
+      sel = { kind: 'arm', id: targetArmId };
+    });
+    refreshAll();
+  }
+
   // ---------- tapes panel ----------
   function buildTapes() {
     const host = $('tapes');
+    if (mode === 'edit') pruneTapeSel(); else tapeSel = [];
     host.innerHTML = '';
     if (mode === 'edit') {
       const pal = document.createElement('div'); pal.className = 'oppal';
@@ -1106,18 +1207,22 @@
       mk('remove', 'remove the cell at the cursor (shortens the loop)', delOp);
       mk('»+', 'add a first-pass delay block', () => bumpDelay(1));
       mk('»−', 'remove a delay block', () => bumpDelay(-1));
+      const note = document.createElement('span'); note.className = 'hint';
+      note.textContent = 'drag on the margin to box-select cells · drag cells to move them';
+      pal.appendChild(note);
       host.appendChild(pal);
     }
     const arms = mode === 'run' ? sim.state.arms : layout.arms;
     for (const arm of arms) {
       const row = document.createElement('div');
       row.className = 'tape-row' + (mode === 'edit' && sel && sel.kind === 'arm' && sel.id === arm.id ? ' sel' : '');
+      if (mode === 'edit') row.dataset.arm = arm.id;
       const lab = document.createElement('span'); lab.className = 'tape-label'; lab.textContent = 'ARM ' + arm.id;
       lab.addEventListener('click', () => { if (mode === 'edit') { sel = { kind: 'arm', id: arm.id }; refreshAll(); } });
       // in run mode the sim holds the expanded tape; the markers live on the layout's copy
       const src = ((mode === 'run' ? armById(arm.id) : null) || arm).tape.ops;
       const ex = expandTape(src);
-      const total = (arm.tape.delay || 0) + Math.max(1, ex.ops.length);
+      const total = (arm.tape.delay || 0) + loopPeriod();
       if (total > tapeCap()) {
         const over = document.createElement('span'); over.className = 'over';
         over.textContent = ' ' + total + '/' + tapeCap(); lab.appendChild(over);
@@ -1126,7 +1231,7 @@
       for (let i = 0; i < arm.tape.delay; i++) {
         const sp = document.createElement('span'); sp.className = 'delay'; sp.textContent = '»'; cells.appendChild(sp);
       }
-      // Repeat markers, Opus Magnum style: while editing, ⟲ followed by one bar stretched
+      // Repeat markers, Opus Magnum style: while editing, ↪ followed by one bar stretched
       // over the rest of the repeated run (its length minus the marker's own cell); while
       // playing, the marker vanishes and the run unfurls into its actual ops.
       for (let ci = 0; ci < ex.cells.length; ci++) {
@@ -1138,12 +1243,14 @@
           cells.appendChild(sp);
           continue;
         }
-        const marker = c.op === '⟲';
+        const marker = c.op === '↪';
         if (marker && mode !== 'edit') continue;             // takes no time: not shown in play
         const sp = document.createElement('span'); sp.textContent = GLYPH[c.op] || c.op;
         if (c.engine !== null) sp.dataset.eng = c.engine;
         if (mode === 'edit') {
+          sp.dataset.arm = arm.id; sp.dataset.src = c.src;        // the drag/box code hit-tests on these
           if (cursor && cursor.armId === arm.id && cursor.pos === c.src) sp.classList.add('cursor');
+          if (tapeSelHas(arm.id, c.src)) sp.classList.add('picked');
           sp.addEventListener('click', () => { sel = { kind: 'arm', id: arm.id }; cursor = { armId: arm.id, pos: c.src }; refreshAll(); });
         }
         cells.appendChild(sp);
@@ -1156,6 +1263,12 @@
             cells.appendChild(bar);
           }
         }
+      }
+      // padding to the shared period: waits the longest loop imposes on this one
+      for (let i = ex.ops.length, P = loopPeriod(); i < P; i++) {
+        const sp = document.createElement('span'); sp.className = 'pad'; sp.textContent = '·';
+        sp.title = 'padding — every tape loops at the longest tape\'s length'; sp.dataset.eng = i;
+        cells.appendChild(sp);
       }
       if (mode === 'edit') {
         const add = document.createElement('span'); add.textContent = '+'; add.className = 'ghostcell';
@@ -1247,6 +1360,7 @@
     lay.inputs = b.reagentShapes.map((sh, ri) =>
       lay.inputs.find(g => g.ri === ri) || clone(b.defaultLayout.inputs[ri]));
     lay.arms.forEach(a => { a.tape = a.tape || {}; a.tape.delay = a.tape.delay || 0; a.tape.ops = a.tape.ops || ['W']; });
+    normalizeLoops(lay.arms);
     return lay;
   }
   function loadDraft() {
@@ -1267,7 +1381,7 @@
     const moved = pIdx !== idx;
     pIdx = idx;
     layout = layoutFrom(decoded);
-    sel = null; cursor = null; undoStack = []; redoStack = []; syncUndoButtons();
+    sel = null; cursor = null; tapeSel = []; undoStack = []; redoStack = []; syncUndoButtons();
     enterEdit();
     document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', i === pIdx));
     fitView(); touched();
@@ -1345,7 +1459,7 @@
       el.classList.toggle('low', low); el.classList.toggle('high', !low);
       return;
     }
-    if (mode !== 'edit' || activeId !== null) return;
+    if (mode !== 'edit' || activeId !== null || tapeDrag) return;
     activeId = ev.pointerId;
     capture(canvas, ev);
     const [mx, my] = mouse(ev);
@@ -1377,7 +1491,7 @@
       refreshAll(); return;
     }
     // 3) pan
-    sel = null; cursor = null;
+    sel = null; cursor = null; tapeSel = [];
     drag = { kind: 'pan', x: mx, y: my };
     refreshAll();
   });
@@ -1509,6 +1623,131 @@
     });
   });
 
+  // ---------- tape panel: box-select cells, and drag cells to move them ----------
+  // a drag that starts on the margin (background, gaps, delay cells, repeat bars, the "+")
+  // sweeps a marquee over the authored cells; a drag that starts ON a cell moves the
+  // selection — or that one cell — to the slot the pointer names in whatever row it ends over.
+  let tapeDrag = null;
+  let eatTapeClick = false;
+  {
+    const host = $('tapes');
+    const cellOf = (el) => (el && el.dataset && el.dataset.src !== undefined && el.dataset.arm !== undefined)
+      ? { armId: el.dataset.arm, pos: +el.dataset.src } : null;
+    const allCells = () => Array.from(host.querySelectorAll('.tape-cells > span[data-src]'));
+    const rowCells = (row) => Array.from(row.querySelectorAll('.tape-cells > span[data-src]'));
+    // repaint the picked class in place — a full buildTapes() mid-drag would drop the DOM under us
+    const paintPicked = () => {
+      for (const el of allCells()) {
+        const c = cellOf(el);
+        el.classList.toggle('picked', tapeSelHas(c.armId, c.pos));
+      }
+    };
+    const kill = (el) => { if (el && el.parentNode) el.parentNode.removeChild(el); };
+    function endTapeDrag(commit) {
+      const d = tapeDrag; tapeDrag = null;
+      if (!d) return;
+      kill(d.marquee); kill(d.caret); kill(d.ghost);
+      try { host.releasePointerCapture(d.id); } catch (e) {}
+      if (!d.moved) {
+        if (d.kind === 'move' && d.cell) {                 // a plain click still places the cursor
+          sel = { kind: 'arm', id: d.cell.armId };
+          cursor = { armId: d.cell.armId, pos: d.cell.pos };
+          refreshAll();
+        } else if (tapeSel.length) { tapeSel = []; paintPicked(); }
+        return;
+      }
+      eatTapeClick = true;                                  // the drag must not read as a click
+      if (commit && d.kind === 'move' && d.drop && tapeSel.length) moveTapeOps(tapeSel.slice(), d.drop.armId, d.drop.idx);
+      else refreshAll();
+    }
+    // the slot boundaries of a row: every authored cell's left edge, plus the last one's right
+    function dropAt(clientX, clientY) {
+      for (const row of host.querySelectorAll('.tape-row[data-arm]')) {
+        const rr = row.getBoundingClientRect();
+        if (clientY < rr.top || clientY > rr.bottom) continue;
+        const cells = rowCells(row);
+        const cellsBox = row.querySelector('.tape-cells').getBoundingClientRect();
+        const edges = cells.length ? cells.map(c => c.getBoundingClientRect().left) : [cellsBox.left];
+        if (cells.length) edges.push(cells[cells.length - 1].getBoundingClientRect().right);
+        let best = 0;
+        for (let i = 1; i < edges.length; i++) if (Math.abs(clientX - edges[i]) < Math.abs(clientX - edges[best])) best = i;
+        const top = cells.length ? cells[0].getBoundingClientRect().top : cellsBox.top;
+        const h = cells.length ? cells[0].getBoundingClientRect().height : cellsBox.height;
+        return { armId: row.dataset.arm, idx: Math.min(best, cells.length), x: edges[best], top, h };
+      }
+      return null;
+    }
+    window.addEventListener('pointerdown', () => { eatTapeClick = false; }, true);  // a stale eat must never swallow a real click
+    host.addEventListener('pointerdown', (ev) => {
+      if (mode !== 'edit' || tapeDrag || activeId !== null) return;
+      if (ev.button !== undefined && ev.button > 0) return;
+      const t = ev.target;
+      if (!t || !t.closest) return;
+      if (t.closest('.oppal') || t.closest('.tape-label')) return;    // palette and labels keep their clicks
+      const cell = cellOf(t);
+      capture(host, ev);
+      tapeDrag = { id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, moved: false,
+        kind: cell ? 'move' : 'box', cell, marquee: null, caret: null, ghost: null, drop: null };
+    });
+    window.addEventListener('pointermove', (ev) => {
+      const d = tapeDrag;
+      if (!d || ev.pointerId !== d.id) return;
+      if (!d.moved) {
+        if (Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) < 4) return;
+        d.moved = true;
+        const rect = host.getBoundingClientRect();
+        if (d.kind === 'box') {
+          d.marquee = document.createElement('div'); d.marquee.className = 'tape-marquee';
+          host.appendChild(d.marquee);
+        } else {
+          // dragging a cell that is not in the selection makes it the selection
+          if (!tapeSelHas(d.cell.armId, d.cell.pos)) { tapeSel = [d.cell]; paintPicked(); }
+          d.ghost = document.createElement('div'); d.ghost.className = 'tape-dragghost';
+          for (const c of tapeSelOrdered(tapeSel)) {
+            const t2 = tapeOf(c.armId); if (!t2) continue;
+            const g = document.createElement('span'); g.textContent = GLYPH[t2.ops[c.pos]] || t2.ops[c.pos] || '';
+            d.ghost.appendChild(g);
+          }
+          document.body.appendChild(d.ghost);
+          d.caret = document.createElement('div'); d.caret.className = 'tape-caret';
+          host.appendChild(d.caret);
+        }
+        d.rect = rect;
+      }
+      const rect = host.getBoundingClientRect();
+      if (d.kind === 'box') {
+        const L = Math.min(d.x0, ev.clientX), R = Math.max(d.x0, ev.clientX);
+        const T = Math.min(d.y0, ev.clientY), B = Math.max(d.y0, ev.clientY);
+        d.marquee.style.left = (L - rect.left) + 'px'; d.marquee.style.top = (T - rect.top) + 'px';
+        d.marquee.style.width = (R - L) + 'px'; d.marquee.style.height = (B - T) + 'px';
+        const picked = [];
+        for (const el of allCells()) {
+          const r = el.getBoundingClientRect();
+          if (r.right >= L && r.left <= R && r.bottom >= T && r.top <= B) picked.push(cellOf(el));
+        }
+        tapeSel = picked; paintPicked();
+      } else {
+        d.ghost.style.left = (ev.clientX + 10) + 'px';
+        d.ghost.style.top = (ev.clientY - 9) + 'px';
+        const drop = dropAt(ev.clientX, ev.clientY);
+        d.drop = drop;
+        if (!drop) { d.caret.style.display = 'none'; return; }
+        d.caret.style.display = '';
+        d.caret.style.left = (drop.x - rect.left - 1) + 'px';
+        d.caret.style.top = (drop.top - rect.top) + 'px';
+        d.caret.style.height = drop.h + 'px';
+      }
+    });
+    window.addEventListener('pointerup', (ev) => { if (tapeDrag && ev.pointerId === tapeDrag.id) endTapeDrag(true); });
+    window.addEventListener('pointercancel', (ev) => { if (tapeDrag && ev.pointerId === tapeDrag.id) endTapeDrag(false); });
+    // the click synthesised at the end of a real drag would otherwise re-place the cursor
+    window.addEventListener('click', (ev) => {
+      if (!eatTapeClick) return;
+      eatTapeClick = false;
+      ev.stopPropagation(); ev.preventDefault();
+    }, true);
+  }
+
   canvas.addEventListener('wheel', (ev) => {
     ev.preventDefault();
     const [mx, my] = mouse(ev);
@@ -1530,8 +1769,11 @@
     if (!ev.altKey && KEY_OPS[ev.key.toLowerCase()] && cursor) { setOp(KEY_OPS[ev.key.toLowerCase()]); ev.preventDefault(); return; }
     if (ev.key === '[') rotateSelected(-1);
     else if (ev.key === ']') rotateSelected(1);
-    else if (ev.key === 'Delete' || ev.key === 'Backspace') { if (sel) { deleteSelected(); ev.preventDefault(); } }
-    else if (ev.key === 'Escape') { sel = null; cursor = null; refreshAll(); }
+    else if (ev.key === 'Delete' || ev.key === 'Backspace') {
+      if (tapeSel.length) { deleteTapeSel(); ev.preventDefault(); }
+      else if (sel) { deleteSelected(); ev.preventDefault(); }
+    }
+    else if (ev.key === 'Escape') { sel = null; cursor = null; tapeSel = []; refreshAll(); }
   });
 
   // ---------- run controls ----------
@@ -1555,7 +1797,7 @@
   $('btnClear').addEventListener('click', () => withUndo(() => {
     layout = layoutFrom({ arms: [] });
     layout.glyphs = [];
-    sel = null; cursor = null;
+    sel = null; cursor = null; tapeSel = [];
   }));
 
   // ---------- share ----------
@@ -1880,6 +2122,7 @@
 
   function updateWinnings() {
     const box = $('winBox'); if (!box) return;
+    box.hidden = true; return;         // claiming is not offered yet: the line stays hidden
     const show = claimOn() && !!passkeyId;
     box.hidden = !show;
     const amt = $('winAmt'); if (amt) amt.textContent = String(winnings);
@@ -1914,7 +2157,7 @@
     const id = passkeyId, amount = winnings;    // fixed before the first await
     claiming = true; updateIdControls(); updateSubmitBtn();
     try {
-      setStatus('opening the Thru wallet…');
+      setStatus('opening the wallet…');
       const dest = await GWChain.wallet.connect();
       const client = chainClientOf();
       if (!(await GWChain.accountExists(client, dest.address))) {
@@ -2027,7 +2270,7 @@
     if (!chainOn()) { b.disabled = true; b.title = CHAIN_OFF; return; }
     b.disabled = submitting || claiming || !submittable();
     b.title = submitting ? 'submitting…'
-      : submittable() ? 'submit this verified solution to alphanet'
+      : submittable() ? 'submit this verified solution to the leaderboard'
       : !passkeyId ? 'create or use a passkey to submit'
       : 'test a solution to verification first';
   }
@@ -2121,7 +2364,7 @@
       }
       // the record is authoritative; if the query lagged, the run's own sum stands in
       const sum = (res.sum === null || res.sum === undefined) ? localSum : res.sum;
-      setStatus('submitted on alphanet · sum ' + sum + ' · txn ' + String(res.signature || '').slice(0, 12) + '…', 'good');
+      setStatus('submitted · sum ' + sum + ' · txn ' + String(res.signature || '').slice(0, 12) + '…', 'good');
       refreshBoard(true);
     } catch (e) {
       setStatus('not submitted: ' + errText(e), 'bad');
@@ -2224,7 +2467,7 @@
     pIdx = i;
     document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
     layout = loadDraft() || layoutFrom({ arms: [] });
-    sel = null; cursor = null; undoStack = []; redoStack = []; syncUndoButtons();
+    sel = null; cursor = null; tapeSel = []; undoStack = []; redoStack = []; syncUndoButtons();
     enterEdit(); fitView(); refreshAll(); hud();
     refreshBoard();
     try { history.replaceState(null, '', '#' + key()); } catch (e) {}
