@@ -30,6 +30,12 @@ export const NETWORKS = {
     name: 'alphanet',
     rpc: 'https://rpc.alphanet.thru.org',
     program: 'taaX8rNMcDjdi-V0IlFhC2ScMsN0gWXbejJdoyDOvHi8aS',   // contract/program/DEPLOYMENTS.md
+    // the record starts here: earlier events on this address are development
+    // and test submissions from before the board went public
+    fromSlot: 6884620n,
+    // a second copy of the same program for automated tests, so test runs never
+    // touch the record: point a test at it with NETWORKS.alphanet.program = testProgram
+    testProgram: 'taZq-QfKiEC-7CF-iF8mbqHjC4wSU1brkik8jsgMl2bpVB',
   },
 };
 export const IX_VERSION = 2;
@@ -388,7 +394,7 @@ export const base64UrlToBytes = (s) => PM.base64UrlToBytes(s);
 export const bytesToBase64Url = (b) => PM.bytesToBase64Url(b);
 
 // ---- leaderboard: the program's event log ----
-export async function fetchScores(client, { program = NETWORKS.alphanet.program, puzzleId } = {}) {
+export async function fetchScores(client, { program = NETWORKS.alphanet.program, puzzleId, fromSlot = NETWORKS.alphanet.fromSlot } = {}) {
   const filter = new Filter({
     expression: 'event.program.value == params.address',
     params: { address: FilterParamValue.taPubkey(program) },
@@ -400,6 +406,7 @@ export async function fetchScores(client, { program = NETWORKS.alphanet.program,
     if (!s) continue;
     if (puzzleId !== undefined && s.puzzle !== puzzleId) continue;
     s.slot = ev.slot === undefined ? null : BigInt(ev.slot);
+    if (fromSlot && s.slot !== null && s.slot < fromSlot) continue;
     s.eventId = ev.id;
     s.signature = fmtSignature(ev.transactionSignature);
     out.push(s);
@@ -407,13 +414,13 @@ export async function fetchScores(client, { program = NETWORKS.alphanet.program,
   return out;
 }
 
-// one row per distinct submitted solution (solver + machine bytes); lower sum
-// wins, earlier slot breaks ties. A solver who submits three different machines
-// for one product holds three rows — the record is of solutions, not people.
+// one row per distinct solution (puzzle + machine bytes), credited to whoever
+// submitted it FIRST — a copy of an existing solution earns nothing; lower sum
+// wins, earlier slot breaks ties.
 export function rankScores(scores) {
   const seen = new Map();
   for (const s of scores) {
-    const k = s.puzzle + ':' + s.solver + ':' + bytesToHex(s.machine);
+    const k = s.puzzle + ':' + bytesToHex(s.machine);
     const b = seen.get(k);
     if (!b || (s.slot !== null && b.slot !== null && s.slot < b.slot)) seen.set(k, s);
   }

@@ -39,7 +39,9 @@ thru program create <seed> build/thruvm/bin/gw_verifier_c.bin
 ```
 
 Deployed addresses live in `contract/program/DEPLOYMENTS.md`; the client reads
-the current one from `client/gw-chain.js` (`NETWORKS.alphanet.program`).
+the current one from `client/gw-chain.js` (`NETWORKS.alphanet.program`). A second
+copy of the program, `NETWORKS.alphanet.testProgram`, exists for automated tests:
+point a test at it so test runs never land on the public record.
 
 ## Submit a solution, read the record
 
