@@ -1986,24 +1986,34 @@
     rec.fx.reset(rsim.state);
 
     const gif = G.GIFEncoder();
-    let palette = null, frames = 0, ph = 1, ended = false;
-    // one frame in, one frame encoded: the RGBA never piles up
+    let palette = null, prevIdx = null, frames = 0, ph = 1, ended = false;
+    // one frame in, one frame encoded: the RGBA never piles up. After the first frame
+    // only the pixels that changed are written — the rest are transparent over a frame
+    // that is never disposed — which is what keeps a mostly-still board small.
     const encodeFrame = (delay) => {
       const rgba = surf.ctx.getImageData(0, 0, surf.w, surf.h).data;
       if (!palette) {
         // one palette for the whole animation, quantized off frame 1 — but the verdict
         // badge only appears on the LAST frame, so its inks are reserved by hand or
-        // they would be snapped to whatever brown the opening frame happened to have
-        palette = G.quantize(rgba, 256 - STAMP_INKS.length);
+        // they would be snapped to whatever brown the opening frame happened to have.
+        // The last slot is the transparency key: a colour the board never shows.
+        palette = G.quantize(rgba, 255 - STAMP_INKS.length);
         for (const ink of STAMP_INKS) {
           if (!palette.some(c => c[0] === ink[0] && c[1] === ink[1] && c[2] === ink[2])) palette.push(ink);
         }
-        gif.writeFrame(G.applyPalette(rgba, palette), surf.w, surf.h,
-          { palette: palette, delay: delay, repeat: 0, first: true });
-      } else {
-        // no per-frame palette: every later frame reads the global colour table
-        gif.writeFrame(G.applyPalette(rgba, palette), surf.w, surf.h, { delay: delay, first: false });
+        palette.push([255, 0, 255]);
+        prevIdx = G.applyPalette(rgba, palette);
+        gif.writeFrame(prevIdx, surf.w, surf.h,
+          { palette: palette, delay: delay, repeat: 0, first: true, dispose: 1 });
+        return;
       }
+      const T = palette.length - 1;
+      const idx = G.applyPalette(rgba, palette);
+      const out = new Uint8Array(idx.length);
+      for (let i = 0; i < idx.length; i++) out[i] = idx[i] === prevIdx[i] ? T : idx[i];
+      prevIdx = idx;
+      gif.writeFrame(out, surf.w, surf.h,
+        { delay: delay, first: false, transparent: true, transparentIndex: T, dispose: 1 });
     };
     const yieldSlice = () => new Promise(r => setTimeout(r, 0));
 

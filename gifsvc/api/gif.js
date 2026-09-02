@@ -81,5 +81,13 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=31536000, immutable');
   res.setHeader('X-GW-Verdict', out.fault ? 'rejected:' + out.fault.kind : out.sum !== null ? 'sum:' + out.sum : 'unfinished');
   res.setHeader('Content-Type', kind === 'png' ? 'image/png' : 'image/gif');
-  res.send(kind === 'png' ? out.png : out.gif);
+  const body = kind === 'png' ? out.png : out.gif;
+  res.setHeader('Content-Length', String(body.length));
+  // streamed, so a long run's GIF is not subject to the platform's response cap
+  if (typeof res.write === 'function') {
+    for (let i = 0; i < body.length; i += 65536) res.write(body.subarray(i, i + 65536));
+    res.end();
+  } else res.send(body);
 }
+
+export const config = { supportsResponseStreaming: true, maxDuration: 60 };

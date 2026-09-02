@@ -23,7 +23,9 @@ vendored in `fonts/` (Courier Prime and EB Garamond, both OFL).
 
 Responses are immutable per code and cached at the CDN for a year, so a solution
 is rendered once. A render takes a few seconds for a typical run; the function
-allows 60.
+allows 60. Frames after the first store only the pixels that changed, so a
+whole run is well under 2 MB (courier 0.6 MB, goldladder 1.3 MB), and the body
+is streamed so the platform's response cap does not apply.
 
 ## Local
 

@@ -10,6 +10,7 @@ http.createServer(async (req, res) => {
     status(c) { res.statusCode = c; return shim; },
     setHeader(k, v) { res.setHeader(k, v); return shim; },
     send(b) { res.end(b); },
+    write(b) { res.write(b); }, end() { res.end(); },
   };
   const t = Date.now();
   await handler(req, shim);
