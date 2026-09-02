@@ -218,7 +218,7 @@
       } else {
         const seg = ops.slice(segStart);      // frozen once per run of consecutive markers
         while (i < src.length && src[i] === 'R') {
-          cells.push({ src: i, op: '⟲', ghost: false, engine: null });
+          cells.push({ src: i, op: '↪', ghost: false, engine: null });
           for (const op of seg) { cells.push({ src: null, op, ghost: true, engine: ops.length }); ops.push(op); }
           i++;
         }

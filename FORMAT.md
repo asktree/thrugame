@@ -43,13 +43,13 @@ per arm, in submission order:
   bytes  ops, 3 bits each, packed little-endian within bytes
 ```
 
-Opcodes: `G`=0 `D`=1 `↻`=2 `↺`=3 `↷`=4 `↶`=5 `·`=6 `⟲`=7.
+Opcodes: `G`=0 `D`=1 `↻`=2 `↺`=3 `↷`=4 `↶`=5 `·`=6 `↪`=7.
 
-`⟲` is the repeat marker, stored symbolically for legibility. Before simulation
+`↪` is the repeat marker, stored symbolically for legibility. Before simulation
 every consumer applies the **normative expansion**: a marker expands to a copy of
 the ops accumulated since the end of the previous repeat block; consecutive
 markers each copy that same frozen segment; after a run of markers the segment
-origin advances past the copies. (`G ↻ ⟲ ↺ ⟲` runs as `G ↻ G ↻ ↺ ↺`.) The
+origin advances past the copies. (`G ↻ ↪ ↺ ↪` runs as `G ↻ G ↻ ↺ ↺`.) The
 tape-length cap applies to the authored ops and to the expansion alike.
 
 Arm **order is preserved** — submission order is the tournament tiebreak

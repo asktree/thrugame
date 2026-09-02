@@ -16,8 +16,8 @@
  *     u8     initial angle (0..5)
  *     varint delay block count
  *     varint tape length
- *     tape   ops packed 3 bits each (G D ↻ ↺ ↷ ↶ · ⟲ -> 0..7), little-endian within bytes.
- *            Code 7 (⟲, 'R') is the repeat marker: kept symbolic on the wire so shared
+ *     tape   ops packed 3 bits each (G D ↻ ↺ ↷ ↶ · ↪ -> 0..7), little-endian within bytes.
+ *            Code 7 (↪, 'R') is the repeat marker: kept symbolic on the wire so shared
  *            solutions stay legible, expanded by the engine before simulation.
  *
  * Share strings are base64url of those bytes. Arm ids are not serialized —

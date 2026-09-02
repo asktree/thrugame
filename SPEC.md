@@ -136,7 +136,7 @@ carried, turned, or re-planted.
 | `·` | WAIT | hold for one tick |
 | `»` | DELAY | start-of-tape only; holds one tick on the first pass, then vanishes from the loop |
 
-A tape may also carry the **repeat marker** `⟲` (Opus Magnum's repeat). It is not
+A tape may also carry the **repeat marker** `↪` (Opus Magnum's repeat). It is not
 an instruction the machine executes — before simulation the engine expands each
 marker into a copy of the ops accumulated since the end of the previous repeat
 block (consecutive markers copy that same frozen segment; after a run of markers
