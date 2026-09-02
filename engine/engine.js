@@ -83,21 +83,21 @@
   const THRESH2_AA = 98362;   // atom-atom:  3*(58/82)^2 = 1.5008923... -> round(98362.48)
   const THRESH2_AB = 70205;   // atom-base:  3*(49/82)^2 = 1.0712374... -> round(70204.61)
   const THRESH2_BB = 46784;   // base-base:  3*(40/82)^2 = 0.7138608... -> round(46783.58)
-  // Sweep instants land on multiples of 60°/64 = 0.9375°, so all trigonometry is
-  // table lookup at that granularity. 65 entries cover one sextant, 0°..60°:
-  // COS[k] = round(cos(k*0.9375°) * 65536), SIN[k] = round(sin(k*0.9375°) * 65536).
-  const COS = [65536, 65527, 65501, 65457, 65396, 65317, 65220, 65107, 64975, 64827, 64661, 64477, 64277, 64059, 63824, 63572, 63303, 63017, 62714, 62394, 62058, 61705, 61336, 60950, 60547, 60129, 59694, 59244, 58777, 58295, 57798, 57284, 56756, 56212, 55653, 55080, 54491, 53888, 53271, 52639, 51993, 51333, 50660, 49973, 49273, 48559, 47832, 47093, 46341, 45577, 44800, 44011, 43211, 42399, 41576, 40741, 39896, 39040, 38173, 37297, 36410, 35513, 34607, 33692, 32768];
-  const SIN = [0, 1072, 2144, 3216, 4286, 5356, 6424, 7490, 8554, 9616, 10676, 11732, 12785, 13835, 14882, 15924, 16962, 17995, 19024, 20048, 21066, 22078, 23085, 24086, 25080, 26067, 27047, 28020, 28986, 29944, 30893, 31835, 32768, 33692, 34607, 35513, 36410, 37297, 38173, 39040, 39896, 40741, 41576, 42399, 43211, 44011, 44800, 45577, 46341, 47093, 47832, 48559, 49273, 49973, 50660, 51333, 51993, 52639, 53271, 53888, 54491, 55080, 55653, 56212, 56756];
-  const ANG_TURN = 384;                           // angle units in a full turn
-  const ANG_DIR = 64;                             // angle units in one lattice direction (60°)
+  // Sweep instants land on multiples of 60°/128 = 0.46875°, so all trigonometry is
+  // table lookup at that granularity. 129 entries cover one sextant, 0°..60°:
+  // COS[k] = round(cos(k*0.46875°) * 65536), SIN[k] = round(sin(k*0.46875°) * 65536).
+  const COS = [65536, 65534, 65527, 65516, 65501, 65481, 65457, 65429, 65396, 65358, 65317, 65271, 65220, 65166, 65107, 65043, 64975, 64903, 64827, 64746, 64661, 64571, 64477, 64379, 64277, 64170, 64059, 63944, 63824, 63700, 63572, 63440, 63303, 63162, 63017, 62868, 62714, 62556, 62394, 62228, 62058, 61884, 61705, 61522, 61336, 61145, 60950, 60751, 60547, 60340, 60129, 59914, 59694, 59471, 59244, 59013, 58777, 58538, 58295, 58048, 57798, 57543, 57284, 57022, 56756, 56486, 56212, 55935, 55653, 55368, 55080, 54787, 54491, 54191, 53888, 53581, 53271, 52957, 52639, 52318, 51993, 51665, 51333, 50998, 50660, 50318, 49973, 49624, 49273, 48917, 48559, 48197, 47832, 47464, 47093, 46719, 46341, 45960, 45577, 45190, 44800, 44407, 44011, 43613, 43211, 42806, 42399, 41989, 41576, 41160, 40741, 40320, 39896, 39469, 39040, 38608, 38173, 37736, 37297, 36854, 36410, 35963, 35513, 35062, 34607, 34151, 33692, 33231, 32768];
+  const SIN = [0, 536, 1072, 1608, 2144, 2680, 3216, 3751, 4286, 4821, 5356, 5890, 6424, 6957, 7490, 8022, 8554, 9085, 9616, 10146, 10676, 11204, 11732, 12259, 12785, 13311, 13835, 14359, 14882, 15403, 15924, 16444, 16962, 17479, 17995, 18510, 19024, 19537, 20048, 20557, 21066, 21573, 22078, 22582, 23085, 23586, 24086, 24583, 25080, 25574, 26067, 26558, 27047, 27535, 28020, 28504, 28986, 29466, 29944, 30420, 30893, 31365, 31835, 32303, 32768, 33231, 33692, 34151, 34607, 35062, 35513, 35963, 36410, 36854, 37297, 37736, 38173, 38608, 39040, 39469, 39896, 40320, 40741, 41160, 41576, 41989, 42399, 42806, 43211, 43613, 44011, 44407, 44800, 45190, 45577, 45960, 46341, 46719, 47093, 47464, 47832, 48197, 48559, 48917, 49273, 49624, 49973, 50318, 50660, 50998, 51333, 51665, 51993, 52318, 52639, 52957, 53271, 53581, 53888, 54191, 54491, 54787, 55080, 55368, 55653, 55935, 56212, 56486, 56756];
+  const ANG_TURN = 768;                           // angle units in a full turn
+  const ANG_DIR = 128;                            // angle units in one lattice direction (60°)
   const modA = (u) => ((u % ANG_TURN) + ANG_TURN) % ANG_TURN;
-  // trigQ(u) = [cos, sin] in Q16.16 of the angle u*0.9375°, u any integer.
+  // trigQ(u) = [cos, sin] in Q16.16 of the angle u*0.46875°, u any integer.
   // The sextant (the whole-lattice-direction part) is applied as an exact 60°
   // rotation using cos60 = 1/2 and sin60 = sqrt(3)/2 = HALF_SQRT3; only the
-  // remaining 0..59.0625° reads the table.
+  // remaining 0..59.53125° reads the table.
   function trigQ(u) {
     u = modA(u);
-    const s = fdiv(u, ANG_DIR), k = u - s * ANG_DIR;   // s in 0..5, k in 0..63
+    const s = fdiv(u, ANG_DIR), k = u - s * ANG_DIR;   // s in 0..5, k in 0..127
     const c = COS[k], n = SIN[k];
     switch (s) {
       case 0: return [c, n];
@@ -129,13 +129,18 @@
     const dx = ax - bx, dy = ay - by;
     return fmul(dx, dx) + fmul(dy, dy) < t2;
   }
-  // How many sweep instants a tick gets — Opus Magnum's rule. d is the largest
-  // rotation radius in the tick: the farthest any moving atom ends up from the
-  // pivot it turned about, in hex steps (hexicab). The game's increment is
-  // 0.25 / 2^round(log2 d), at most 0.125, i.e. N = 4 * 2^round(log2 d) instants,
-  // at least 8. Capped at 64, the trig table's resolution (out of reach anyway:
-  // no machine within the caps has a rotation radius above ~15).
-  const K_MAX = 64;
+  // How many sweep instants a tick gets — Opus Magnum's rule, extended to nested
+  // motion. In the game d is the largest rotation radius of the tick (how far a
+  // moving atom ends up from the pivot it turned about, in hex steps); the
+  // increment is 0.25 / 2^round(log2 d), at most 0.125, i.e. N = 4 * 2^round(log2 d)
+  // instants, at least 8. Our arms mount on arms and grab arms, so an atom can
+  // ride several turning joints at once; its d is the SUM of its distances from
+  // every joint that turns it (an upper bound on how far it travels, so the
+  // per-instant step stays under the game's). One joint: the game's rule exactly.
+  // Capped at 128, the trig table's resolution — at the part caps the sum tops
+  // out near 45, where 128 instants still move nothing more per instant than the
+  // game's own worst case.
+  const K_MAX = 128;
   function roundLog2(d) {                 // round(log2(d)), integer d >= 1, exactly
     let f = 0;
     while ((2 << f) <= d) f++;            // f = floor(log2 d)
@@ -188,8 +193,8 @@
     projectors: 20, purifiers: 20, animismus: 20, disposals: 0 };
   // RADIUS (atoms) and BASE_RADIUS are render/export only, in pitches — the simulation
   // compares against THRESH2_*, their normative Q16.16 squared-sum forms. The number of
-  // sweep instants per tick is samplesFor(...) (8..64), so every sweep angle is an exact
-  // multiple of 60/64 = 0.9375°, hence the 65-entry COS/SIN table.
+  // sweep instants per tick is samplesFor(...) (8..128), so every sweep angle is an exact
+  // multiple of 60/128 = 0.46875°, hence the 129-entry COS/SIN table.
   const RADIUS = 29 / 82, BASE_RADIUS = 20 / 82, K_SAMPLES = K_MAX;
   const OPS = 'GD+-PQWR';
   const DEFAULT_CAPS = { parts: 24, elbowDepth: 4, tapeLen: 64, atoms: 64, cycles: 4000, goal: 9 };
@@ -425,9 +430,9 @@
     // -- fractional kinematics, DETERMINISTIC (Q16.16), valid during a cached motion --
     // These are the simulation's own kinematics: the sweep, the collision test and area
     // accrual all read them. They are sampled only at the N instants f = k/N of a tick,
-    // N dividing 64, so every angle is an exact multiple of 60°/64. Angles are therefore
+    // N dividing 128, so every angle is an exact multiple of 60°/128. Angles are therefore
     // carried as INTEGER counts of that unit ("rotU"/"dU"/"u"), never radians: a float
-    // dF of (n + m*k/N) is exactly the integer 64n + m*u with u = 64k/N here.
+    // dF of (n + m*k/N) is exactly the integer 128n + m*u with u = 128k/N here.
     // M = S.motion: {angle0:{id:θ}, delta:{id:±1|0}, pivot:{id:±1|0}, carryRel0:{id}, snapshot atoms}
     function poseQ(arm, u, M) {
       if (arm.mount.elbow) {
@@ -648,32 +653,26 @@
 
       // 3b. sweep — N sample instants, full pair check + area accumulation
       S.motion = M;
-      // How many instants: Opus Magnum's rule on the largest rotation radius of the
-      // tick. For every held atom, walk its carrier chain to the ground: if any joint
-      // on the way turns, the radius is measured from the root base; if only the
-      // gripper pivots, from that gripper. (see samplesFor)
+      // How many instants: Opus Magnum's rule on the tick's rotation radius (see
+      // samplesFor). For every held atom, walk its support chain to the ground and add
+      // up its final distance from every joint that turns it: an arm that turns
+      // swings it about that arm's base; a gripper that pivots (the holder's own, or a
+      // carrier's gripper holding a tower on the way) swings it about that gripper.
       let maxDist = 1;
       const hexicab = (c) => Math.max(Math.abs(c[0]), Math.abs(c[1]), Math.abs(c[0] + c[1]));
       for (const m of M.atoms) {
         if (!m.holder) continue;
         const atom = S.atoms.find(x => x.id === m.id);
         if (!atom) continue;
-        const holder = byId[m.holder.armId];
-        // turn: a joint anywhere in the chain turns (the whole chain swings about the
-        // root base); selfPivot: only the holder's own gripper pivots the molecule
-        let arm = holder, turn = false;
+        let x = byId[m.holder.armId], viaGrip = m.holder.grip, d = 0;
         for (;;) {
-          if (M.delta[arm.id] || (arm !== holder && M.pivot[arm.id])) turn = true;
-          if (arm.mount.elbow) arm = byId[arm.mount.elbow.parent];
-          else if (M.carriers0[arm.id] && M.carriers0[arm.id].length) arm = byId[M.carriers0[arm.id][0].arm];
+          if (M.delta[x.id]) d += hexicab(sub(atom.cell, pose(x).pos));
+          if (M.pivot[x.id] && viaGrip !== null) d += hexicab(sub(atom.cell, handCell(x, viaGrip)));
+          if (x.mount.elbow) { x = byId[x.mount.elbow.parent]; viaGrip = null; }
+          else if (M.carriers0[x.id] && M.carriers0[x.id].length) { const c = M.carriers0[x.id][0]; viaGrip = c.grip; x = byId[c.arm]; }
           else break;
         }
-        const selfPivot = !!M.pivot[holder.id];
-        if (!turn && !selfPivot) continue;                // nothing rotates this atom
-        let pivot;
-        if (turn) pivot = M.basePos0[arm.id];
-        else { const h = handQ(holder, m.holder.grip, ANG_DIR, M); pivot = axialRoundQ(h.x, h.y); }
-        maxDist = Math.max(maxDist, hexicab(sub(atom.cell, pivot)));
+        maxDist = Math.max(maxDist, d);
       }
       const N = samplesFor(maxDist), step = ANG_DIR / N;
       // Angle u = k*step is the whole sweep instant; every position below is Q16.16.

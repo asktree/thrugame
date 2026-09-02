@@ -35,6 +35,10 @@ static int64_t price_of(uint8_t grippers) {
 #define GRABBER_COST 5   /* the grabber head's share of an arm's price */
 
 static int32_t mod6(int32_t n) { return ((n % 6) + 6) % 6; }
+static int32_t hexicab(int32_t q, int32_t r) {
+  int32_t a = q < 0 ? -q : q, b = r < 0 ? -r : r, c = q + r < 0 ? -(q + r) : q + r;
+  return a > b ? (a > c ? a : c) : (b > c ? b : c);
+}
 
 static int is_metal(uint8_t e) { return e >= GW_EL_PB && e <= GW_EL_AU; }
 static int is_cardinal(uint8_t e) { return e >= GW_EL_AI && e <= GW_EL_WA; }
@@ -669,33 +673,32 @@ void gw_sim_step(gw_sim_t *S) {
     S->atoms[a].r = rr + xfs[mol_of[a]].br;
   }
 
-  /* 3b. sweep — N sample instants (Opus Magnum's rule on the largest rotation
-     radius of the tick, see the oracle), full pair check + area accumulation */
+  /* 3b. sweep — N sample instants (Opus Magnum's rule on the tick's rotation
+     radius, extended to nested motion: for every held atom, the SUM of its final
+     distances from every joint that turns it — see the oracle), full pair check +
+     area accumulation */
   int32_t max_dist = 1;
   for (int a = 0; a < M->natoms; a++) {
     if (M->atoms[a].holder_arm < 0) continue;
-    int slot = -1;
-    for (int i = 0; i < S->natoms; i++) if (S->atoms[i].id == M->atoms[a].id) { slot = i; break; }
+    int slot = atom_slot_by_id(S, M->atoms[a].id);
     if (slot < 0) continue;
-    int holder = M->atoms[a].holder_arm, ai = holder, turn = 0;
+    int x = M->atoms[a].holder_arm, via_grip = M->atoms[a].holder_grip;
+    int32_t d = 0;
     for (;;) {
-      if (M->delta[ai] || (ai != holder && M->pivot[ai])) turn = 1;
-      if (S->arms[ai].is_elbow) ai = S->arms[ai].parent;
-      else if (M->ncarriers0[ai]) ai = M->carriers0[ai][0].arm;
+      if (M->delta[x]) {
+        pose_t p = pose_of(S, x);
+        d += hexicab(S->atoms[slot].q - p.q, S->atoms[slot].r - p.r);
+      }
+      if (M->pivot[x] && via_grip >= 0) {
+        int32_t hq, hr, hd;
+        hand_cell(S, x, via_grip, &hq, &hr, &hd);
+        d += hexicab(S->atoms[slot].q - hq, S->atoms[slot].r - hr);
+      }
+      if (S->arms[x].is_elbow) { x = S->arms[x].parent; via_grip = -1; }
+      else if (M->ncarriers0[x]) { via_grip = M->carriers0[x][0].grip; x = M->carriers0[x][0].arm; }
       else break;
     }
-    if (!turn && !M->pivot[holder]) continue;         /* nothing rotates this atom */
-    int32_t pq, pr;
-    if (turn) { pq = M->base_q0[ai]; pr = M->base_r0[ai]; }
-    else {                                             /* a lone pivot swings about the gripper */
-      int32_t hd;
-      hand_cell(S, holder, M->atoms[a].holder_grip, &pq, &pr, &hd);
-    }
-    int32_t dq = S->atoms[slot].q - pq, dr = S->atoms[slot].r - pr;
-    int32_t h = dq < 0 ? -dq : dq;
-    if ((dr < 0 ? -dr : dr) > h) h = dr < 0 ? -dr : dr;
-    if ((dq + dr < 0 ? -(dq + dr) : dq + dr) > h) h = dq + dr < 0 ? -(dq + dr) : dq + dr;
-    if (h > max_dist) max_dist = h;
+    if (d > max_dist) max_dist = d;
   }
   const int32_t nsamp = gw_samples_for(max_dist), ustep = GW_ANG_DIR / nsamp;
   obj_t *objs = scratch_of(S)->objs;

@@ -382,47 +382,47 @@ function lcg(seed) {
   check('normative literals: SQRT3/HALF_SQRT3/THRESH2_* unchanged',
     Q.SQRT3 === 113512 && Q.HALF_SQRT3 === 56756
     && Q.THRESH2_AA === 98362 && Q.THRESH2_AB === 70205 && Q.THRESH2_BB === 46784
-    && Q.ONE === 65536 && Q.ANG_TURN === 384 && Q.ANG_DIR === 64 && Q.K_MAX === 64);
+    && Q.ONE === 65536 && Q.ANG_TURN === 768 && Q.ANG_DIR === 128 && Q.K_MAX === 128);
   check('sample count: Opus Magnum\'s increment rule, exact integer log2 rounding',
-    [1, 2, 3, 4, 5, 6, 8, 11, 12, 15, 16, 22, 23, 40].map(Q.samplesFor).join() === '8,8,16,16,16,32,32,32,64,64,64,64,64,64'
+    [1, 2, 3, 4, 5, 6, 8, 11, 12, 15, 16, 22, 23, 40].map(Q.samplesFor).join() === '8,8,16,16,16,32,32,32,64,64,64,64,128,128'
     && [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 22, 23].map(Q.roundLog2).join() === '0,1,2,2,2,3,3,3,3,4,4,5');
   check('normative literals: HALF_SQRT3 is exactly SQRT3/2 (no rounding drift)',
     Q.HALF_SQRT3 * 2 === Q.SQRT3 && fdiv(Q.SQRT3, 2) === Q.HALF_SQRT3);
-  check('trig table: 65 entries spanning 0..60 degrees, anchored at the exact corners',
-    Q.COS.length === 65 && Q.SIN.length === 65
+  check('trig table: 129 entries spanning 0..60 degrees, anchored at the exact corners',
+    Q.COS.length === 129 && Q.SIN.length === 129
     && Q.COS[0] === ONE && Q.SIN[0] === 0
-    && Q.COS[64] === ONE / 2 && Q.SIN[64] === Q.HALF_SQRT3
-    && Q.COS[32] === Q.HALF_SQRT3 && Q.SIN[32] === ONE / 2);
+    && Q.COS[128] === ONE / 2 && Q.SIN[128] === Q.HALF_SQRT3
+    && Q.COS[64] === Q.HALF_SQRT3 && Q.SIN[64] === ONE / 2);
   {
-    // sin(k) = cos(90° - k) = cos(96 - k), reachable in-table only for k >= 32
+    // sin(k) = cos(90° - k) = cos(192 - k), reachable in-table only for k >= 64
     let ok = true;
-    for (let k = 32; k <= 64; k++) if (Q.SIN[k] !== Q.COS[96 - k]) ok = false;
+    for (let k = 64; k <= 128; k++) if (Q.SIN[k] !== Q.COS[192 - k]) ok = false;
     let maxErr = 0;
-    for (let k = 0; k <= 64; k++) {
+    for (let k = 0; k <= 128; k++) {
       maxErr = Math.max(maxErr, Math.abs(fmul(Q.COS[k], Q.COS[k]) + fmul(Q.SIN[k], Q.SIN[k]) - ONE));
     }
-    check('trig table: complementary entries agree and every entry is unit-norm within 2 ulps (pinned)',
-      ok && maxErr === 2, 'maxErr=' + maxErr);
+    check('trig table: complementary entries agree and every entry is unit-norm within 3 ulps (pinned)',
+      ok && maxErr === 3, 'maxErr=' + maxErr);
   }
 }
 
 // ---- trigQ: anchors, periodicity, norm, and the symmetries that actually hold ----
 {
   const { trigQ, fmul, ONE, ANG_TURN } = Q;
-  const NORM_MAX_ERR = 5, NORM_ATTAINED = 4;   // measured over the 384 angles; re-pin if the table changes
+  const NORM_MAX_ERR = 5, NORM_ATTAINED = 8;   // measured over the 384 angles; re-pin if the table changes
   const same = (a, b) => a[0] === b[0] && a[1] === b[1];
   check('trigQ: exact anchor at u=0 (0 degrees)', same(trigQ(0), [65536, 0]), JSON.stringify(trigQ(0)));
-  check('trigQ: exact anchor at u=32 (30 degrees)', same(trigQ(32), [56756, 32768]), JSON.stringify(trigQ(32)));
-  check('trigQ: exact anchor at u=64 (60 degrees)', same(trigQ(64), [32768, 56756]), JSON.stringify(trigQ(64)));
-  check('trigQ: exact anchor at u=96 (90 degrees)', same(trigQ(96), [0, 65536]), JSON.stringify(trigQ(96)));
-  check('trigQ: exact anchor at u=192 (180 degrees)', same(trigQ(192), [-65536, 0]), JSON.stringify(trigQ(192)));
-  check('trigQ: exact anchor at u=288 (270 degrees)', same(trigQ(288), [0, -65536]), JSON.stringify(trigQ(288)));
+  check('trigQ: exact anchor at u=64 (30 degrees)', same(trigQ(64), [56756, 32768]), JSON.stringify(trigQ(32)));
+  check('trigQ: exact anchor at u=128 (60 degrees)', same(trigQ(128), [32768, 56756]), JSON.stringify(trigQ(64)));
+  check('trigQ: exact anchor at u=192 (90 degrees)', same(trigQ(192), [0, 65536]), JSON.stringify(trigQ(96)));
+  check('trigQ: exact anchor at u=384 (180 degrees)', same(trigQ(384), [-65536, 0]), JSON.stringify(trigQ(192)));
+  check('trigQ: exact anchor at u=576 (270 degrees)', same(trigQ(576), [0, -65536]), JSON.stringify(trigQ(288)));
   {
     let ok = true, ex = null;
-    for (let u = -1152; u <= 1152 && ok; u++) {
+    for (let u = -2304; u <= 2304 && ok; u++) {
       if (!same(trigQ(u), trigQ(u + ANG_TURN)) || !same(trigQ(u), trigQ(u - ANG_TURN))) { ok = false; ex = 'u=' + u; }
     }
-    check('trigQ: exactly 384-periodic over u in [-1152, 1152]', ok, ex);
+    check('trigQ: exactly 768-periodic over u in [-2304, 2304]', ok, ex);
   }
   {
     let mag = 0;
@@ -430,7 +430,7 @@ function lcg(seed) {
     check('trigQ: never exceeds unit magnitude', mag === ONE, 'max=' + mag);
   }
   {
-    // measured over all 384 angles: the worst |cos^2 + sin^2 - 1| in ulps, and how
+    // measured over all 768 angles: the worst |cos^2 + sin^2 - 1| in ulps, and how
     // many angles attain it (pinned: a table or arithmetic change must show here)
     let maxErr = 0, attained = 0;
     for (let u = 0; u < ANG_TURN; u++) {
@@ -449,21 +449,21 @@ function lcg(seed) {
     return m;
   };
   {
-    const d = dev(u => [trigQ(u + 192), [-trigQ(u)[0], -trigQ(u)[1]]]);
-    check('trigQ: point reflection trigQ(u+192) == -trigQ(u) is EXACT', d === 0, 'maxdev=' + d);
+    const d = dev(u => [trigQ(u + 384), [-trigQ(u)[0], -trigQ(u)[1]]]);
+    check('trigQ: point reflection trigQ(u+384) == -trigQ(u) is EXACT', d === 0, 'maxdev=' + d);
   }
   {
     const d = dev(u => [trigQ(-u), [trigQ(u)[0], -trigQ(u)[1]]]);
     check('trigQ: even/odd reflection trigQ(-u) == [c,-s] holds within 2 ulps', d === 2, 'maxdev=' + d);
   }
   {
-    const d = dev(u => [trigQ(192 - u), [-trigQ(u)[0], trigQ(u)[1]]]);
-    check('trigQ: reflection trigQ(192-u) == [-c,s] holds within 2 ulps', d === 2, 'maxdev=' + d);
+    const d = dev(u => [trigQ(384 - u), [-trigQ(u)[0], trigQ(u)[1]]]);
+    check('trigQ: reflection trigQ(384-u) == [-c,s] holds within 2 ulps', d === 2, 'maxdev=' + d);
   }
   {
-    const d = Math.max(dev(u => [trigQ(u + 96), [-trigQ(u)[1], trigQ(u)[0]]]),
-      dev(u => [trigQ(96 - u), [trigQ(u)[1], trigQ(u)[0]]]));
-    check('trigQ: quarter-turn swaps cos/sin within 2 ulps', d === 2, 'maxdev=' + d);
+    const d = Math.max(dev(u => [trigQ(u + 192), [-trigQ(u)[1], trigQ(u)[0]]]),
+      dev(u => [trigQ(192 - u), [trigQ(u)[1], trigQ(u)[0]]]));
+    check('trigQ: quarter-turn swaps cos/sin within 3 ulps (pinned)', d === 3, 'maxdev=' + d);
   }
 }
 
@@ -540,11 +540,11 @@ function lcg(seed) {
     let idOk = true, negOk = true;
     for (let q = -20; q <= 20; q++) for (let r = -20; r <= 20; r++) {
       const p = toPxQ(q, r);
-      const a = rotQ(p[0], p[1], 0), b = rotQ(p[0], p[1], 192);
+      const a = rotQ(p[0], p[1], 0), b = rotQ(p[0], p[1], 384);
       if (a[0] !== p[0] || a[1] !== p[1]) idOk = false;
       if (b[0] !== -p[0] || b[1] !== -p[1]) negOk = false;
     }
-    check('geometry: rotQ(u=0) is the identity and rotQ(u=192) negates exactly', idOk && negOk);
+    check('geometry: rotQ(u=0) is the identity and rotQ(u=384) negates exactly', idOk && negOk);
   }
 }
 

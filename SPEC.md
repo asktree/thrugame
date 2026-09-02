@@ -191,26 +191,32 @@ not a collision.
 
 ### Sample count
 
-Let *d* be the rotation radius of the tick: for every held atom, walk its carrier
-chain to the ground; if any joint on the way turns, measure from the root base cell to
-the atom's final cell, if only its gripper pivots, measure from that gripper's final
-cell; take the largest such distance in hex steps (hexicab), at least 1. Then
+Let *d* be the rotation radius of the tick. In Opus Magnum an atom turns about one
+pivot, and *d* is its final distance from that pivot in hex steps (hexicab). Here arms
+mount on arms and grab arms, so an atom may ride several turning joints at once: for
+every held atom, walk its support chain to the ground and **add up** its final distance
+from every joint that turns it — an arm that turns swings it about that arm's base; a
+gripper that pivots (its own holder's, or a carrier's gripper holding a tower on the
+way) swings it about that gripper. The sum bounds how far the atom travels, so the
+per-instant step never exceeds the game's; with one turning joint it is the game's
+rule exactly. Take the largest such sum over all held atoms, at least 1. Then
 
-    N = 4 · 2^round(log2 d), at least 8, at most 64
+    N = 4 · 2^round(log2 d), at least 8, at most 128
 
 (the game's collision increment 0.25 / 2^round(log2 d), capped at 0.125). So d ≤ 2
-gives 8 instants, 3–5 gives 16, 6–11 gives 32, 12 and up gives 64; the cap is out of
-reach for any machine within the caps (§12). round(log2 d) is evaluated exactly in
-integers: the exponent rounds up when d² ≥ 2^(2·floor(log2 d)+1).
+gives 8 instants, 3–5 gives 16, 6–11 gives 32, 12–22 gives 64, 23 and up gives 128.
+At the part caps (§12) the sum tops out near 45, where 128 instants still move nothing
+farther per instant than the game's own worst case. round(log2 d) is evaluated exactly
+in integers: the exponent rounds up when d² ≥ 2^(2·floor(log2 d)+1).
 
 ### Deterministic arithmetic
 
 The sweep is defined over **Q16.16 fixed-point integers**, not real numbers: every
 value is an integer equal to round(real · 65536), every product is descaled by
 **floor** division, and all trigonometry is table lookup. Because one direction step
-is 60° and N divides 64, every angle a sample instant can ask about is an exact
-multiple of 60°/64 = 0.9375° — angles are integers counting that unit, and a
-65-entry cos/sin table for 0°–60° (extended by exact sextant rotations,
+is 60° and N divides 128, every angle a sample instant can ask about is an exact
+multiple of 60°/128 = 0.46875° — angles are integers counting that unit, and a
+129-entry cos/sin table for 0°–60° (extended by exact sextant rotations,
 cos 60° = ½ and sin 60° = √3/2) covers all of them.
 
 The constants are **normative** — a verifier copies the literals, never recomputes
@@ -220,7 +226,7 @@ them from a math library:
 - squared collision thresholds, one pitch being √3 px so T2 = round(3·(ra+rb)²·65536):
   `THRESH2_AA = 98362` (atom–atom), `THRESH2_AB = 70205` (atom–base),
   `THRESH2_BB = 46784` (base–base). The comparison is squared distance < T2.
-- the `COS`/`SIN` tables, `round(cos/sin(k·0.9375°) · 65536)` for k = 0..64.
+- the `COS`/`SIN` tables, `round(cos/sin(k·0.46875°) · 65536)` for k = 0..128.
 
 Every implementation — the reference JS engine and the on-chain verifier — must
 reproduce these operations bit-for-bit in 64-bit integers; the JS engine

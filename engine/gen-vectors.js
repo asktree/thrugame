@@ -105,12 +105,12 @@ emit('');
 // ---- section 1: primitives ----
 {
   const rows = [];
-  for (let u = -64; u < 448; u++) { const t = Q.trigQ(u); rows.push(`{${u},${t[0]},${t[1]}}`); }
+  for (let u = -128; u < 896; u++) { const t = Q.trigQ(u); rows.push(`{${u},${t[0]},${t[1]}}`); }
   emit(`static const struct { int32_t u; int64_t c, s; } VEC_TRIG[] = {\n  ${rows.join(', ')}\n};`);
 
   const rot = [];
   for (let i = 0; i < 96; i++) {
-    const dx = rint(-500000, 500000), dy = rint(-500000, 500000), u = rint(-500, 900);
+    const dx = rint(-500000, 500000), dy = rint(-500000, 500000), u = rint(-1000, 1800);
     const r = Q.rotQ(dx, dy, u);
     rot.push(`{${dx},${dy},${u},${r[0]},${r[1]}}`);
   }
@@ -138,7 +138,7 @@ emit('');
     let bx, by;
     if (i % 2 === 0) { bx = rint(-300000, 300000); by = rint(-300000, 300000); }
     else {
-      const u = rint(0, 383), t = Q.trigQ(u);
+      const u = rint(0, 767), t = Q.trigQ(u);
       const rr = 80300 + rint(-2000, 2000); // |d| ≈ sqrt(THRESH2_AA*ONE) ≈ 80289
       bx = ax_ + Q.fmul(rr, t[0]); by = ay + Q.fmul(rr, t[1]);
     }

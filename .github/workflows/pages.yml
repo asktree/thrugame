@@ -31,6 +31,7 @@ jobs:
           cp demo/lab.html _site/lab.html
           cp demo/editor.html _site/editor.html
           cp demo/gw-chain.js _site/gw-chain.js
+          echo greatwork.quest > _site/CNAME
       - uses: actions/configure-pages@v5
         with:
           enablement: true
