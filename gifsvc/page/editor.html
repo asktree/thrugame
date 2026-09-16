@@ -217,7 +217,13 @@
     border: 1px solid var(--line); background: rgba(241,233,214,.9); color: var(--ink);
     padding: 9px 12px 10px; pointer-events: none;
   }
-  .guide h3 { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
+  .guide h3 { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); padding-right: 22px; }
+  /* the one thing on the card that takes the pointer: its close */
+  .guide .x {
+    position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; pointer-events: auto; cursor: pointer;
+    border: 0; background: none; color: var(--ink-faint); font-family: var(--mono); font-size: 15px; line-height: 1; padding: 0;
+  }
+  .guide .x:hover { color: var(--ink); }
   .guide ol { margin: 5px 0 0 16px; padding: 0; }
   .guide li { font-size: 13px; line-height: 1.35; margin: 3px 0; color: var(--ink-dim); }
   .guide li b { font-weight: 600; color: var(--ink); }
@@ -2644,11 +2650,14 @@
     document.querySelectorAll('#tray .part[data-glyph]').forEach(el => { el.hidden = !offer.has(el.dataset.glyph); });
   }
   // the puzzle's guide, top-left of the board while editing
+  const guideClosed = new Set();   // puzzles whose guide was closed this session
   function syncGuide() {
     const el = $('guide');
     const steps = base().guide || [];
-    if (mode !== 'edit' || !steps.length) { el.hidden = true; return; }
-    el.innerHTML = `<h3>${base().name}</h3><ol>${steps.map(t => `<li>${t}</li>`).join('')}</ol>`;
+    if (mode !== 'edit' || !steps.length || guideClosed.has(key())) { el.hidden = true; return; }
+    el.innerHTML = `<h3>${base().name}</h3><button class="x" type="button" title="close this guide" aria-label="close">×</button>`
+      + `<ol>${steps.map(t => `<li>${t}</li>`).join('')}</ol>`;
+    el.querySelector('.x').addEventListener('click', () => { guideClosed.add(key()); syncGuide(); });
     el.hidden = false;
   }
   // the tutorial card: shown for the selected glyph, or the one being carried in from the tray
