@@ -196,13 +196,59 @@
   .aboutdlg li { margin: 4px 0; }
   .aboutdlg .sig { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--ink-faint); margin-top: 14px; }
 
+  .hdr-btns { display: flex; gap: 6px; }
+
+  /* the glyph tutorial: a card pinned to the board's top-right while a glyph is selected
+     or being carried in from the tray. It never takes the pointer, so a drag under it
+     is not interrupted. */
+  .glyphhelp {
+    position: absolute; top: 10px; right: 10px; width: 262px; max-width: calc(50% - 10px);
+    border: 1px solid var(--ink-dim); background: rgba(241,233,214,.94); color: var(--ink);
+    padding: 10px 12px 11px; pointer-events: none; box-shadow: 0 4px 16px rgba(42,35,24,.14);
+  }
+  .glyphhelp h3 { font-family: var(--display); font-size: 12.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--oxblood); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .glyphhelp h3.bond { color: var(--brass); }
+  .glyphhelp h3 small { font-family: var(--mono); font-size: 9.5px; font-weight: 400; letter-spacing: .08em; color: var(--ink-faint); text-transform: none; }
+  .glyphhelp p { font-size: 13.5px; line-height: 1.38; margin: 6px 0 0; }
+  .glyphhelp dl { margin: 7px 0 0; display: grid; grid-template-columns: max-content 1fr; column-gap: 8px; row-gap: 3px; }
+  .glyphhelp dt { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); padding-top: 3px; }
+  .glyphhelp dd { font-size: 13px; line-height: 1.35; margin: 0; }
+  .glyphhelp .keys { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--ink-faint); margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line-soft); line-height: 1.5; }
+  @media (max-width: 640px) { .glyphhelp { display: none !important; } }
+
+  /* how to play: a short tutorial with screenshots, then the controls reference */
+  dialog.howtodlg { width: min(720px, calc(100vw - 36px)); }
+  .howtodlg .ab { padding: 18px 22px 16px; }
+  .howtodlg h2 { margin-bottom: 4px; }
+  .howtodlg h2.ref { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .howtodlg h3 { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 14px 0 4px; }
+  .howtodlg table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.35; }
+  .howtodlg td { padding: 3px 0; border-top: 1px solid var(--line-soft); vertical-align: top; }
+  .howtodlg tr:first-child td { border-top: 0; }
+  .howtodlg td.k { width: 30%; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; color: var(--ink-dim); padding-right: 12px; white-space: nowrap; }
+  .howtodlg kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line); background: var(--parch-2); padding: 0 4px; }
+  .howtodlg .tut h3 { margin-top: 20px; }
+  .howtodlg .tut p { font-size: 15.5px; line-height: 1.45; margin: 6px 0; }
+  .howtodlg .tut b { font-weight: 600; }
+  .howtodlg .tut .ui { font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; }
+  .howtodlg .tut figure { margin: 10px 0 14px; }
+  .howtodlg .tut img { display: block; width: 100%; height: auto; border: 1px solid var(--line); background: var(--parch-2); }
+  .howtodlg .tut figcaption { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .04em; line-height: 1.5; margin-top: 5px; }
+  .howtodlg .tut table.ops { margin: 8px 0 6px; }
+  .howtodlg .tut table.ops td.k { width: 22%; font-size: 15px; color: var(--ink); letter-spacing: .08em; }
+  .howtodlg .tut table.ops td.k small { font-size: 10.5px; color: var(--ink-faint); margin-left: 6px; letter-spacing: .04em; }
+  @media (max-width: 640px) { .howtodlg .ab { padding: 14px 14px 12px; } .howtodlg .tut p { font-size: 15px; } }
+
   footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 </style>
 
 <div class="wrap">
   <header>
     <h1>Great Work!<small>Solution Editor</small></h1>
-    <button class="ctl" id="btnAbout">About</button>
+    <span class="hdr-btns">
+      <button class="ctl" id="btnHowTo">How to Play</button>
+      <button class="ctl" id="btnAbout">About</button>
+    </span>
   </header>
 
   <div class="tabs" id="tabs"></div>
@@ -223,12 +269,13 @@
     <div class="part" data-glyph="purifiers">PURIFY<small>20g</small></div>
     <div class="part" data-glyph="animismus">ANIMA<small>20g</small></div>
     <div class="part" data-glyph="disposals">DISPOSE<small>0g</small></div>
-    <span class="hint">drag parts onto the board · drag back here to remove · reagents are the puzzle's fixed pool<br>the handle aims, lengthens &amp; rotates · click a stack again for what's underneath · ctrl-z undoes<br>drop an arm on another arm's shaft to mount it: +10g · at the tip it replaces that grabber (−5g, parent turns only)</span>
+    <span class="hint">drag parts onto the board · drag back here to remove</span>
   </div>
 
   <div class="stagebox">
     <canvas id="field" width="980" height="560"></canvas>
     <div class="stamp" id="stamp"><div class="stamp-inner" id="stampInner"></div></div>
+    <aside class="glyphhelp" id="glyphHelp" hidden></aside>
   </div>
 
   <div class="bar">
@@ -281,6 +328,105 @@
     <div id="chainBody"><div class="chain-note">loading…</div></div>
   </div>
 
+  <dialog class="submitdlg howtodlg" id="howtoDlg">
+    <form method="dialog" class="ab">
+      <h2>How to Play</h2>
+      <div class="sd-note">the whole game in a couple of minutes, then every control the editor answers to</div>
+      <div class="tut">
+        <h3>The goal</h3>
+        <p>Each puzzle names a product. Build a machine that makes nine of them and it counts. The board already holds the pieces you cannot do without: the product glyph, <b>OUT</b>, and one reagent glyph for each ingredient — <b>IN·Pb</b>, <b>IN·Hg</b> and so on. A reagent glyph spawns a fresh copy of its molecule whenever its cells are empty. The product glyph consumes a finished molecule laid on it just so: right atoms, right cells, right bonds. You can move and turn these glyphs, but you can never remove them.</p>
+        <figure>
+          <img src="howto/board.png" loading="lazy" alt="The tray above the board, with the reference machine for Lead Amalgam loaded: one arm, one bond glyph, the reagent glyphs IN·Pb and IN·Hg, and the product glyph OUT" width="1473" height="627">
+          <figcaption>Lead Amalgam with the reference machine loaded: the tray above, the board below. IN·Pb and IN·Hg feed one arm; OUT wants a lead bonded to a quicksilver.</figcaption>
+        </figure>
+
+        <h3>Parts</h3>
+        <p>Two kinds. <b>Arms</b> stand on a cell and reach out one, two or three cells. An arm has one gripper at its tip, or two, three or six spaced evenly around it — <span class="ui">ARM</span>, <span class="ui">DUAL</span>, <span class="ui">TRI</span> and <span class="ui">HEX</span> in the tray. <b>Glyphs</b> are markings on the floor: at the end of every cycle each one acts on the atoms resting on its cells — a bond glyph joins two atoms, an unbond glyph parts them, and so on. Every part has a price in gold. Each puzzle's tray offers only the glyphs its reagents can use, so a short tray is not a bug.</p>
+
+        <h3>Placing parts</h3>
+        <p>Drag a part from the tray onto the board. Drag it back to the tray to remove it. Click a part to select it; a selected part shows a <b>handle</b>. Drag the handle to aim an arm, drag it further out to lengthen the arm, or drag it around a glyph, reagent or product to rotate it. Drag empty board to pan, scroll to zoom. Select a glyph and a card appears at the board's top right telling you what the glyph does, cell by cell, and when it fires.</p>
+        <figure>
+          <img src="howto/arm.png" loading="lazy" alt="A selected arm on the board with the round handle at its tip" width="960" height="680">
+          <figcaption>A selected arm. The small circle past its tip is the handle: drag it to aim or lengthen the arm.</figcaption>
+        </figure>
+        <figure>
+          <img src="howto/glyphcard.png" loading="lazy" alt="The tutorial card for the bond glyph, pinned to the board's top right" width="948" height="744">
+          <figcaption>The card for the bond glyph: what it does, which cells it wants, when it fires.</figcaption>
+        </figure>
+
+        <h3>Programming an arm</h3>
+        <p>Every arm runs a <b>tape</b>: a row of instructions, one per cycle. Click an arm and its tape lights up below the board; a new arm's tape is a single wait. Click a cell of the tape, then pick an instruction from the <span class="ui">SET OP</span> palette, or press its key:</p>
+        <table class="ops">
+          <tr><td class="k">G<small>grab</small></td><td>every gripper closes on whatever rests at its cell. An atom brings its whole molecule along.</td></tr>
+          <tr><td class="k">D<small>release</small></td><td>every gripper opens; the cargo stays where it is.</td></tr>
+          <tr><td class="k">↻ ↺<small>turn</small></td><td>the arm swings a sixth of a turn about its base, carrying its cargo.</td></tr>
+          <tr><td class="k">↷ ↶<small>pivot</small></td><td>the cargo rotates a sixth of a turn about the gripper; the arm itself stays put.</td></tr>
+          <tr><td class="k">·<small>wait</small></td><td>hold still for one cycle.</td></tr>
+          <tr><td class="k">↪<small>repeat</small></td><td>do everything since the last repeat once more.</td></tr>
+        </table>
+        <p>When a tape reaches its end it starts over, forever, and every arm loops on its own: two arms with tapes of different lengths drift apart, so give arms that work together the same length (<span class="ui">insert</span> adds a wait cell, <span class="ui">remove</span> takes one out). <span class="ui">»+</span> adds a <b>delay</b> block at the front of a tape. It runs once, on the first pass only, so an arm can start a beat late without changing its rhythm.</p>
+        <figure>
+          <img src="howto/tape.png" loading="lazy" alt="The tape panel with ARM a0 selected: the SET OP palette above, the arm's tape of sixteen cells below" width="1964" height="256">
+          <figcaption>The tape panel with ARM a0 selected. The cursor sits on the first cell; whatever you pick from SET OP goes there.</figcaption>
+        </figure>
+
+        <h3>Testing</h3>
+        <p>Press <span class="ui">▶ Test</span>. The verifier runs your machine one cycle at a time: <span class="ui">Pause</span> holds it, <span class="ui">Step</span> advances a single cycle, and the speed buttons set the pace (<span class="ui">MAX</span> skips the animation). Two atoms sweeping through each other, a molecule pulled two ways, an arm grabbing its own base — any of these is a <b>fault</b>. The run stops and a red stamp says what went wrong and on which cycle. Nine products, and the stamp reads <b>GREAT WORK!</b> instead. <span class="ui">✎ Edit</span> takes you back to the board.</p>
+        <figure>
+          <img src="howto/run.png" loading="lazy" alt="A test paused at cycle 4: lead atoms on the board, the arm holding one, and the HUD below reading CYCLE 4, COST 30g, AREA 7, PRODUCT 0/9" width="1470" height="710">
+          <figcaption>A test paused at cycle 4. One lead is parked on the bond glyph and the arm holds the next; the HUD counts cycles, cost, area and products.</figcaption>
+        </figure>
+        <figure>
+          <img src="howto/stamp.png" loading="lazy" alt="The GREAT WORK! stamp over the board: 9 of 9, 30g + 142c + 7a = SUM 179" width="1320" height="732">
+          <figcaption>Nine of nine. The stamp carries the score.</figcaption>
+        </figure>
+
+        <h3>Scoring</h3>
+        <p>Three numbers. <b>COST</b> is the gold you spent on parts. <b>CYCLES</b> is the cycle on which the ninth product was made. <b>AREA</b> is every cell anything ever touched, plus every glyph cell. <b>SUM = COST + CYCLES + AREA</b>, and lower is better. The leaderboard ranks by SUM alone, so spend gold to save cycles, or the other way round — whichever comes out smaller.</p>
+
+        <h3>Sharing</h3>
+        <p>A solution is a short code. <span class="ui">Copy code</span> puts yours on the clipboard; paste one into the box and press <span class="ui">Import</span> to load it. Once a test ends in GREAT WORK!, <span class="ui">Submit</span> seals the solution on-chain under your name and its own, score and all.</p>
+      </div>
+
+      <h2 class="ref">Controls</h2>
+      <div class="sd-note">the board, the tapes, the run — everything the editor answers to</div>
+      <h3>Board</h3>
+      <table>
+        <tr><td class="k">drag a tray part</td><td>place it on the board. Each puzzle's tray offers only the glyphs its reagents can use.</td></tr>
+        <tr><td class="k">drag a piece to the tray</td><td>remove it. Reagents and the product are the puzzle's fixed pool: they move, they never vanish.</td></tr>
+        <tr><td class="k">click a piece</td><td>select it. Click the same spot again to cycle through everything stacked under the cursor.</td></tr>
+        <tr><td class="k">the handle</td><td>aims a selected arm, lengthens it (drag the handle out to 1, 2 or 3 cells), and rotates a glyph, reagent or product.</td></tr>
+        <tr><td class="k"><kbd>[</kbd> <kbd>]</kbd></td><td>rotate the selection a sixth-turn either way.</td></tr>
+        <tr><td class="k"><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>remove the selection (or the box-selected tape cells).</td></tr>
+        <tr><td class="k"><kbd>Esc</kbd></td><td>clear the selection.</td></tr>
+        <tr><td class="k">drag empty board</td><td>pan the view.</td></tr>
+        <tr><td class="k">drop an arm on a shaft</td><td>mount it on that arm: +10g. Dropped at the tip it replaces the grabber (−5g); the parent then turns only.</td></tr>
+        <tr><td class="k"><kbd>ctrl</kbd>+<kbd>z</kbd> / <kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>z</kbd></td><td>undo / redo (also <kbd>ctrl</kbd>+<kbd>y</kbd>).</td></tr>
+      </table>
+      <h3>Tapes</h3>
+      <table>
+        <tr><td class="k">click a cell</td><td>put the cursor there; the SET OP palette or its key writes that cell.</td></tr>
+        <tr><td class="k"><kbd>g</kbd> <kbd>d</kbd></td><td>grab · release</td></tr>
+        <tr><td class="k"><kbd>q</kbd> <kbd>w</kbd></td><td>turn clockwise · turn counter-clockwise</td></tr>
+        <tr><td class="k"><kbd>e</kbd> <kbd>r</kbd></td><td>pivot clockwise · pivot counter-clockwise (the cargo turns about the gripper)</td></tr>
+        <tr><td class="k"><kbd>t</kbd> <kbd>y</kbd></td><td>wait · repeat the run since the last repeat</td></tr>
+        <tr><td class="k">insert / remove</td><td>add a wait cell at the cursor, or take the cursor's cell out (the loop lengthens or shortens).</td></tr>
+        <tr><td class="k">»+ / »−</td><td>add or drop a first-pass delay block, so an arm starts its loop later than the others.</td></tr>
+        <tr><td class="k">drag on the margin</td><td>box-select cells; drag selected cells to move them to another slot or row.</td></tr>
+      </table>
+      <h3>Run and share</h3>
+      <table>
+        <tr><td class="k">▶ Test</td><td>run the machine under the verifier's eye; ✎ Edit returns to the board.</td></tr>
+        <tr><td class="k">Pause · Step · speed</td><td>hold the run, advance one cycle, or change the pace (MAX skips the animation).</td></tr>
+        <tr><td class="k">Copy code · Import</td><td>a solution is a short code, <span style="font-family:var(--mono);font-size:11px">puzzle.data</span>: copy yours, or paste one to load it.</td></tr>
+        <tr><td class="k">GIF link</td><td>after a test, a link that plays the run as an animated GIF.</td></tr>
+        <tr><td class="k">Submit</td><td>seal a verified solution on-chain under your name and its own.</td></tr>
+      </table>
+      <div class="sd-actions">
+        <button type="submit" class="ctl" value="ok">Close</button>
+      </div>
+    </form>
+  </dialog>
   <dialog class="submitdlg aboutdlg" id="aboutDlg">
     <form method="dialog" class="ab">
       <h2>About</h2>
@@ -1412,15 +1558,28 @@
   'use strict';
 
   // the products, in catalog order = puzzle id order (contract/puzzles.h)
+  //
+  // `glyphs` is the tray each puzzle offers: the glyph families that can do anything
+  // useful with its reagents (as in Opus Magnum, a puzzle only shows what it needs).
+  // It is editor guidance, not a rule — the chain verifies any glyph — but every
+  // example machine must build from its product's tray (checked below).
   const PRODUCTS = [
-    { key: 'amalgam',          name: 'Lead Amalgam',       blurb: 'Quicksilver bonded to lead. The floor every builder starts from.' },
-    { key: 'saltedquicksilver', name: 'Salted Quicksilver', blurb: 'Salt, quicksilver, salt in one chain.' },
-    { key: 'transmutedgold',   name: 'Transmuted Gold',    blurb: 'Lead to tin to iron to copper to silver to gold, one rung per quicksilver.' },
-    { key: 'vitalsalts',       name: 'Vital Salts',        blurb: 'Two salts, mors and vitae in a chain — water alone, calcified and animated.' },
-    { key: 'airshipfuel',      name: 'Airship Fuel',       blurb: 'Fire alone becomes a zigzag of salt and flame.' },
-    { key: 'surrenderflare',   name: 'Surrender Flare',    blurb: 'An iron core sealed inside six salt petals must come out copper.' },
-    { key: 'ablativecrystal',  name: 'Ablative Crystal',   blurb: 'Two silver-core flowers must become one thirteen-atom crystal. Still unsolved.' },
+    { key: 'amalgam',          name: 'Lead Amalgam',       blurb: 'Quicksilver bonded to lead. The floor every builder starts from.',
+      glyphs: ['bonders'] },
+    { key: 'saltedquicksilver', name: 'Salted Quicksilver', blurb: 'Salt, quicksilver, salt in one chain.',
+      glyphs: ['bonders'] },
+    { key: 'transmutedgold',   name: 'Transmuted Gold',    blurb: 'Lead to tin to iron to copper to silver to gold, one rung per quicksilver.',
+      glyphs: ['projectors', 'purifiers'] },
+    { key: 'vitalsalts',       name: 'Vital Salts',        blurb: 'Two salts, mors and vitae in a chain — water alone, calcified and animated.',
+      glyphs: ['bonders', 'calcifiers', 'animismus'] },
+    { key: 'airshipfuel',      name: 'Airship Fuel',       blurb: 'Fire alone becomes a zigzag of salt and flame.',
+      glyphs: ['bonders', 'calcifiers'] },
+    { key: 'surrenderflare',   name: 'Surrender Flare',    blurb: 'An iron core sealed inside six salt petals must come out copper.',
+      glyphs: ['bonders', 'debonders', 'projectors'] },
+    { key: 'ablativecrystal',  name: 'Ablative Crystal',   blurb: 'Two silver-core flowers must become one thirteen-atom crystal. Still unsolved.',
+      glyphs: ['bonders', 'debonders', 'purifiers'] },
   ];
+  const GLYPH_FAMILIES = ['bonders', 'debonders', 'calcifiers', 'duplicators', 'projectors', 'purifiers', 'animismus', 'disposals'];
 
   const EXAMPLES = [
     {
@@ -1697,11 +1856,20 @@
     return PRODUCTS.map((p, id) => {
       const examples = EXAMPLES.filter(ex => ex.product === p.key && ex.puzzle.output);
       if (!examples.length) throw new Error('product without an example: ' + p.key);
-      return { id, key: p.key, name: p.name, blurb: p.blurb, examples };
+      return { id, key: p.key, name: p.name, blurb: p.blurb, glyphs: p.glyphs.slice(), examples };
     });
   }
+  for (const p of PRODUCTS) {
+    for (const fam of p.glyphs) if (!GLYPH_FAMILIES.includes(fam)) throw new Error(p.key + ': unknown glyph family ' + fam);
+  }
   for (const ex of EXAMPLES) {
-    if (ex.puzzle.output && !PRODUCTS.some(p => p.key === ex.product)) throw new Error('example without a product: ' + ex.key);
+    if (!ex.puzzle.output) continue;
+    const p = PRODUCTS.find(p => p.key === ex.product);
+    if (!p) throw new Error('example without a product: ' + ex.key);
+    // a reference machine that needs a glyph its puzzle's tray hides could not be rebuilt in the editor
+    for (const fam of GLYPH_FAMILIES) {
+      if ((ex.puzzle[fam] || []).length && !p.glyphs.includes(fam)) throw new Error(ex.key + ' uses ' + fam + ', which ' + p.key + ' does not offer');
+    }
   }
   EXAMPLES.PRODUCTS = PRODUCTS;
   EXAMPLES.catalog = catalog;
@@ -2334,6 +2502,57 @@
     projectors: 'PROJECT', purifiers: 'PURIFY', animismus: 'ANIMA', disposals: 'DISPOSE',
   };
   const SINGLE_CELL = { calcifiers: 1, disposals: 1 };
+  // the tutorial card for each glyph: what it does, cell by cell, and when it fires
+  const GLYPH_HELP = {
+    bonders: {
+      title: 'Bonding', what: 'Joins the two atoms resting on it with a bond. The atoms may be held, and may already belong to molecules — this is how chains grow.',
+      cells: 'two adjacent cells, one atom on each',
+      fires: 'at the end of every cycle both cells are occupied and the pair is not yet bonded',
+      tip: 'Park one atom, swing the next onto the other cell: the bond forms, and the whole molecule now moves as one.',
+    },
+    debonders: {
+      title: 'Unbonding', what: 'Removes the bond between the two atoms resting on it. Nothing else about them changes.',
+      cells: 'two adjacent cells, one atom on each',
+      fires: 'at the end of every cycle both cells hold atoms that are bonded to each other',
+      tip: 'Lay a reagent molecule across it so exactly one of its bonds spans the pair; the piece you want comes free.',
+    },
+    calcifiers: {
+      title: 'Calcification', what: 'Turns a cardinal element — air, earth, fire or water — into salt. Metals, quicksilver and salt pass over it untouched.',
+      cells: 'one cell',
+      fires: 'at the end of every cycle a cardinal atom rests on it, held or not, bonded or not',
+      tip: 'Put it under an arm\'s path: an atom carried across it is salt by the time it arrives.',
+    },
+    duplicators: {
+      title: 'Duplication', what: 'Copies a cardinal element onto a salt: the salt becomes that element. The original is not consumed.',
+      cells: 'the first cell wants the cardinal, the second the salt',
+      fires: 'at the end of every cycle a cardinal sits on the first cell and a salt on the second',
+      tip: 'Leave a cardinal parked on the first cell and feed salts past the second.',
+    },
+    projectors: {
+      title: 'Projection', what: 'Promotes a metal one rung — lead, tin, iron, copper, silver, gold — by consuming a quicksilver.',
+      cells: 'the first cell wants the metal, the second the quicksilver',
+      fires: 'at the end of every cycle a metal below gold sits on the first cell and a loose quicksilver — unheld, unbonded — on the second',
+      tip: 'The metal may stay held; the quicksilver must be dropped. Five quicksilver carry lead all the way to gold.',
+    },
+    purifiers: {
+      title: 'Purification', what: 'Fuses two atoms of the same metal into one of the next rung, which appears on the flank cell.',
+      cells: 'two adjacent input cells and one output cell on their flank',
+      fires: 'at the end of every cycle both inputs hold the same metal below gold, loose — unheld, unbonded — and the output cell is empty',
+      tip: 'Drop both metals and pull the product away before the next pair arrives, or the glyph waits.',
+    },
+    animismus: {
+      title: 'Animismus', what: 'Turns two salts into vitae and mors, one on each flanking cell.',
+      cells: 'two adjacent salt cells; vitae appears on one flank, mors on the other',
+      fires: 'at the end of every cycle both salt cells hold loose salt — unheld, unbonded — and both outputs are empty',
+      tip: 'Rotate it so the output you need first lands nearest its bonder. Salt must be dropped, not held, to be consumed.',
+    },
+    disposals: {
+      title: 'Disposal', what: 'Destroys the atom on its centre. The surrounding ring is part of the glyph and counts toward area, but only the centre does anything.',
+      cells: 'a centre cell and its six neighbours',
+      fires: 'at the end of every cycle a loose atom — unheld, unbonded — rests on the centre',
+      tip: 'Drop leftovers on it; a held atom is safe.',
+    },
+  };
   const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·', R: '↪' };
   const PITCH = Math.sqrt(3);
   // The playmat renderer draws into whatever ctx/view/size these name. They are the
@@ -2365,7 +2584,7 @@
   const BASES = EXAMPLES.catalog().map(entry => {
     const pz = entry.examples[0].puzzle;
     return {
-      key: entry.key, name: entry.name, blurb: entry.blurb, caps: pz.caps,
+      key: entry.key, name: entry.name, blurb: entry.blurb, caps: pz.caps, glyphs: entry.glyphs,
       reagentShapes: (pz.inputs || []).map(normalizeMol),
       productShape: normalizeMol(pz.output),
       defaultLayout: {
@@ -2411,6 +2630,32 @@
 
   const base = () => BASES[pIdx];
   const key = () => base().key;
+
+  // each puzzle's tray offers only the glyphs its product can use (examples.js PRODUCTS)
+  function syncTray() {
+    const offer = new Set(base().glyphs || []);
+    document.querySelectorAll('#tray .part[data-glyph]').forEach(el => { el.hidden = !offer.has(el.dataset.glyph); });
+  }
+  // the tutorial card: shown for the selected glyph, or the one being carried in from the tray
+  function syncGlyphHelp() {
+    const el = $('glyphHelp');
+    let type = null;
+    if (mode === 'edit') {
+      if (drag && drag.kind === 'new' && drag.part.glyph) type = drag.part.glyph;
+      else if (sel && sel.kind === 'glyph' && layout.glyphs[sel.i]) type = layout.glyphs[sel.i].type;
+    }
+    const h = type && GLYPH_HELP[type];
+    if (!h) { el.hidden = true; el.dataset.type = ''; return; }
+    if (el.dataset.type !== type) {
+      el.dataset.type = type;
+      const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      el.innerHTML = `<h3 class="${type === 'bonders' ? 'bond' : ''}">${esc(h.title)}<small>${GW.GLYPH_PRICE[type]}g</small></h3>`
+        + `<p>${esc(h.what)}</p>`
+        + `<dl><dt>cells</dt><dd>${esc(h.cells)}</dd><dt>fires</dt><dd>${esc(h.fires)}</dd><dt>tip</dt><dd>${esc(h.tip)}</dd></dl>`
+        + `<div class="keys">${SINGLE_CELL[type] ? 'drag to move' : 'drag to move · handle or [ ] rotates'} · delete removes · drag to the tray removes</div>`;
+    }
+    el.hidden = false;
+  }
   const armById = (id) => layout.arms.find(a => a.id === id);
 
   // ---------- geometry ----------
@@ -3371,6 +3616,7 @@
     try { decoded = CODEC.decodeString(data); } catch (e) { setStatus(String(e.message || e), 'bad'); return false; }
     const moved = pIdx !== idx;
     pIdx = idx;
+    syncTray();
     layout = layoutFrom(decoded);
     sel = null; cursor = null; tapeSel = []; undoStack = []; redoStack = []; syncUndoButtons();
     enterEdit();
@@ -3402,6 +3648,7 @@
     $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
     $('btnStep').disabled = false;
     $('tray').style.display = 'none';
+    syncGlyphHelp();
     buildTapes(); updateRunTapes(); hud(); stamp(); syncGifBtn(null);
     setStatus('testing — the verifier is watching every sweep');
   }
@@ -3411,7 +3658,7 @@
   const TIP_NOTE = 'this arm\'s grabber was replaced by a mounted arm — turns only';
 
   function refreshAll() {
-    buildTapes(); hud();
+    buildTapes(); hud(); syncGlyphHelp();
     if (mode === 'edit') {
       const bad = validate();
       syncGifBtn(bad);
@@ -3611,6 +3858,7 @@
       capture(el, ev);
       const part = el.dataset.arm ? { arm: +el.dataset.arm } : { glyph: el.dataset.glyph };
       drag = { kind: 'new', part };
+      syncGlyphHelp();
     });
   });
 
@@ -4339,6 +4587,7 @@
   $('btnSubmit').addEventListener('click', openSubmit);
   $('sdCancel').addEventListener('click', () => { const d = $('submitDlg'); d.close ? d.close('') : d.removeAttribute('open'); });
   $('btnAbout').addEventListener('click', () => { const d = $('aboutDlg'); d.showModal ? d.showModal() : d.setAttribute('open', ''); });
+  $('btnHowTo').addEventListener('click', () => { const d = $('howtoDlg'); d.showModal ? d.showModal() : d.setAttribute('open', ''); });
   $('submitDlg').addEventListener('close', () => {
     const req = pending; pending = null;
     if ($('submitDlg').returnValue !== 'ok' || !req) return;
@@ -4496,6 +4745,7 @@
   // ---------- puzzles ----------
   function selectPuzzle(i) {
     pIdx = i;
+    syncTray();
     document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
     layout = loadDraft() || layoutFrom({ arms: [] });
     sel = null; cursor = null; tapeSel = []; undoStack = []; redoStack = []; syncUndoButtons();

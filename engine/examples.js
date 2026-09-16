@@ -8,15 +8,28 @@
   'use strict';
 
   // the products, in catalog order = puzzle id order (contract/puzzles.h)
+  //
+  // `glyphs` is the tray each puzzle offers: the glyph families that can do anything
+  // useful with its reagents (as in Opus Magnum, a puzzle only shows what it needs).
+  // It is editor guidance, not a rule — the chain verifies any glyph — but every
+  // example machine must build from its product's tray (checked below).
   const PRODUCTS = [
-    { key: 'amalgam',          name: 'Lead Amalgam',       blurb: 'Quicksilver bonded to lead. The floor every builder starts from.' },
-    { key: 'saltedquicksilver', name: 'Salted Quicksilver', blurb: 'Salt, quicksilver, salt in one chain.' },
-    { key: 'transmutedgold',   name: 'Transmuted Gold',    blurb: 'Lead to tin to iron to copper to silver to gold, one rung per quicksilver.' },
-    { key: 'vitalsalts',       name: 'Vital Salts',        blurb: 'Two salts, mors and vitae in a chain — water alone, calcified and animated.' },
-    { key: 'airshipfuel',      name: 'Airship Fuel',       blurb: 'Fire alone becomes a zigzag of salt and flame.' },
-    { key: 'surrenderflare',   name: 'Surrender Flare',    blurb: 'An iron core sealed inside six salt petals must come out copper.' },
-    { key: 'ablativecrystal',  name: 'Ablative Crystal',   blurb: 'Two silver-core flowers must become one thirteen-atom crystal. Still unsolved.' },
+    { key: 'amalgam',          name: 'Lead Amalgam',       blurb: 'Quicksilver bonded to lead. The floor every builder starts from.',
+      glyphs: ['bonders'] },
+    { key: 'saltedquicksilver', name: 'Salted Quicksilver', blurb: 'Salt, quicksilver, salt in one chain.',
+      glyphs: ['bonders'] },
+    { key: 'transmutedgold',   name: 'Transmuted Gold',    blurb: 'Lead to tin to iron to copper to silver to gold, one rung per quicksilver.',
+      glyphs: ['projectors', 'purifiers'] },
+    { key: 'vitalsalts',       name: 'Vital Salts',        blurb: 'Two salts, mors and vitae in a chain — water alone, calcified and animated.',
+      glyphs: ['bonders', 'calcifiers', 'animismus'] },
+    { key: 'airshipfuel',      name: 'Airship Fuel',       blurb: 'Fire alone becomes a zigzag of salt and flame.',
+      glyphs: ['bonders', 'calcifiers'] },
+    { key: 'surrenderflare',   name: 'Surrender Flare',    blurb: 'An iron core sealed inside six salt petals must come out copper.',
+      glyphs: ['bonders', 'debonders', 'projectors'] },
+    { key: 'ablativecrystal',  name: 'Ablative Crystal',   blurb: 'Two silver-core flowers must become one thirteen-atom crystal. Still unsolved.',
+      glyphs: ['bonders', 'debonders', 'purifiers'] },
   ];
+  const GLYPH_FAMILIES = ['bonders', 'debonders', 'calcifiers', 'duplicators', 'projectors', 'purifiers', 'animismus', 'disposals'];
 
   const EXAMPLES = [
     {
@@ -293,11 +306,20 @@
     return PRODUCTS.map((p, id) => {
       const examples = EXAMPLES.filter(ex => ex.product === p.key && ex.puzzle.output);
       if (!examples.length) throw new Error('product without an example: ' + p.key);
-      return { id, key: p.key, name: p.name, blurb: p.blurb, examples };
+      return { id, key: p.key, name: p.name, blurb: p.blurb, glyphs: p.glyphs.slice(), examples };
     });
   }
+  for (const p of PRODUCTS) {
+    for (const fam of p.glyphs) if (!GLYPH_FAMILIES.includes(fam)) throw new Error(p.key + ': unknown glyph family ' + fam);
+  }
   for (const ex of EXAMPLES) {
-    if (ex.puzzle.output && !PRODUCTS.some(p => p.key === ex.product)) throw new Error('example without a product: ' + ex.key);
+    if (!ex.puzzle.output) continue;
+    const p = PRODUCTS.find(p => p.key === ex.product);
+    if (!p) throw new Error('example without a product: ' + ex.key);
+    // a reference machine that needs a glyph its puzzle's tray hides could not be rebuilt in the editor
+    for (const fam of GLYPH_FAMILIES) {
+      if ((ex.puzzle[fam] || []).length && !p.glyphs.includes(fam)) throw new Error(ex.key + ' uses ' + fam + ', which ' + p.key + ' does not offer');
+    }
   }
   EXAMPLES.PRODUCTS = PRODUCTS;
   EXAMPLES.catalog = catalog;
