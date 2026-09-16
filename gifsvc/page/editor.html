@@ -4595,6 +4595,9 @@
     d.scrollTop = 0; d.querySelector('form').scrollTop = 0;
     const h = d.querySelector('h2'); if (h) h.focus({ preventScroll: true });
   });
+  // a click on the backdrop closes it: the form fills the dialog, so a click that lands
+  // on the dialog element itself is outside the content
+  $('howtoDlg').addEventListener('click', (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
   $('submitDlg').addEventListener('close', () => {
     const req = pending; pending = null;
     if ($('submitDlg').returnValue !== 'ok' || !req) return;
