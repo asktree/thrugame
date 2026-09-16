@@ -14,22 +14,43 @@
   // plus calcification wherever the product holds salt, even when salt arrives as a
   // reagent and the glyph is strictly optional. It is editor guidance, not a rule —
   // the chain verifies any glyph — but every example machine must build from its
-  // product's tray (checked below).
+  // product's tray (checked below). `guide` is the editor's little tutorial for the
+  // puzzle: a few steps, each naming the glyph to use.
   const PRODUCTS = [
     { key: 'amalgam',          name: 'Lead Amalgam',       blurb: 'Quicksilver bonded to lead. The floor every builder starts from.',
-      glyphs: ['bonders'] },
+      glyphs: ['bonders'],
+      guide: ['Use a <b>Bond</b> glyph to bond lead to quicksilver.',
+              'Lay the pair on the product glyph, lead and quicksilver each on its own cell.',
+              'One arm can do it all: grab, swing, drop, repeat.'] },
     { key: 'saltedquicksilver', name: 'Salted Quicksilver', blurb: 'Salt, quicksilver, salt in one chain.',
-      glyphs: ['bonders', 'calcifiers'] },
+      glyphs: ['bonders', 'calcifiers'],
+      guide: ['Use a <b>Bond</b> glyph to bond salt to quicksilver.',
+              'Bond the second salt to the quicksilver\'s other side, in a bent chain.',
+              'Turn the chain to match the product glyph before you lay it down.'] },
     { key: 'transmutedgold',   name: 'Transmuted Gold',    blurb: 'Lead to tin to iron to copper to silver to gold, one rung per quicksilver.',
-      glyphs: ['projectors', 'purifiers'] },
+      glyphs: ['projectors', 'purifiers'],
+      guide: ['Use a <b>Projection</b> glyph to turn lead to tin: the metal on one cell, a released quicksilver on the other.',
+              'Feed it quicksilver again and again — tin to iron, iron to copper, copper to silver, silver to gold.',
+              'A <b>Purify</b> glyph climbs the same ladder by fusing two of a metal instead.'] },
     { key: 'vitalsalts',       name: 'Vital Salts',        blurb: 'Two salts, mors and vitae in a chain — water alone, calcified and animated.',
-      glyphs: ['bonders', 'calcifiers', 'animismus'] },
+      glyphs: ['bonders', 'calcifiers', 'animismus'],
+      guide: ['Use <b>Calcify</b> glyphs to turn water into salt.',
+              'Use an <b>Animismus</b> glyph to turn two released salts into vitae and mors.',
+              'Use a <b>Bond</b> glyph to chain salt, salt, mors and vitae.'] },
     { key: 'airshipfuel',      name: 'Airship Fuel',       blurb: 'Fire alone becomes a zigzag of salt and flame.',
-      glyphs: ['bonders', 'calcifiers'] },
+      glyphs: ['bonders', 'calcifiers'],
+      guide: ['Use a <b>Calcify</b> glyph to turn some of the fire into salt.',
+              'Use <b>Bond</b> glyphs to build the zigzag: salt, fire, fire, salt.'] },
     { key: 'surrenderflare',   name: 'Surrender Flare',    blurb: 'An iron core sealed inside six salt petals must come out copper.',
-      glyphs: ['bonders', 'debonders', 'calcifiers', 'projectors'] },
+      glyphs: ['bonders', 'debonders', 'calcifiers', 'projectors'],
+      guide: ['Use an <b>Unbond</b> glyph to free one salt petal, so the iron core has an open side.',
+              'Use a <b>Projection</b> glyph to turn the iron to copper with a released quicksilver.',
+              'Use a <b>Bond</b> glyph to put the petal back, then deliver the flower.'] },
     { key: 'ablativecrystal',  name: 'Ablative Crystal',   blurb: 'Two silver-core flowers must become one thirteen-atom crystal. Still unsolved.',
-      glyphs: ['bonders', 'debonders', 'calcifiers', 'purifiers'] },
+      glyphs: ['bonders', 'debonders', 'calcifiers', 'purifiers'],
+      guide: ['Use <b>Unbond</b> glyphs to take the two flowers apart.',
+              'Use a <b>Purify</b> glyph to fuse the two silvers into one gold.',
+              'Use <b>Bond</b> glyphs to build the crystal: gold at the core, a ring of six fire, six salt at the points.'] },
   ];
   const GLYPH_FAMILIES = ['bonders', 'debonders', 'calcifiers', 'duplicators', 'projectors', 'purifiers', 'animismus', 'disposals'];
 
@@ -308,7 +329,7 @@
     return PRODUCTS.map((p, id) => {
       const examples = EXAMPLES.filter(ex => ex.product === p.key && ex.puzzle.output);
       if (!examples.length) throw new Error('product without an example: ' + p.key);
-      return { id, key: p.key, name: p.name, blurb: p.blurb, glyphs: p.glyphs.slice(), examples };
+      return { id, key: p.key, name: p.name, blurb: p.blurb, glyphs: p.glyphs.slice(), guide: (p.guide || []).slice(), examples };
     });
   }
   for (const p of PRODUCTS) {

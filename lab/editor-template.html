@@ -211,7 +211,17 @@
   .glyphhelp h3 small { font-family: var(--mono); font-size: 9.5px; font-weight: 400; letter-spacing: .08em; color: var(--ink-faint); text-transform: none; }
   .glyphhelp .diagram { display: block; width: 100%; height: auto; margin-top: 6px; }
   .glyphhelp .note { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--ink-dim); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); line-height: 1.5; }
-  @media (max-width: 640px) { .glyphhelp { display: none !important; } }
+  /* the puzzle guide: the same card, pinned top-left, with a few steps for this puzzle */
+  .guide {
+    position: absolute; top: 10px; left: 10px; width: 232px; max-width: calc(44% - 10px);
+    border: 1px solid var(--line); background: rgba(241,233,214,.9); color: var(--ink);
+    padding: 9px 12px 10px; pointer-events: none;
+  }
+  .guide h3 { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
+  .guide ol { margin: 5px 0 0 16px; padding: 0; }
+  .guide li { font-size: 13px; line-height: 1.35; margin: 3px 0; color: var(--ink-dim); }
+  .guide li b { font-weight: 600; color: var(--ink); }
+  @media (max-width: 640px) { .glyphhelp, .guide { display: none !important; } }
 
   /* how to play: a short tutorial with screenshots, then the controls reference */
   dialog.howtodlg { width: min(720px, calc(100vw - 36px)); }
@@ -273,6 +283,7 @@
   <div class="stagebox">
     <canvas id="field" width="980" height="560"></canvas>
     <div class="stamp" id="stamp"><div class="stamp-inner" id="stampInner"></div></div>
+    <aside class="guide" id="guide" hidden></aside>
     <aside class="glyphhelp" id="glyphHelp" hidden></aside>
   </div>
 
@@ -555,7 +566,7 @@
   const BASES = EXAMPLES.catalog().map(entry => {
     const pz = entry.examples[0].puzzle;
     return {
-      key: entry.key, name: entry.name, blurb: entry.blurb, caps: pz.caps, glyphs: entry.glyphs,
+      key: entry.key, name: entry.name, blurb: entry.blurb, caps: pz.caps, glyphs: entry.glyphs, guide: entry.guide,
       reagentShapes: (pz.inputs || []).map(normalizeMol),
       productShape: normalizeMol(pz.output),
       defaultLayout: {
@@ -606,6 +617,14 @@
   function syncTray() {
     const offer = new Set(base().glyphs || []);
     document.querySelectorAll('#tray .part[data-glyph]').forEach(el => { el.hidden = !offer.has(el.dataset.glyph); });
+  }
+  // the puzzle's guide, top-left of the board while editing
+  function syncGuide() {
+    const el = $('guide');
+    const steps = base().guide || [];
+    if (mode !== 'edit' || !steps.length) { el.hidden = true; return; }
+    el.innerHTML = `<h3>${base().name}</h3><ol>${steps.map(t => `<li>${t}</li>`).join('')}</ol>`;
+    el.hidden = false;
   }
   // the tutorial card: shown for the selected glyph, or the one being carried in from the tray
   function syncGlyphHelp() {
@@ -1656,7 +1675,7 @@
     $('btnMode').textContent = '▶ Test';
     $('btnPlay').disabled = true; $('btnStep').disabled = true;
     $('tray').style.display = '';
-    stamp(); syncGifBtn();
+    stamp(); syncGifBtn(); syncGuide();
   }
   function enterRun() {
     const bad = validate();
@@ -1670,7 +1689,7 @@
     $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
     $('btnStep').disabled = false;
     $('tray').style.display = 'none';
-    syncGlyphHelp();
+    syncGlyphHelp(); syncGuide();
     buildTapes(); updateRunTapes(); hud(); stamp(); syncGifBtn(null);
     setStatus('testing — the verifier is watching every sweep');
   }
