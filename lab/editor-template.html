@@ -351,7 +351,7 @@
           <figcaption>A selected arm. The small circle past its tip is the handle: drag it to aim or lengthen the arm.</figcaption>
         </figure>
         <figure>
-          <img src="howto/glyphcard.png" loading="lazy" alt="The tutorial card for the bond glyph, pinned to the board's top right" width="948" height="744">
+          <img src="howto/glyphcard.png" loading="lazy" alt="The tutorial card for the bond glyph, pinned to the board's top right" width="948" height="632">
           <figcaption>The card for the bond glyph: what it does, which cells it wants, when it fires.</figcaption>
         </figure>
 
@@ -509,49 +509,41 @@
       title: 'Bonding', what: 'Joins the two atoms resting on it with a bond. The atoms may be held, and may already belong to molecules — this is how chains grow.',
       cells: 'two adjacent cells, one atom on each',
       fires: 'at the end of every cycle both cells are occupied and the pair is not yet bonded',
-      tip: 'Park one atom, swing the next onto the other cell: the bond forms, and the whole molecule now moves as one.',
     },
     debonders: {
       title: 'Unbonding', what: 'Removes the bond between the two atoms resting on it. Nothing else about them changes.',
       cells: 'two adjacent cells, one atom on each',
       fires: 'at the end of every cycle both cells hold atoms that are bonded to each other',
-      tip: 'Lay a reagent molecule across it so exactly one of its bonds spans the pair; the piece you want comes free.',
     },
     calcifiers: {
       title: 'Calcification', what: 'Turns a cardinal element — air, earth, fire or water — into salt. Metals, quicksilver and salt pass over it untouched.',
       cells: 'one cell',
       fires: 'at the end of every cycle a cardinal atom rests on it, held or not, bonded or not',
-      tip: 'Put it under an arm\'s path: an atom carried across it is salt by the time it arrives.',
     },
     duplicators: {
       title: 'Duplication', what: 'Copies a cardinal element onto a salt: the salt becomes that element. The original is not consumed.',
       cells: 'the first cell wants the cardinal, the second the salt',
       fires: 'at the end of every cycle a cardinal sits on the first cell and a salt on the second',
-      tip: 'Leave a cardinal parked on the first cell and feed salts past the second.',
     },
     projectors: {
       title: 'Projection', what: 'Promotes a metal one rung — lead, tin, iron, copper, silver, gold — by consuming a quicksilver.',
       cells: 'the first cell wants the metal, the second the quicksilver',
       fires: 'at the end of every cycle a metal below gold sits on the first cell and a loose quicksilver — unheld, unbonded — on the second',
-      tip: 'The metal may stay held; the quicksilver must be dropped. Five quicksilver carry lead all the way to gold.',
     },
     purifiers: {
       title: 'Purification', what: 'Fuses two atoms of the same metal into one of the next rung, which appears on the flank cell.',
       cells: 'two adjacent input cells and one output cell on their flank',
       fires: 'at the end of every cycle both inputs hold the same metal below gold, loose — unheld, unbonded — and the output cell is empty',
-      tip: 'Drop both metals and pull the product away before the next pair arrives, or the glyph waits.',
     },
     animismus: {
       title: 'Animismus', what: 'Turns two salts into vitae and mors, one on each flanking cell.',
       cells: 'two adjacent salt cells; vitae appears on one flank, mors on the other',
       fires: 'at the end of every cycle both salt cells hold loose salt — unheld, unbonded — and both outputs are empty',
-      tip: 'Rotate it so the output you need first lands nearest its bonder. Salt must be dropped, not held, to be consumed.',
     },
     disposals: {
       title: 'Disposal', what: 'Destroys the atom on its centre. The surrounding ring is part of the glyph and counts toward area, but only the centre does anything.',
       cells: 'a centre cell and its six neighbours',
       fires: 'at the end of every cycle a loose atom — unheld, unbonded — rests on the centre',
-      tip: 'Drop leftovers on it; a held atom is safe.',
     },
   };
   const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·', R: '↪' };
@@ -652,7 +644,7 @@
       const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
       el.innerHTML = `<h3 class="${type === 'bonders' ? 'bond' : ''}">${esc(h.title)}<small>${GW.GLYPH_PRICE[type]}g</small></h3>`
         + `<p>${esc(h.what)}</p>`
-        + `<dl><dt>cells</dt><dd>${esc(h.cells)}</dd><dt>fires</dt><dd>${esc(h.fires)}</dd><dt>tip</dt><dd>${esc(h.tip)}</dd></dl>`
+        + `<dl><dt>cells</dt><dd>${esc(h.cells)}</dd><dt>fires</dt><dd>${esc(h.fires)}</dd></dl>`
         + `<div class="keys">${SINGLE_CELL[type] ? 'drag to move' : 'drag to move · handle or [ ] rotates'} · delete removes · drag to the tray removes</div>`;
     }
     el.hidden = false;
@@ -2595,6 +2587,9 @@
     d.scrollTop = 0; d.querySelector('form').scrollTop = 0;
     const h = d.querySelector('h2'); if (h) h.focus({ preventScroll: true });
   });
+  // a click on the backdrop closes it: the form fills the dialog, so a click that lands
+  // on the dialog element itself is outside the content
+  $('howtoDlg').addEventListener('click', (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
   $('submitDlg').addEventListener('close', () => {
     const req = pending; pending = null;
     if ($('submitDlg').returnValue !== 'ok' || !req) return;
