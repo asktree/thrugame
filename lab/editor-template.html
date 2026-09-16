@@ -220,6 +220,7 @@
   dialog.howtodlg { width: min(720px, calc(100vw - 36px)); }
   .howtodlg .ab { padding: 18px 22px 16px; }
   .howtodlg h2 { margin-bottom: 4px; }
+  .howtodlg h2[tabindex]:focus { outline: none; }
   .howtodlg h2.ref { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line); }
   .howtodlg h3 { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 14px 0 4px; }
   .howtodlg table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.35; }
@@ -330,7 +331,7 @@
 
   <dialog class="submitdlg howtodlg" id="howtoDlg">
     <form method="dialog" class="ab">
-      <h2>How to Play</h2>
+      <h2 tabindex="-1" autofocus>How to Play</h2>
       <div class="sd-note">the whole game in a couple of minutes, then every control the editor answers to</div>
       <div class="tut">
         <h3>The goal</h3>
@@ -2587,7 +2588,13 @@
   $('btnSubmit').addEventListener('click', openSubmit);
   $('sdCancel').addEventListener('click', () => { const d = $('submitDlg'); d.close ? d.close('') : d.removeAttribute('open'); });
   $('btnAbout').addEventListener('click', () => { const d = $('aboutDlg'); d.showModal ? d.showModal() : d.setAttribute('open', ''); });
-  $('btnHowTo').addEventListener('click', () => { const d = $('howtoDlg'); d.showModal ? d.showModal() : d.setAttribute('open', ''); });
+  $('btnHowTo').addEventListener('click', () => {
+    const d = $('howtoDlg');
+    d.showModal ? d.showModal() : d.setAttribute('open', '');
+    // open at the top every time: focus the heading (not the Close button at the foot) and drop any scroll from the last read
+    d.scrollTop = 0; d.querySelector('form').scrollTop = 0;
+    const h = d.querySelector('h2'); if (h) h.focus({ preventScroll: true });
+  });
   $('submitDlg').addEventListener('close', () => {
     const req = pending; pending = null;
     if ($('submitDlg').returnValue !== 'ok' || !req) return;
