@@ -29,6 +29,7 @@ jobs:
           cp demo/editor.html _site/index.html
           cp demo/editor.html _site/editor.html
           cp demo/gw-chain.js _site/gw-chain.js
+          cp -r demo/howto _site/howto
       - uses: actions/configure-pages@v5
         with:
           enablement: true

@@ -216,15 +216,28 @@
   .glyphhelp .keys { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--ink-faint); margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line-soft); line-height: 1.5; }
   @media (max-width: 640px) { .glyphhelp { display: none !important; } }
 
-  dialog.controlsdlg { width: min(620px, calc(100vw - 36px)); }
-  .controlsdlg .ab { padding: 18px 22px 16px; }
-  .controlsdlg h2 { margin-bottom: 4px; }
-  .controlsdlg h3 { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 14px 0 4px; }
-  .controlsdlg table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.35; }
-  .controlsdlg td { padding: 3px 0; border-top: 1px solid var(--line-soft); vertical-align: top; }
-  .controlsdlg tr:first-child td { border-top: 0; }
-  .controlsdlg td.k { width: 30%; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; color: var(--ink-dim); padding-right: 12px; white-space: nowrap; }
-  .controlsdlg kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line); background: var(--parch-2); padding: 0 4px; }
+  /* how to play: a short tutorial with screenshots, then the controls reference */
+  dialog.howtodlg { width: min(720px, calc(100vw - 36px)); }
+  .howtodlg .ab { padding: 18px 22px 16px; }
+  .howtodlg h2 { margin-bottom: 4px; }
+  .howtodlg h2.ref { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .howtodlg h3 { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 14px 0 4px; }
+  .howtodlg table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.35; }
+  .howtodlg td { padding: 3px 0; border-top: 1px solid var(--line-soft); vertical-align: top; }
+  .howtodlg tr:first-child td { border-top: 0; }
+  .howtodlg td.k { width: 30%; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; color: var(--ink-dim); padding-right: 12px; white-space: nowrap; }
+  .howtodlg kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line); background: var(--parch-2); padding: 0 4px; }
+  .howtodlg .tut h3 { margin-top: 20px; }
+  .howtodlg .tut p { font-size: 15.5px; line-height: 1.45; margin: 6px 0; }
+  .howtodlg .tut b { font-weight: 600; }
+  .howtodlg .tut .ui { font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; }
+  .howtodlg .tut figure { margin: 10px 0 14px; }
+  .howtodlg .tut img { display: block; width: 100%; height: auto; border: 1px solid var(--line); background: var(--parch-2); }
+  .howtodlg .tut figcaption { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .04em; line-height: 1.5; margin-top: 5px; }
+  .howtodlg .tut table.ops { margin: 8px 0 6px; }
+  .howtodlg .tut table.ops td.k { width: 22%; font-size: 15px; color: var(--ink); letter-spacing: .08em; }
+  .howtodlg .tut table.ops td.k small { font-size: 10.5px; color: var(--ink-faint); margin-left: 6px; letter-spacing: .04em; }
+  @media (max-width: 640px) { .howtodlg .ab { padding: 14px 14px 12px; } .howtodlg .tut p { font-size: 15px; } }
 
   footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 </style>
@@ -233,7 +246,7 @@
   <header>
     <h1>Great Work!<small>Solution Editor</small></h1>
     <span class="hdr-btns">
-      <button class="ctl" id="btnControls">Controls</button>
+      <button class="ctl" id="btnHowTo">How to Play</button>
       <button class="ctl" id="btnAbout">About</button>
     </span>
   </header>
@@ -315,9 +328,67 @@
     <div id="chainBody"><div class="chain-note">loading…</div></div>
   </div>
 
-  <dialog class="submitdlg controlsdlg" id="controlsDlg">
+  <dialog class="submitdlg howtodlg" id="howtoDlg">
     <form method="dialog" class="ab">
-      <h2>Controls</h2>
+      <h2>How to Play</h2>
+      <div class="sd-note">the whole game in a couple of minutes, then every control the editor answers to</div>
+      <div class="tut">
+        <h3>The goal</h3>
+        <p>Each puzzle names a product. Build a machine that makes nine of them and it counts. The board already holds the pieces you cannot do without: the product glyph, <b>OUT</b>, and one reagent glyph for each ingredient — <b>IN·Pb</b>, <b>IN·Hg</b> and so on. A reagent glyph spawns a fresh copy of its molecule whenever its cells are empty. The product glyph consumes a finished molecule laid on it just so: right atoms, right cells, right bonds. You can move and turn these glyphs, but you can never remove them.</p>
+        <figure>
+          <img src="howto/board.png" loading="lazy" alt="The tray above the board, with the reference machine for Lead Amalgam loaded: one arm, one bond glyph, the reagent glyphs IN·Pb and IN·Hg, and the product glyph OUT" width="1473" height="627">
+          <figcaption>Lead Amalgam with the reference machine loaded: the tray above, the board below. IN·Pb and IN·Hg feed one arm; OUT wants a lead bonded to a quicksilver.</figcaption>
+        </figure>
+
+        <h3>Parts</h3>
+        <p>Two kinds. <b>Arms</b> stand on a cell and reach out one, two or three cells. An arm has one gripper at its tip, or two, three or six spaced evenly around it — <span class="ui">ARM</span>, <span class="ui">DUAL</span>, <span class="ui">TRI</span> and <span class="ui">HEX</span> in the tray. <b>Glyphs</b> are markings on the floor: at the end of every cycle each one acts on the atoms resting on its cells — a bond glyph joins two atoms, an unbond glyph parts them, and so on. Every part has a price in gold. Each puzzle's tray offers only the glyphs its reagents can use, so a short tray is not a bug.</p>
+
+        <h3>Placing parts</h3>
+        <p>Drag a part from the tray onto the board. Drag it back to the tray to remove it. Click a part to select it; a selected part shows a <b>handle</b>. Drag the handle to aim an arm, drag it further out to lengthen the arm, or drag it around a glyph, reagent or product to rotate it. Drag empty board to pan, scroll to zoom. Select a glyph and a card appears at the board's top right telling you what the glyph does, cell by cell, and when it fires.</p>
+        <figure>
+          <img src="howto/arm.png" loading="lazy" alt="A selected arm on the board with the round handle at its tip" width="960" height="680">
+          <figcaption>A selected arm. The small circle past its tip is the handle: drag it to aim or lengthen the arm.</figcaption>
+        </figure>
+        <figure>
+          <img src="howto/glyphcard.png" loading="lazy" alt="The tutorial card for the bond glyph, pinned to the board's top right" width="948" height="744">
+          <figcaption>The card for the bond glyph: what it does, which cells it wants, when it fires.</figcaption>
+        </figure>
+
+        <h3>Programming an arm</h3>
+        <p>Every arm runs a <b>tape</b>: a row of instructions, one per cycle. Click an arm and its tape lights up below the board; a new arm's tape is a single wait. Click a cell of the tape, then pick an instruction from the <span class="ui">SET OP</span> palette, or press its key:</p>
+        <table class="ops">
+          <tr><td class="k">G<small>grab</small></td><td>every gripper closes on whatever rests at its cell. An atom brings its whole molecule along.</td></tr>
+          <tr><td class="k">D<small>release</small></td><td>every gripper opens; the cargo stays where it is.</td></tr>
+          <tr><td class="k">↻ ↺<small>turn</small></td><td>the arm swings a sixth of a turn about its base, carrying its cargo.</td></tr>
+          <tr><td class="k">↷ ↶<small>pivot</small></td><td>the cargo rotates a sixth of a turn about the gripper; the arm itself stays put.</td></tr>
+          <tr><td class="k">·<small>wait</small></td><td>hold still for one cycle.</td></tr>
+          <tr><td class="k">↪<small>repeat</small></td><td>do everything since the last repeat once more.</td></tr>
+        </table>
+        <p>When a tape reaches its end it starts over, forever, and every arm loops on its own: two arms with tapes of different lengths drift apart, so give arms that work together the same length (<span class="ui">insert</span> adds a wait cell, <span class="ui">remove</span> takes one out). <span class="ui">»+</span> adds a <b>delay</b> block at the front of a tape. It runs once, on the first pass only, so an arm can start a beat late without changing its rhythm.</p>
+        <figure>
+          <img src="howto/tape.png" loading="lazy" alt="The tape panel with ARM a0 selected: the SET OP palette above, the arm's tape of sixteen cells below" width="1964" height="256">
+          <figcaption>The tape panel with ARM a0 selected. The cursor sits on the first cell; whatever you pick from SET OP goes there.</figcaption>
+        </figure>
+
+        <h3>Testing</h3>
+        <p>Press <span class="ui">▶ Test</span>. The verifier runs your machine one cycle at a time: <span class="ui">Pause</span> holds it, <span class="ui">Step</span> advances a single cycle, and the speed buttons set the pace (<span class="ui">MAX</span> skips the animation). Two atoms sweeping through each other, a molecule pulled two ways, an arm grabbing its own base — any of these is a <b>fault</b>. The run stops and a red stamp says what went wrong and on which cycle. Nine products, and the stamp reads <b>GREAT WORK!</b> instead. <span class="ui">✎ Edit</span> takes you back to the board.</p>
+        <figure>
+          <img src="howto/run.png" loading="lazy" alt="A test paused at cycle 4: lead atoms on the board, the arm holding one, and the HUD below reading CYCLE 4, COST 30g, AREA 7, PRODUCT 0/9" width="1470" height="710">
+          <figcaption>A test paused at cycle 4. One lead is parked on the bond glyph and the arm holds the next; the HUD counts cycles, cost, area and products.</figcaption>
+        </figure>
+        <figure>
+          <img src="howto/stamp.png" loading="lazy" alt="The GREAT WORK! stamp over the board: 9 of 9, 30g + 142c + 7a = SUM 179" width="1320" height="732">
+          <figcaption>Nine of nine. The stamp carries the score.</figcaption>
+        </figure>
+
+        <h3>Scoring</h3>
+        <p>Three numbers. <b>COST</b> is the gold you spent on parts. <b>CYCLES</b> is the cycle on which the ninth product was made. <b>AREA</b> is every cell anything ever touched, plus every glyph cell. <b>SUM = COST + CYCLES + AREA</b>, and lower is better. The leaderboard ranks by SUM alone, so spend gold to save cycles, or the other way round — whichever comes out smaller.</p>
+
+        <h3>Sharing</h3>
+        <p>A solution is a short code. <span class="ui">Copy code</span> puts yours on the clipboard; paste one into the box and press <span class="ui">Import</span> to load it. Once a test ends in GREAT WORK!, <span class="ui">Submit</span> seals the solution on-chain under your name and its own, score and all.</p>
+      </div>
+
+      <h2 class="ref">Controls</h2>
       <div class="sd-note">the board, the tapes, the run — everything the editor answers to</div>
       <h3>Board</h3>
       <table>
@@ -2516,7 +2587,7 @@
   $('btnSubmit').addEventListener('click', openSubmit);
   $('sdCancel').addEventListener('click', () => { const d = $('submitDlg'); d.close ? d.close('') : d.removeAttribute('open'); });
   $('btnAbout').addEventListener('click', () => { const d = $('aboutDlg'); d.showModal ? d.showModal() : d.setAttribute('open', ''); });
-  $('btnControls').addEventListener('click', () => { const d = $('controlsDlg'); d.showModal ? d.showModal() : d.setAttribute('open', ''); });
+  $('btnHowTo').addEventListener('click', () => { const d = $('howtoDlg'); d.showModal ? d.showModal() : d.setAttribute('open', ''); });
   $('submitDlg').addEventListener('close', () => {
     const req = pending; pending = null;
     if ($('submitDlg').returnValue !== 'ok' || !req) return;
