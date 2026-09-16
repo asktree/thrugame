@@ -209,11 +209,8 @@
   .glyphhelp h3 { font-family: var(--display); font-size: 12.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--oxblood); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .glyphhelp h3.bond { color: var(--brass); }
   .glyphhelp h3 small { font-family: var(--mono); font-size: 9.5px; font-weight: 400; letter-spacing: .08em; color: var(--ink-faint); text-transform: none; }
-  .glyphhelp p { font-size: 13.5px; line-height: 1.38; margin: 6px 0 0; }
-  .glyphhelp dl { margin: 7px 0 0; display: grid; grid-template-columns: max-content 1fr; column-gap: 8px; row-gap: 3px; }
-  .glyphhelp dt { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); padding-top: 3px; }
-  .glyphhelp dd { font-size: 13px; line-height: 1.35; margin: 0; }
-  .glyphhelp .keys { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--ink-faint); margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line-soft); line-height: 1.5; }
+  .glyphhelp .diagram { display: block; width: 100%; height: auto; margin-top: 6px; }
+  .glyphhelp .note { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--ink-dim); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); line-height: 1.5; }
   @media (max-width: 640px) { .glyphhelp { display: none !important; } }
 
   /* how to play: a short tutorial with screenshots, then the controls reference */
@@ -351,8 +348,8 @@
           <figcaption>A selected arm. The small circle past its tip is the handle: drag it to aim or lengthen the arm.</figcaption>
         </figure>
         <figure>
-          <img src="howto/glyphcard.png" loading="lazy" alt="The tutorial card for the bond glyph, pinned to the board's top right" width="948" height="632">
-          <figcaption>The card for the bond glyph: what it does, which cells it wants, when it fires.</figcaption>
+          <img src="howto/glyphcard.png" loading="lazy" alt="The tutorial card for the bond glyph, pinned to the board's top right" width="948" height="342">
+          <figcaption>The card for the bond glyph: its cells before and after it fires, and a note on what it needs.</figcaption>
         </figure>
 
         <h3>Programming an arm</h3>
@@ -503,49 +500,30 @@
     projectors: 'PROJECT', purifiers: 'PURIFY', animismus: 'ANIMA', disposals: 'DISPOSE',
   };
   const SINGLE_CELL = { calcifiers: 1, disposals: 1 };
-  // the tutorial card for each glyph: what it does, cell by cell, and when it fires
+  // the tutorial card for each glyph: a picture of its cells before and after it fires.
+  // `cells` index glyphCells(type, rot 0); each side names the atom on each cell (null =
+  // empty) and the bonds between them.
   const GLYPH_HELP = {
-    bonders: {
-      title: 'Bonding', what: 'Joins the two atoms resting on it with a bond. The atoms may be held, and may already belong to molecules — this is how chains grow.',
-      cells: 'two adjacent cells, one atom on each',
-      fires: 'at the end of every cycle both cells are occupied and the pair is not yet bonded',
-    },
-    debonders: {
-      title: 'Unbonding', what: 'Removes the bond between the two atoms resting on it. Nothing else about them changes.',
-      cells: 'two adjacent cells, one atom on each',
-      fires: 'at the end of every cycle both cells hold atoms that are bonded to each other',
-    },
-    calcifiers: {
-      title: 'Calcification', what: 'Turns a cardinal element — air, earth, fire or water — into salt. Metals, quicksilver and salt pass over it untouched.',
-      cells: 'one cell',
-      fires: 'at the end of every cycle a cardinal atom rests on it, held or not, bonded or not',
-    },
-    duplicators: {
-      title: 'Duplication', what: 'Copies a cardinal element onto a salt: the salt becomes that element. The original is not consumed.',
-      cells: 'the first cell wants the cardinal, the second the salt',
-      fires: 'at the end of every cycle a cardinal sits on the first cell and a salt on the second',
-    },
-    projectors: {
-      title: 'Projection', what: 'Promotes a metal one rung — lead, tin, iron, copper, silver, gold — by consuming a quicksilver.',
-      cells: 'the first cell wants the metal, the second the quicksilver',
-      fires: 'at the end of every cycle a metal below gold sits on the first cell and a loose quicksilver — unheld, unbonded — on the second',
-    },
-    purifiers: {
-      title: 'Purification', what: 'Fuses two atoms of the same metal into one of the next rung, which appears on the flank cell.',
-      cells: 'two adjacent input cells and one output cell on their flank',
-      fires: 'at the end of every cycle both inputs hold the same metal below gold, loose — unheld, unbonded — and the output cell is empty',
-    },
-    animismus: {
-      title: 'Animismus', what: 'Turns two salts into vitae and mors, one on each flanking cell.',
-      cells: 'two adjacent salt cells; vitae appears on one flank, mors on the other',
-      fires: 'at the end of every cycle both salt cells hold loose salt — unheld, unbonded — and both outputs are empty',
-    },
-    disposals: {
-      title: 'Disposal', what: 'Destroys the atom on its centre. The surrounding ring is part of the glyph and counts toward area, but only the centre does anything.',
-      cells: 'a centre cell and its six neighbours',
-      fires: 'at the end of every cycle a loose atom — unheld, unbonded — rests on the centre',
-    },
+    bonders:     { title: 'Bonding',       before: { atoms: ['Pb', 'Hg'] },            after: { atoms: ['Pb', 'Hg'], bonds: [[0, 1]] },
+                   note: 'works on held atoms' },
+    debonders:   { title: 'Unbonding',     before: { atoms: ['Pb', 'Hg'], bonds: [[0, 1]] }, after: { atoms: ['Pb', 'Hg'] },
+                   note: 'works on held atoms' },
+    calcifiers:  { title: 'Calcification', before: { atoms: ['Fi'] },                  after: { atoms: ['Sa'] },
+                   note: 'any cardinal, held or not · salt and metals pass untouched' },
+    duplicators: { title: 'Duplication',   before: { atoms: ['Fi', 'Sa'] },            after: { atoms: ['Fi', 'Fi'] },
+                   note: 'the cardinal stays · works on held atoms' },
+    projectors:  { title: 'Projection',    before: { atoms: ['Pb', 'Hg'] },            after: { atoms: ['Sn', null] },
+                   note: 'the quicksilver must be released and unbonded · the metal may stay held · lead → tin → iron → copper → silver → gold' },
+    purifiers:   { title: 'Purification',  before: { atoms: ['Pb', 'Pb', null] },      after: { atoms: [null, null, 'Sn'] },
+                   note: 'both metals released and unbonded · the marked cell must be empty' },
+    animismus:   { title: 'Animismus',     before: { atoms: ['Sa', 'Sa', null, null] }, after: { atoms: [null, null, 'Vi', 'Mo'] },
+                   note: 'both salts released and unbonded · both marked cells empty · vitae on the single mark, mors on the dotted one' },
+    disposals:   { title: 'Disposal',      before: { atoms: ['Pb'] },                  after: { atoms: [null] },
+                   note: 'only a released, unbonded atom on the centre is destroyed · held atoms are safe' },
   };
+  // the cells an asymmetric glyph treats differently, marked on the board and in the card:
+  // 1 = an inner hexagon (the cell that receives), 2 = the same with a centre dot
+  const GLYPH_MARK = { duplicators: { 1: 1 }, projectors: { 1: 1 }, purifiers: { 2: 1 }, animismus: { 2: 1, 3: 2 } };
   const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·', R: '↪' };
   const PITCH = Math.sqrt(3);
   // The playmat renderer draws into whatever ctx/view/size these name. They are the
@@ -641,13 +619,58 @@
     if (!h) { el.hidden = true; el.dataset.type = ''; return; }
     if (el.dataset.type !== type) {
       el.dataset.type = type;
-      const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-      el.innerHTML = `<h3 class="${type === 'bonders' ? 'bond' : ''}">${esc(h.title)}<small>${GW.GLYPH_PRICE[type]}g</small></h3>`
-        + `<p>${esc(h.what)}</p>`
-        + `<dl><dt>cells</dt><dd>${esc(h.cells)}</dd><dt>fires</dt><dd>${esc(h.fires)}</dd></dl>`
-        + `<div class="keys">${SINGLE_CELL[type] ? 'drag to move' : 'drag to move · handle or [ ] rotates'} · delete removes · drag to the tray removes</div>`;
+      el.innerHTML = `<h3 class="${type === 'bonders' ? 'bond' : ''}">${h.title}<small>${GW.GLYPH_PRICE[type]}g</small></h3>` + glyphDiagram(type, h);
     }
     el.hidden = false;
+  }
+  // before → after, drawn the way the board draws them: the glyph's hexes, atoms in
+  // their element colours, bonds as ink strokes
+  function glyphDiagram(type, h) {
+    const s = 15, W = 238;
+    const g = { type, at: [0, 0], rot: 0 };
+    const cells = glyphCells(g), foot = glyphFootprint(g);
+    const px = (c) => { const p = GW.toPx(c); return [p[0] * s, p[1] * s]; };
+    const R = s * PITCH / 2 * 1.08, AR = s * 0.35 * PITCH;
+    const xs = foot.map(c => px(c)[0]), ys = foot.map(c => px(c)[1]);
+    const bx = [Math.min(...xs) - R, Math.max(...xs) + R], by = [Math.min(...ys) - R, Math.max(...ys) + R];
+    const gw = bx[1] - bx[0], gh = by[1] - by[0];
+    const H = gh + 12, midY = 6 - by[0];
+    const col = type === 'bonders' ? '160,118,43' : '140,59,46';
+    const marks = GLYPH_MARK[type] || {};
+    const poly = (x, y, r) => {
+      const pts = [];
+      for (let i = 0; i < 6; i++) { const t = Math.PI / 3 * i + Math.PI / 6; pts.push((x + r * Math.cos(t)).toFixed(1) + ',' + (y + r * Math.sin(t)).toFixed(1)); }
+      return pts.join(' ');
+    };
+    const hex = (x, y, a, mark) => {
+      let out = `<polygon points="${poly(x, y, R)}" fill="rgba(${col},${a ? 0.14 : 0.06})" stroke="rgba(${col},${a ? 0.7 : 0.3})" stroke-width="1.2"/>`;
+      if (mark) out += `<polygon points="${poly(x, y, R * 0.58)}" fill="none" stroke="rgba(${col},0.65)" stroke-width="1.1"/>`;
+      if (mark === 2) out += `<circle cx="${x}" cy="${y}" r="${s * 0.09}" fill="rgba(${col},0.7)"/>`;
+      return out;
+    };
+    const side = (st, ox) => {
+      let out = '';
+      const at = (i) => { const [x, y] = px(cells[i]); return [x + ox, y + midY]; };
+      for (const c of foot) { const [x, y] = px(c); const i = cells.findIndex(k => eq(k, c)); out += hex(x + ox, y + midY, i >= 0, marks[i]); }
+      for (const [i, j] of (st.bonds || [])) {
+        const [x1, y1] = at(i), [x2, y2] = at(j);
+        out += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#2A2318" stroke-width="${s * 0.2}" stroke-linecap="round"/>`;
+      }
+      st.atoms.forEach((elem, i) => {
+        if (!elem) return;
+        const [x, y] = at(i), E = ELEMS[elem];
+        out += `<circle cx="${x}" cy="${y}" r="${AR}" fill="${E.fill}" stroke="rgba(42,35,24,.35)" stroke-width="1"/>`
+          + `<text x="${x}" y="${y + 0.5}" fill="${E.label}" font-family="'EB Garamond', Georgia, serif" font-weight="600" font-size="${s * 0.5}" text-anchor="middle" dominant-baseline="middle">${elem}</text>`;
+      });
+      return out;
+    };
+    // both sides the same width, the arrow between them, the whole centred in the card
+    const arrowW = 34, total = gw * 2 + arrowW;
+    const x0 = (W - total) / 2 - bx[0], x1 = x0 + gw + arrowW;
+    const ax = x0 + bx[0] + gw + arrowW / 2, ay = midY + (by[0] + by[1]) / 2;
+    const arrow = `<text x="${ax}" y="${ay + 0.5}" fill="#6B5F49" font-family="'Courier Prime', monospace" font-weight="700" font-size="18" text-anchor="middle" dominant-baseline="middle">→</text>`;
+    return `<svg class="diagram" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-label="${h.title}: before and after">${side(h.before, x0)}${arrow}${side(h.after, x1)}</svg>`
+      + (h.note ? `<div class="note">${h.note}</div>` : '');
   }
   const armById = (id) => layout.arms.find(a => a.id === id);
 
@@ -829,12 +852,19 @@
         ctx.strokeStyle = `rgba(${col},${selected ? 0.55 : 0.3})`; ctx.lineWidth = 1.2; ctx.stroke();
       }
     }
-    for (const c of cells) {
+    const marks = GLYPH_MARK[g.type] || {};
+    cells.forEach((c, i) => {
       const [x, y] = Pc(c);
       hexPath(x, y, view.s * PITCH / 2 * 1.08);
       ctx.fillStyle = `rgba(${col},${bond ? 0.16 : 0.12})`; ctx.fill();
       ctx.strokeStyle = `rgba(${col},${selected ? 1 : 0.65})`; ctx.lineWidth = selected ? 2.2 : 1.4; ctx.stroke();
-    }
+      if (marks[i]) {
+        // the receiving cell wears an inner hexagon; a second kind of output, a dot as well
+        hexPath(x, y, view.s * PITCH / 2 * 0.58);
+        ctx.strokeStyle = `rgba(${col},${selected ? 0.9 : 0.6})`; ctx.lineWidth = 1.2; ctx.stroke();
+        if (marks[i] === 2) { ctx.beginPath(); ctx.arc(x, y, view.s * 0.09, 0, Math.PI * 2); ctx.fillStyle = `rgba(${col},0.7)`; ctx.fill(); }
+      }
+    });
     for (let i = 1; i < cells.length; i++) {
       const [x1, y1] = Pc(cells[i - 1]), [x2, y2] = Pc(cells[i]);
       ctx.strokeStyle = `rgba(${col},${bond ? 0.85 : 0.55})`; ctx.lineWidth = bond ? 3 : 2;
@@ -2787,6 +2817,7 @@
   window.__gwDebug = () => ({
     view: clone(view), layout: clone(layout), sel: clone(sel || null), mode,
     machine: clone(asMachine()), code: code(), expand: expandTape,
+    card: (type) => glyphDiagram(type, GLYPH_HELP[type]),
   });
   // effects pool counters, so automated checks can watch it stay bounded
   window.__gwFX = () => FX.debug();
