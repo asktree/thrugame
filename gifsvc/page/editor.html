@@ -1558,14 +1558,16 @@
   // the products, in catalog order = puzzle id order (contract/puzzles.h)
   //
   // `glyphs` is the tray each puzzle offers: the glyph families that can do anything
-  // useful with its reagents (as in Opus Magnum, a puzzle only shows what it needs).
-  // It is editor guidance, not a rule — the chain verifies any glyph — but every
-  // example machine must build from its product's tray (checked below).
+  // useful with its reagents (as in Opus Magnum, a puzzle only shows what it needs),
+  // plus calcification wherever the product holds salt, even when salt arrives as a
+  // reagent and the glyph is strictly optional. It is editor guidance, not a rule —
+  // the chain verifies any glyph — but every example machine must build from its
+  // product's tray (checked below).
   const PRODUCTS = [
     { key: 'amalgam',          name: 'Lead Amalgam',       blurb: 'Quicksilver bonded to lead. The floor every builder starts from.',
       glyphs: ['bonders'] },
     { key: 'saltedquicksilver', name: 'Salted Quicksilver', blurb: 'Salt, quicksilver, salt in one chain.',
-      glyphs: ['bonders'] },
+      glyphs: ['bonders', 'calcifiers'] },
     { key: 'transmutedgold',   name: 'Transmuted Gold',    blurb: 'Lead to tin to iron to copper to silver to gold, one rung per quicksilver.',
       glyphs: ['projectors', 'purifiers'] },
     { key: 'vitalsalts',       name: 'Vital Salts',        blurb: 'Two salts, mors and vitae in a chain — water alone, calcified and animated.',
@@ -1573,9 +1575,9 @@
     { key: 'airshipfuel',      name: 'Airship Fuel',       blurb: 'Fire alone becomes a zigzag of salt and flame.',
       glyphs: ['bonders', 'calcifiers'] },
     { key: 'surrenderflare',   name: 'Surrender Flare',    blurb: 'An iron core sealed inside six salt petals must come out copper.',
-      glyphs: ['bonders', 'debonders', 'projectors'] },
+      glyphs: ['bonders', 'debonders', 'calcifiers', 'projectors'] },
     { key: 'ablativecrystal',  name: 'Ablative Crystal',   blurb: 'Two silver-core flowers must become one thirteen-atom crystal. Still unsolved.',
-      glyphs: ['bonders', 'debonders', 'purifiers'] },
+      glyphs: ['bonders', 'debonders', 'calcifiers', 'purifiers'] },
   ];
   const GLYPH_FAMILIES = ['bonders', 'debonders', 'calcifiers', 'duplicators', 'projectors', 'purifiers', 'animismus', 'disposals'];
 
@@ -1859,6 +1861,8 @@
   }
   for (const p of PRODUCTS) {
     for (const fam of p.glyphs) if (!GLYPH_FAMILIES.includes(fam)) throw new Error(p.key + ': unknown glyph family ' + fam);
+    const first = EXAMPLES.find(ex => ex.product === p.key && ex.puzzle.output);
+    if (first && first.puzzle.output.elems.includes('Sa') && !p.glyphs.includes('calcifiers')) throw new Error(p.key + ': salt in the product, no calcifier on the tray');
   }
   for (const ex of EXAMPLES) {
     if (!ex.puzzle.output) continue;
