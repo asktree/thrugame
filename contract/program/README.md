@@ -14,9 +14,9 @@ escrow; OPEN and CLAIM open an escrow and pay it out (SPEC §13, rules in
 stand-in SDK (`../test/mock`) and a simulated ledger.
 
 **Client compatibility.** The escrow build takes SUBMIT version 3 and needs the
-puzzle's escrow account in every submission; version 2 reverts. Ship it together
-with a client that sends version 3 and lists the escrow address read-write
-(`client/gw-chain.js` still sends version 2), and deploy to `greatwork-test`
+puzzle's escrow account in every submission; version 2 reverts. `client/gw-chain.js`
+sends version 3 with the escrow address read-write (all three paths: the local
+key, the passkey wallet, the hosted Thru wallet). Deploy to `greatwork-test`
 first.
 
 ## Building

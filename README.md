@@ -11,7 +11,7 @@ the record.
 | `FORMAT.md` | The machine serialization (codec v1/v2), the on-chain instruction, and the score event. |
 | `engine/` | The JavaScript rules engine — the conformance **oracle** — plus the codec, the example puzzles, the test suite and the vector/catalog generators. |
 | `contract/` | The C rules engine (a line-faithful port of the oracle), the submission verifier, the prize escrow (`gw_escrow.c`, SPEC §13), the host harnesses, and under `program/` the ThruVM program shell. |
-| `client/` | `@thru/sdk` client: seal a solution on-chain, read the leaderboard; bundles into the editor. |
+| `client/` | `@thru/sdk` client: seal a solution on-chain, read the leaderboard, open / fund / claim a puzzle's prize escrow; bundles into the editor. |
 | `lab/` | Source of the game client (`lab/editor-template.html`, effects in `fx.js`); `node lab/build.js` inlines the engine into `demo/editor.html`. |
 | `demo/` | Built pages. `editor.html` is the game client (deployed as https://greatwork.quest); `gw-chain.js` is the chain bundle it loads; `great-work.html` is the grant proposal, kept but not deployed. |
 
@@ -51,8 +51,16 @@ point a test at it so test runs never land on the public record.
 cd client && npm install
 node submit.js amalgam.AgEAAAAFABBYJEgKtmwBAAEABQIAAgEAAQIAAAEAAgA --name "Courier" --user you
 node leaderboard.js [amalgam]
+node escrow.js amalgam            # the puzzle's prize escrow: pot, champion, fuse
+node escrow.js amalgam open --fuse 30d --bar record    # anyone may
+node escrow.js amalgam deposit --amount 1000
+node escrow.js amalgam claim      # after the fuse: pays the champion
+npm test                          # offline checks of the client's wire formats
 npm run bundle                    # refresh demo/gw-chain.js after changing gw-chain.js
 ```
+
+Every CLI takes `--test` to use `NETWORKS.alphanet.testProgram` instead of
+the public program.
 
 Puzzles are named for their product (`amalgam`, `saltedquicksilver`,
 `transmutedgold`, `vitalsalts`, `airshipfuel`, `surrenderflare`,
@@ -66,4 +74,8 @@ passkey wallet (Thru's passkey manager); **Submit** then routes the
 submission through it, so the record is credited to the passkey wallet —
 whatever signed is who gets the record. **Claim to Thru wallet** connects
 the hosted Thru wallet (`@thru/wallet`) and moves the passkey wallet's balance
-to that account, where it can be spent or off-ramped.
+to that account, where it can be spent or off-ramped; the line appears once
+the wallet holds something, e.g. an escrow payout. Above the record, the
+puzzle's **prize escrow** shows its pot, champion, best sum, fuse countdown
+and the sum that resets it, with **Open an escrow** (anyone) and, once the
+fuse is out, **Pay the champion** (anyone; the contract pays the champion).

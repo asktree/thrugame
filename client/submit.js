@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /* Submit a solution to the chain.
  *
- *   node client/submit.js <puzzle>.<code> [--name "The Courier"] [--user asktree]
+ *   node client/submit.js <puzzle>.<code> [--name "The Courier"] [--user asktree] [--test]
  *
  * The code is what the editor's "copy code" button produces (puzzle = product
  * key, e.g. amalgam.AgEAAAAFABBYJEgK…; old example keys still resolve). The
  * signing key — the solver — comes from GW_PRIVATE_KEY (64 hex chars) or,
  * failing that, the `default` key in ~/.thru/cli/config.yaml. A key that has
- * never been used bootstraps its own account first. */
+ * never been used bootstraps its own account first. --test submits to the test
+ * copy of the program (NETWORKS.alphanet.testProgram), never the record. The
+ * submission lists the puzzle's prize-escrow account, so a strictly better sum
+ * takes the crown if an escrow is open (see escrow.js). */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,6 +41,7 @@ const puzzles = PUZ.puzzles();
 const puzzle = puzzles.find(p => p.key === key) || puzzles.find(p => p.examples.some(e => e.key === key));
 if (!puzzle) { console.error('unknown puzzle "' + key + '"; known: ' + puzzles.map(p => p.key).join(', ')); process.exit(2); }
 const name = opt('--name'), user = opt('--user');
+const program = argv.includes('--test') ? NETWORKS.alphanet.testProgram : NETWORKS.alphanet.program;
 const machineBytes = CODEC.fromString(data);
 CODEC.decodeMachine(machineBytes);   // fail fast on a bad code, before touching the chain
 
@@ -48,7 +52,7 @@ console.log(`puzzle  ${puzzle.name} (id ${puzzle.id}), ${machineBytes.length} by
 const acct = await ensureAccount(client, wallet);
 if (acct.created) console.log(`account created (${acct.signature})`);
 try {
-  const r = await submitSolution(client, { wallet, puzzleId: puzzle.id, machineBytes, name, user });
+  const r = await submitSolution(client, { wallet, puzzleId: puzzle.id, machineBytes, name, user, program });
   console.log(`SUBMITTED  sum ${r.sum === null ? '(see leaderboard)' : r.sum}  (${r.computeUnits} compute units)  txn ${r.signature}`);
 } catch (e) {
   console.error('not submitted: ' + e.message + (e.signature ? '  txn ' + e.signature : ''));

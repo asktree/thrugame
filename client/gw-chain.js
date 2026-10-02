@@ -1,10 +1,12 @@
 /*
  * GREAT WORK! — chain client (shared by the Node CLIs and the browser bundle)
  *
- * The verifier program (contract/program) takes one instruction:
- *   u8 version (2) | u8 puzzle id | u8 name len | u8 username len | name |
+ * The verifier program (contract/program) takes a submission:
+ *   u8 version (3) | u8 puzzle id | u8 name len | u8 username len | name |
  *   username | codec v2 machine bytes
- * and, only when the machine is VERIFIED, emits one GW!2 event naming the
+ * with the puzzle's prize-escrow account listed read-write (whether or not an
+ * escrow is open there — see escrowAddress), and, only when the machine is
+ * VERIFIED, emits one GW!2 event naming the
  * SOLVER — the account the chain saw authorize the call: the fee payer when it
  * signed directly, or the passkey wallet the passkey manager just validated —
  * with cost/cycles/area/sum, the machine bytes and the names, so the
@@ -12,6 +14,11 @@
  * solution can be replayed by anyone. Rejections and faults revert with a
  * code this module decodes (mirrors contract/program/src/gw_verifier.c and
  * the GW_ERR_* / GW_FAULT_* tables in contract/gw.h — keep them in sync).
+ *
+ * The prize escrow (SPEC §13, FORMAT.md "Prize escrow"): one account per
+ * puzzle at the verifier's derived address; its balance is the pot, its data
+ * the crown. OPEN (anyone; a fuse length and a bar, the sum to beat), plain
+ * transfers to deposit, CLAIM (anyone, after the fuse; pays the champion).
  *
  * Two identities:
  *   - a "payer": a raw Ed25519 key kept locally. It signs and pays (fees are
@@ -22,23 +29,25 @@
  *     for the wallet to the verifier — the solver is the wallet, the payer is
  *     only paying, and no UI bug can credit anyone but the key that signed.
  */
-import { createThruClient, keys, Pubkey, Signature, Filter, FilterParamValue } from '@thru/sdk';
+import { createThruClient, keys, Pubkey, Signature, Filter, FilterParamValue, deriveProgramAddress } from '@thru/sdk';
 import * as PM from '@thru/programs/passkey-manager';
 
 export const NETWORKS = {
   alphanet: {
     name: 'alphanet',
     rpc: 'https://rpc.alphanet.thru.org',
-    program: 'taaX8rNMcDjdi-V0IlFhC2ScMsN0gWXbejJdoyDOvHi8aS',   // contract/program/DEPLOYMENTS.md
-    // the record starts here: earlier events on this address are development
-    // and test submissions from before the board went public
-    fromSlot: 6884620n,
+    // contract/program/DEPLOYMENTS.md. Alphanet was reset around 2026-09-30 and
+    // these accounts no longer exist: the escrow build is deployed fresh, and
+    // its new addresses replace these two (IGG-29).
+    program: 'taaX8rNMcDjdi-V0IlFhC2ScMsN0gWXbejJdoyDOvHi8aS',
+    // the record starts here (a fresh deploy's every event is public record)
+    fromSlot: 0n,
     // a second copy of the same program for automated tests, so test runs never
     // touch the record: point a test at it with NETWORKS.alphanet.program = testProgram
     testProgram: 'taZq-QfKiEC-7CF-iF8mbqHjC4wSU1brkik8jsgMl2bpVB',
   },
 };
-export const IX_VERSION = 2;
+export const IX_VERSION = 3;
 export const EVENT_MAGIC = 'GW!2';
 export const EVENT_HDR = 58;
 export const NAME_MAX = 32, USER_MAX = 24;
@@ -63,6 +72,17 @@ export function describeRevert(code) {
   if (code === 0x03) return 'program out of memory';
   if (code === 0x04) return 'event rejected';
   if (code === 0x05) return 'no authorized solver (the caller vouched for nobody)';
+  if (code === 0x06) return "the puzzle's escrow account is missing from the transaction (an outdated client?)";
+  if (code === 0x07) return 'escrow account unusable (not read-write, wrong owner, or bad data)';
+  if (code === 0x09) return "this puzzle's escrow is still contested: it can be reopened only after it pays out, or after its bar lapses unbeaten";
+  if (code === 0x0A) return 'bad escrow arguments (the fuse must be at least a second)';
+  if (code === 0x0B) return 'this puzzle has no escrow';
+  if (code === 0x0C) return 'nobody holds the crown yet';
+  if (code === 0x0D) return 'the fuse is still burning';
+  if (code === 0x0E) return "the champion's account must be in the transaction, read-write";
+  if (code === 0x0F) return 'the payout transfer failed';
+  if (code === 0x10) return 'the chain reported no block time';
+  if (code === 0x11) return 'this escrow has already paid out';
   if (code === 0xBADBAD) return 'engine capacity panic';
   if (code >= 0x100 && code < 0x200) return 'rejected: ' + (ERRORS[code - 0x100] || 'error ' + (code - 0x100));
   if (code >= 0x200 && code < 0x300) return 'faulted: ' + (FAULTS[code - 0x200] || 'fault ' + (code - 0x200));
@@ -197,6 +217,7 @@ export async function submitSolution(client, { wallet, puzzleId, machineBytes, n
     feePayer: { publicKey: wallet.publicKey, privateKey: wallet.privateKey },
     program,
     instructionData: encodeSubmission(puzzleId, machineBytes, { name, user }),
+    accounts: { readWrite: [escrowAddress(puzzleId, program)] },
     header: { fee: 0n, computeUnits: COMPUTE_UNITS, expiryAfter: 100 },
   });
   const signature = fmtSignature(built.signature);
@@ -322,8 +343,9 @@ export async function submitViaPasskey(client, { meta, walletAddress, authIdx = 
   if (!walletAddress) walletAddress = await passkeyWalletAddress(meta);
   const ix = encodeSubmission(puzzleId, machineBytes, { name, user });
   const verifier = Pubkey.from(program).toBytes();
+  const escrow = Pubkey.from(escrowAddress(puzzleId, program)).toBytes();
   return passkeyValidate(client, {
-    walletAddress, authIdx, payer, readOnly: [verifier], sign, onUpdate,
+    walletAddress, authIdx, payer, readWrite: [escrow], readOnly: [verifier], sign, onUpdate,
     makeTarget: (ctx) => ({ programIdx: ctx.getAccountIndex(verifier), instructionData: ix }),
   });
 }
@@ -372,7 +394,7 @@ export async function submitViaWallet(client, { signIntent, walletAddress, puzzl
     walletAddress,
     programAddress: program,
     instructionData: bytesToBase64(ix),
-    readWriteAddresses: [],
+    readWriteAddresses: [escrowAddress(puzzleId, program)],
     readOnlyAddresses: [],
     review: {
       appName: 'Great Work!',
@@ -426,4 +448,196 @@ export function rankScores(scores) {
   }
   const cmpSlot = (a, b) => (a.slot === null || b.slot === null) ? 0 : (a.slot < b.slot ? -1 : a.slot > b.slot ? 1 : 0);
   return [...seen.values()].sort((a, b) => a.puzzle - b.puzzle || a.sum - b.sum || cmpSlot(a, b));
+}
+
+// ---- prize escrow (SPEC §13; layout in FORMAT.md, rules in contract/gw_escrow.c) ----
+export const ESCROW_MAGIC = 'GWE1', ESCROW_EVENT_MAGIC = 'GW!E';
+export const ESCROW_SZ = 80, ESCROW_EVENT_SZ = 96;
+export const NO_SUM = 0xFFFFFFFF;                   // no bar: any verified sum takes the first crown
+export const FUSE_30D = 2592000;                    // seconds
+export const IX_OPEN = 0x10, IX_CLAIM = 0x11;
+export const ESCROW_EVENT_KINDS = { 1: 'opened', 2: 'crowned', 3: 'paid' };
+const EOA_PROGRAM = Pubkey.from(new Uint8Array(32)).toThruFmt();
+
+// "gw-escrow", zero padding, puzzle id in the last byte
+export function escrowSeed(puzzleId) {
+  const seed = new Uint8Array(32);
+  seed.set(utf8('gw-escrow'));
+  seed[31] = puzzleId;
+  return seed;
+}
+export function escrowAddress(puzzleId, program = NETWORKS.alphanet.program) {
+  return deriveProgramAddress({ programAddress: program, seed: escrowSeed(puzzleId) }).address;
+}
+
+// account data -> the crown; null unless it is a well-formed escrow (for `puzzleId`, if given)
+export function parseEscrow(data, puzzleId) {
+  if (!data || data.length < ESCROW_SZ) return null;
+  if (String.fromCharCode(data[0], data[1], data[2], data[3]) !== ESCROW_MAGIC) return null;
+  if (puzzleId !== undefined && data[4] !== puzzleId) return null;
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const flags = data[5];
+  const hasChampion = !!(flags & 1);
+  return {
+    puzzle: data[4],
+    hasChampion,
+    settled: !!(flags & 2),
+    sumToBeat: dv.getUint32(8, true),               // champion's sum, else the opening bar
+    fuseSeconds: dv.getUint32(12, true),
+    fuseEndNs: dv.getBigUint64(16, true),           // burns out (crowned) / bar lapses (not yet)
+    slot: dv.getBigUint64(24, true),
+    round: dv.getUint32(32, true),
+    totalPaid: dv.getBigUint64(40, true),
+    champion: hasChampion ? Pubkey.from(data.slice(48, 80)).toThruFmt() : null,
+  };
+}
+
+export function parseEscrowEvent(payload) {
+  if (!payload || payload.length !== ESCROW_EVENT_SZ) return null;
+  if (String.fromCharCode(payload[0], payload[1], payload[2], payload[3]) !== ESCROW_EVENT_MAGIC) return null;
+  const escrow = parseEscrow(payload.slice(16), payload[5]);
+  if (!escrow) return null;
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  return { kind: ESCROW_EVENT_KINDS[payload[4]] || 'unknown', puzzle: payload[5], amount: dv.getBigUint64(8, true), escrow };
+}
+
+/* Where an escrow stands at block time `nowNs` (BigInt ns; the local clock
+ * stands in for the chain's, so treat the edges as approximate — the program
+ * decides):
+ *   none     no escrow account (deposits wait for the first OPEN)
+ *   open     no champion yet; the first machine beating the bar takes the crown
+ *   lapsed   no champion and the bar has lapsed: still winnable, and anyone may reopen
+ *   burning  a champion holds the crown; a strictly better sum resets the fuse
+ *   won      the fuse is out: the crown is frozen, anyone may trigger the payout
+ *   settled  paid out; anyone may open the puzzle's next escrow */
+export function escrowPhase(escrow, nowNs) {
+  if (!escrow) return 'none';
+  if (escrow.settled) return 'settled';
+  if (!escrow.hasChampion) return nowNs >= escrow.fuseEndNs ? 'lapsed' : 'open';
+  return nowNs >= escrow.fuseEndNs ? 'won' : 'burning';
+}
+export const nowNs = () => BigInt(Date.now()) * 1000000n;
+export const canReopen = (phase) => phase === 'none' || phase === 'settled' || phase === 'lapsed';
+
+// { address, exists, balance, escrow (parsed or null), blockTimeNs (of the account's version, if known) }
+export async function fetchEscrow(client, { puzzleId, program = NETWORKS.alphanet.program }) {
+  const address = escrowAddress(puzzleId, program);
+  let acct = null;
+  try { acct = await client.accounts.get(address); }
+  catch (e) { if (!/not found|NotFound|does not exist/i.test(String(e && e.message || e))) throw e; }
+  if (!acct) return { address, exists: false, balance: 0n, escrow: null };
+  const b = acct.balance ?? (acct.meta && acct.meta.balance);
+  return {
+    address, exists: true,
+    balance: b === undefined || b === null ? 0n : BigInt(b),
+    escrow: parseEscrow(accountData(acct), puzzleId),
+    blockTimeNs: acct.versionContext && acct.versionContext.blockTimestampNs,
+  };
+}
+
+export function encodeOpen(puzzleId, { fuseSeconds = FUSE_30D, bar = NO_SUM, proof = null } = {}) {
+  fuseSeconds = Number(fuseSeconds); bar = Number(bar);
+  if (!Number.isInteger(fuseSeconds) || fuseSeconds < 1 || fuseSeconds > 0xFFFFFFFF) throw new Error('fuse must be 1 s .. 2^32-1 s');
+  if (!Number.isInteger(bar) || bar < 1 || bar > NO_SUM) throw new Error('bad bar');
+  const p = proof || new Uint8Array();
+  const out = new Uint8Array(10 + p.length);
+  const dv = new DataView(out.buffer);
+  out[0] = IX_OPEN; out[1] = puzzleId;
+  dv.setUint32(2, fuseSeconds, true); dv.setUint32(6, bar, true);
+  out.set(p, 10);
+  return out;
+}
+export const encodeClaim = (puzzleId) => Uint8Array.of(IX_CLAIM, puzzleId);
+
+async function sendDirect(client, { wallet, program, instructionData, readWrite = [], onUpdate }) {
+  const built = await client.transactions.buildAndSign({
+    feePayer: { publicKey: wallet.publicKey, privateKey: wallet.privateKey },
+    program, instructionData,
+    accounts: readWrite.length ? { readWrite } : undefined,
+    header: { fee: 0n, computeUnits: COMPUTE_UNITS, expiryAfter: 100 },
+  });
+  const signature = fmtSignature(built.signature);
+  const last = await track(client, built.rawTransaction, onUpdate);
+  const r = last && last.executionResult;
+  if (!r) throw new Error('timed out waiting for execution');
+  if (r.vmError !== 0) {
+    const code = Number(r.userErrorCode);
+    const err = new Error(describeRevert(code));
+    err.code = code; err.vmError = r.vmError; err.signature = signature;
+    throw err;
+  }
+  return { signature, computeUnits: r.consumedComputeUnits };
+}
+
+/* OPEN — anyone may: the payer key signs and pays, and gains nothing by it.
+   `bar` defaults to the puzzle's current record (best sum on the leaderboard)
+   so a copy of the leader cannot take the pot; pass NO_SUM to let any verified
+   machine take the first crown. The first open carries a state proof of the
+   account's absence. */
+export async function openEscrow(client, { wallet, puzzleId, fuseSeconds = FUSE_30D, bar, program = NETWORKS.alphanet.program, onUpdate }) {
+  const address = escrowAddress(puzzleId, program);
+  if (bar === undefined) bar = await recordSum(client, { puzzleId, program });
+  let proof = null;
+  if (!(await accountExists(client, address))) {
+    const p = await client.proofs.generate({ address, proofType: 1 });
+    if (!p.proof || !p.proof.length) throw new Error('no state proof for the new escrow account');
+    proof = p.proof;
+  }
+  const r = await sendDirect(client, { wallet, program, instructionData: encodeOpen(puzzleId, { fuseSeconds, bar, proof }), readWrite: [address], onUpdate });
+  return { ...r, address, bar };
+}
+
+// CLAIM — anyone may, once the fuse is out; the program pays the champion, never the caller
+export async function claimEscrow(client, { wallet, puzzleId, program = NETWORKS.alphanet.program, onUpdate }) {
+  const { address, escrow } = await fetchEscrow(client, { puzzleId, program });
+  if (!escrow) throw new Error('this puzzle has no escrow');
+  if (!escrow.champion) throw new Error('nobody holds the crown yet');
+  const readWrite = [address];
+  if (escrow.champion !== wallet.address) readWrite.push(escrow.champion);
+  const r = await sendDirect(client, { wallet, program, instructionData: encodeClaim(puzzleId), readWrite, onUpdate });
+  return { ...r, champion: escrow.champion };
+}
+
+// a deposit is a plain native transfer to the escrow address (EOA program TRANSFER:
+// u32 tag 1 | u64 amount | u16 from idx | u16 to idx, rpc/abi/type-library/tn_eoa_program.abi.yaml)
+export function encodeEoaTransfer(amount, fromIdx, toIdx) {
+  const out = new Uint8Array(16), dv = new DataView(out.buffer);
+  dv.setUint32(0, 1, true); dv.setBigUint64(4, BigInt(amount), true);
+  dv.setUint16(12, fromIdx, true); dv.setUint16(14, toIdx, true);
+  return out;
+}
+export async function depositToEscrow(client, { wallet, puzzleId, amount, program = NETWORKS.alphanet.program, onUpdate }) {
+  const to = escrowAddress(puzzleId, program);
+  return sendDirect(client, {
+    wallet, program: EOA_PROGRAM, readWrite: [to], onUpdate,
+    instructionData: async (ctx) => encodeEoaTransfer(amount, ctx.getAccountIndex(wallet.address), ctx.getAccountIndex(to)),
+  });
+}
+// ...or from a passkey wallet (its winnings, say), approved by the passkey
+export async function depositViaPasskey(client, { puzzleId, program = NETWORKS.alphanet.program, ...rest }) {
+  return passkeyTransfer(client, { ...rest, to: escrowAddress(puzzleId, program) });
+}
+
+// the puzzle's current record: the lowest sum on the leaderboard (NO_SUM if none)
+export async function recordSum(client, { puzzleId, program = NETWORKS.alphanet.program, fromSlot }) {
+  const scores = await fetchScores(client, { program, puzzleId, ...(fromSlot !== undefined ? { fromSlot } : {}) });
+  return scores.reduce((m, s) => Math.min(m, s.sum), NO_SUM);
+}
+
+// the escrow's history: GW!E events (opened / crowned / paid), oldest first
+export async function fetchEscrowEvents(client, { program = NETWORKS.alphanet.program, puzzleId } = {}) {
+  const filter = new Filter({
+    expression: 'event.program.value == params.address',
+    params: { address: FilterParamValue.taPubkey(program) },
+  });
+  const res = await client.events.list({ filter });
+  const out = [];
+  for (const ev of res.events || []) {
+    const e = parseEscrowEvent(ev.payload);
+    if (!e || (puzzleId !== undefined && e.puzzle !== puzzleId)) continue;
+    e.slot = ev.slot === undefined ? null : BigInt(ev.slot);
+    e.signature = fmtSignature(ev.transactionSignature);
+    out.push(e);
+  }
+  return out;
 }
