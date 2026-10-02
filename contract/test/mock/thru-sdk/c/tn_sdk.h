@@ -36,6 +36,8 @@ typedef struct { ulong slot; ulong block_time; } tsdk_block_ctx_t;
 #define TSDK_SEG_TYPE_HEAP (0x07UL)
 #define TSDK_ADDR( seg_type, seg_idx, offset ) ( (seg_type) << 40UL | (seg_idx) << 24UL | (offset) )
 #define TSDK_ACCOUNT_FLAG_PROGRAM ((uchar)0x01U)
+#define TSDK_ACCOUNT_FLAG_UNCOMPRESSABLE ((uchar)0x04U)
+#define TSDK_ACCOUNT_FLAG_COMPRESSED ((uchar)0x40U)
 #define TN_SEED_SIZE (32UL)
 
 tsdk_txn_t const *          tsdk_get_txn( void );

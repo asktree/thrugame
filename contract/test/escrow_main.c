@@ -39,13 +39,21 @@ static void unit(void) {
   gw_escrow_t e, prev;
   uint64_t pay;
 
-  /* argument checks */
+  /* argument checks: the fuse is 10 minutes .. 365 days, a bar is a real sum */
   CHECK(gw_escrow_open(&e, 0, 0, 0, GW_ESCROW_NO_SUM, T0, 1) == GW_ESC_ERR_ARGS, "zero fuse accepted");
-  CHECK(gw_escrow_open(&e, 0, 0, 60, GW_ESCROW_NO_SUM, 0, 1) == GW_ESC_ERR_CLOCK, "zero clock accepted");
+  CHECK(gw_escrow_open(&e, 0, 0, 1, GW_ESCROW_NO_SUM, T0, 1) == GW_ESC_ERR_ARGS, "1 s fuse accepted");
+  CHECK(gw_escrow_open(&e, 0, 0, GW_ESCROW_FUSE_MIN - 1, GW_ESCROW_NO_SUM, T0, 1) == GW_ESC_ERR_ARGS, "599 s fuse accepted");
+  CHECK(gw_escrow_open(&e, 0, 0, GW_ESCROW_FUSE_MAX + 1, GW_ESCROW_NO_SUM, T0, 1) == GW_ESC_ERR_ARGS, "fuse over a year accepted");
+  CHECK(gw_escrow_open(&e, 0, 0, 0xFFFFFFFFu, GW_ESCROW_NO_SUM, T0, 1) == GW_ESC_ERR_ARGS, "136-year fuse accepted");
+  CHECK(gw_escrow_open(&e, 0, 0, GW_ESCROW_FUSE_MIN, 0, T0, 1) == GW_ESC_ERR_ARGS, "bar 0 accepted");
+  CHECK(gw_escrow_open(&e, 0, 0, GW_ESCROW_FUSE_MIN, GW_ESCROW_NO_SUM, T0, 1) == GW_ESC_OK, "10-minute fuse");
+  CHECK(gw_escrow_open(&e, 0, 0, GW_ESCROW_FUSE_MAX, GW_ESCROW_NO_SUM, T0, 1) == GW_ESC_OK, "365-day fuse");
+  CHECK(gw_escrow_open(&e, 0, 0, 600, GW_ESCROW_NO_SUM, 0, 1) == GW_ESC_ERR_CLOCK, "zero clock accepted");
 
   /* an open crown with no bar: nothing to claim until someone verifies */
   CHECK(gw_escrow_open(&e, 0, 3, GW_ESCROW_FUSE_30D, GW_ESCROW_NO_SUM, T0, 1) == GW_ESC_OK, "open");
-  CHECK(!(e.flags & GW_ESCROW_HAS_CHAMPION) && e.best_sum == GW_ESCROW_NO_SUM && e.round == 1, "fresh escrow state");
+  CHECK(!(e.flags & GW_ESCROW_HAS_CHAMPION) && e.to_beat == GW_ESCROW_NO_SUM && e.best == GW_ESCROW_NO_SUM && e.round == 1,
+    "fresh escrow state");
   CHECK(e.fuse_end == T0 + 30 * DAY, "the bar lapses one fuse length after opening");
   CHECK(gw_escrow_claim(&e, 500, T0 + 365 * DAY, 2, &pay) == GW_ESC_ERR_NO_CHAMPION && pay == 0, "claim with no champion");
   CHECK(!gw_escrow_expired(&e, T0 + 365 * DAY), "a crownless escrow never expires");
@@ -55,22 +63,23 @@ static void unit(void) {
      even after the bar has lapsed, as long as nobody reopened */
   uint64_t t = T0 + 40 * DAY;
   CHECK(gw_escrow_offer(&e, 179, alice, t, 2) == GW_ESC_CROWNED, "first sum crowns");
-  CHECK(e.best_sum == 179 && !memcmp(e.champion, alice, 32), "alice crowned at 179");
+  CHECK(e.to_beat == 179 && e.best == 179 && !memcmp(e.champion, alice, 32), "alice crowned at 179, best 179");
   CHECK(e.fuse_end == t + 30 * DAY && e.crowned_slot == 2, "fuse lit for 30 days");
   CHECK(!gw_escrow_reopenable(&e, t + 29 * DAY), "a crowned escrow cannot be reopened");
-  CHECK(gw_escrow_open(&prev, &e, 3, 60, 1, t + DAY, 3) == GW_ESC_ERR_LIVE, "open over a live crown");
+  CHECK(gw_escrow_open(&prev, &e, 3, 600, 1, t + DAY, 3) == GW_ESC_ERR_LIVE, "open over a live crown");
 
   /* ties — copies of the public champion included — change nothing */
   gw_escrow_t before = e;
   CHECK(gw_escrow_offer(&e, 179, bob, t + 5 * DAY, 3) == GW_ESC_NOT_BETTER, "tie by bob");
   CHECK(gw_escrow_offer(&e, 179, alice, t + 5 * DAY, 3) == GW_ESC_NOT_BETTER, "tie by the champion herself");
   CHECK(gw_escrow_offer(&e, 200, bob, t + 5 * DAY, 3) == GW_ESC_NOT_BETTER, "worse by bob");
+  CHECK(gw_escrow_offer(&e, 0, bob, t + 5 * DAY, 3) == GW_ESC_NOT_BETTER, "a zero sum is not a sum");
   CHECK(!memcmp(&before, &e, sizeof e), "ties and worse sums leave the escrow untouched");
 
   /* strictly better takes the crown and resets the fuse */
   uint64_t t2 = t + 20 * DAY;
   CHECK(gw_escrow_offer(&e, 178, bob, t2, 4) == GW_ESC_CROWNED, "one better crowns");
-  CHECK(e.best_sum == 178 && !memcmp(e.champion, bob, 32) && e.fuse_end == t2 + 30 * DAY, "bob crowned, fuse reset");
+  CHECK(e.to_beat == 178 && e.best == 178 && !memcmp(e.champion, bob, 32) && e.fuse_end == t2 + 30 * DAY, "bob crowned, fuse reset");
   /* the champion may improve on himself: still strictly better, still a reset */
   CHECK(gw_escrow_offer(&e, 170, bob, t2 + DAY, 5) == GW_ESC_CROWNED && e.fuse_end == t2 + 31 * DAY, "self-improvement resets");
 
@@ -81,67 +90,101 @@ static void unit(void) {
   CHECK(gw_escrow_expired(&e, end), "out at the end");
   CHECK(!gw_escrow_reopenable(&e, end + 99 * DAY), "an unpaid champion's escrow cannot be reopened");
 
-  /* once out, the crown is frozen: the champion has won */
+  /* once out, the crown is frozen: the champion has won. A better sum after
+     the fuse takes nothing, but best remembers it */
   before = e;
-  CHECK(gw_escrow_offer(&e, 1, carol, end, 7) == GW_ESC_FROZEN, "better sum after the fuse");
-  CHECK(!memcmp(&before, &e, sizeof e), "frozen crown untouched");
+  CHECK(gw_escrow_offer(&e, 150, carol, end, 7) == GW_ESC_FROZEN, "better sum after the fuse");
+  CHECK(!memcmp(e.champion, bob, 32) && e.to_beat == 170 && e.fuse_end == before.fuse_end && e.crowned_slot == before.crowned_slot,
+    "frozen crown untouched");
+  CHECK(e.best == 150, "best remembers the frozen-out 150");
 
   /* payout: the whole balance, once; the fuse never relights */
   CHECK(gw_escrow_claim(&e, 25000, end + 3 * DAY, 8, &pay) == GW_ESC_OK && pay == 25000, "claim pays the balance");
-  CHECK((e.flags & GW_ESCROW_SETTLED) && e.total_paid == 25000 && !memcmp(e.champion, bob, 32) && e.best_sum == 170,
+  CHECK((e.flags & GW_ESCROW_SETTLED) && e.total_paid == 25000 && !memcmp(e.champion, bob, 32) && e.to_beat == 170,
     "settled, bob on the record");
   CHECK(e.fuse_end == end, "the fuse does not relight");
   CHECK(gw_escrow_claim(&e, 25000, end + 90 * DAY, 9, &pay) == GW_ESC_ERR_PAID && pay == 0, "no second payout, ever");
   before = e;
-  CHECK(gw_escrow_offer(&e, 1, carol, end + 4 * DAY, 9) == GW_ESC_SETTLED, "a settled escrow takes no crowns");
-  CHECK(!memcmp(&before, &e, sizeof e), "settled escrow untouched");
+  CHECK(gw_escrow_offer(&e, 140, carol, end + 4 * DAY, 9) == GW_ESC_SETTLED, "a settled escrow takes no crowns");
+  CHECK(!memcmp(e.champion, bob, 32) && e.to_beat == 170 && e.best == 140, "settled crown untouched, best 140");
 
-  /* a settled escrow may be opened again: a fresh escrow, counted */
+  /* a settled escrow may be opened again; the next round's sum to beat is
+     best — not the old champion's 170, not a looser bar */
   CHECK(gw_escrow_reopenable(&e, end + 3 * DAY), "settled is reopenable");
-  CHECK(gw_escrow_open(&prev, &e, 3, 3600, 170, end + 5 * DAY, 10) == GW_ESC_OK, "second escrow on puzzle 3");
+  CHECK(gw_escrow_open(&prev, &e, 3, 3600, GW_ESCROW_NO_SUM, end + 5 * DAY, 10) == GW_ESC_OK, "second escrow on puzzle 3");
   CHECK(prev.round == 2 && prev.total_paid == 25000 && !(prev.flags & (GW_ESCROW_HAS_CHAMPION | GW_ESCROW_SETTLED)) &&
-        prev.best_sum == 170, "fresh crown, bar 170, history kept");
-  /* the bar: a copy of the record (170) does not crown; only better does */
-  CHECK(gw_escrow_offer(&prev, 170, carol, end + 5 * DAY, 11) == GW_ESC_NOT_BETTER, "the bar holds against a copy");
-  CHECK(gw_escrow_offer(&prev, 169, carol, end + 5 * DAY, 11) == GW_ESC_CROWNED, "beating the bar crowns");
+        prev.to_beat == 140 && prev.best == 140, "fresh crown, no bar asked yet best 140 holds, history kept");
+  CHECK(gw_escrow_offer(&prev, 140, carol, end + 5 * DAY, 11) == GW_ESC_NOT_BETTER, "a copy of the best does not crown");
+  CHECK(gw_escrow_offer(&prev, 139, carol, end + 5 * DAY, 11) == GW_ESC_CROWNED, "beating best crowns");
   e = prev;
 
-  /* an unbeatable bar lapses: anyone may reopen after one fuse length */
-  gw_escrow_t grief, fixed;
-  CHECK(gw_escrow_open(&grief, 0, 4, 60, 1, T0, 1) == GW_ESC_OK, "opened with an unbeatable bar");
-  CHECK(gw_escrow_open(&fixed, &grief, 4, 60, 142, T0 + 59 * S, 2) == GW_ESC_ERR_LIVE, "the bar has not lapsed yet");
-  CHECK(gw_escrow_open(&fixed, &grief, 4, 60, 142, T0 + 60 * S, 2) == GW_ESC_OK && fixed.best_sum == 142 && fixed.round == 2,
-    "reopened with a fair bar");
+  /* a bar joins best when it is lower, never loosens it when higher */
+  gw_escrow_t r1, r2, r3;
+  CHECK(gw_escrow_open(&r1, 0, 4, 600, 150, T0, 1) == GW_ESC_OK && r1.to_beat == 150 && r1.best == 150, "bar 150 is the first best");
+  CHECK(gw_escrow_open(&r2, &r1, 4, 600, 200, T0 + 600 * S, 2) == GW_ESC_OK && r2.to_beat == 150 && r2.best == 150,
+    "a reopen asking for a looser bar still gets best");
+  CHECK(gw_escrow_open(&r3, &r2, 4, 600, 120, T0 + 1200 * S, 3) == GW_ESC_OK && r3.to_beat == 120 && r3.best == 120,
+    "a stricter verified bar lowers best");
+
+  /* THE REOPEN THEFT (review PoC A): a funded escrow lapses unbeaten; anyone
+     reopens it with no bar and the shortest fuse — the carried pot is still
+     guarded by best, so a copy (or worse) never takes the crown */
+  gw_escrow_t honest, theft;
+  CHECK(gw_escrow_open(&honest, 0, 5, 3600, 100, T0, 1) == GW_ESC_OK, "honest open, bar 100 (the record)");
+  CHECK(gw_escrow_open(&theft, &honest, 5, 1, GW_ESCROW_NO_SUM, T0 + 3600 * S, 2) == GW_ESC_ERR_ARGS, "no 1 s fuse");
+  CHECK(gw_escrow_open(&theft, &honest, 5, GW_ESCROW_FUSE_MIN, GW_ESCROW_NO_SUM, T0 + 3600 * S, 2) == GW_ESC_OK &&
+        theft.to_beat == 100 && theft.best == 100, "reopened without a bar: still 100 to beat");
+  CHECK(gw_escrow_offer(&theft, 232, carol, T0 + 3601 * S, 3) == GW_ESC_NOT_BETTER, "worse does not crown");
+  CHECK(gw_escrow_offer(&theft, 100, carol, T0 + 3601 * S, 3) == GW_ESC_NOT_BETTER, "a copy of the record does not crown");
+  CHECK(gw_escrow_claim(&theft, 10000, T0 + 9999 * S, 4, &pay) == GW_ESC_ERR_NO_CHAMPION && pay == 0, "nothing to claim");
+
+  /* an unbeaten bar lapses: anyone may reopen after one fuse length */
+  gw_escrow_t lapse, again;
+  CHECK(gw_escrow_open(&lapse, 0, 6, 600, 142, T0, 1) == GW_ESC_OK, "opened at 142");
+  CHECK(gw_escrow_open(&again, &lapse, 6, 600, GW_ESCROW_NO_SUM, T0 + 599 * S, 2) == GW_ESC_ERR_LIVE, "the bar has not lapsed yet");
+  CHECK(gw_escrow_open(&again, &lapse, 6, 3600, GW_ESCROW_NO_SUM, T0 + 600 * S, 2) == GW_ESC_OK && again.to_beat == 142 &&
+        again.round == 2 && again.fuse_s == 3600, "reopened with a new fuse, same best");
 
   /* account bytes round-trip, and are checked on the way in */
   uint8_t buf[GW_ESCROW_SZ];
   gw_escrow_t back;
   gw_escrow_store(&e, buf);
-  CHECK(!memcmp(buf, "GWE1", 4) && buf[4] == 3, "stored magic + puzzle");
+  CHECK(!memcmp(buf, "GWE2", 4) && buf[4] == 3, "stored magic + puzzle");
+  CHECK(buf[36] == 139 && buf[37] == 0, "best at byte 36");
   CHECK(gw_escrow_load(buf, GW_ESCROW_SZ, 3, &back) == GW_ESC_OK, "load(store(e))");
-  CHECK(back.puzzle == e.puzzle && back.flags == e.flags && back.best_sum == e.best_sum &&
+  CHECK(back.puzzle == e.puzzle && back.flags == e.flags && back.to_beat == e.to_beat && back.best == e.best &&
         back.fuse_s == e.fuse_s && back.fuse_end == e.fuse_end && back.crowned_slot == e.crowned_slot &&
         back.round == e.round && back.total_paid == e.total_paid && !memcmp(back.champion, e.champion, 32),
         "load(store(e)) == e");
   CHECK(gw_escrow_load(buf, GW_ESCROW_SZ, 5, &back) == GW_ESC_ERR_STATE, "escrow for another puzzle");
   CHECK(gw_escrow_load(buf, GW_ESCROW_SZ - 1, 3, &back) == GW_ESC_ERR_STATE, "short account");
+  buf[36] = 140;
+  CHECK(gw_escrow_load(buf, GW_ESCROW_SZ, 3, &back) == GW_ESC_ERR_STATE, "best above the sum to beat");
+  buf[36] = 0;
+  CHECK(gw_escrow_load(buf, GW_ESCROW_SZ, 3, &back) == GW_ESC_ERR_STATE, "best 0");
+  buf[36] = 139;
+  buf[12] = 1; buf[13] = 0; buf[14] = 0; buf[15] = 0;
+  CHECK(gw_escrow_load(buf, GW_ESCROW_SZ, 3, &back) == GW_ESC_ERR_STATE, "fuse out of range");
+  gw_escrow_store(&e, buf);
   buf[5] = GW_ESCROW_SETTLED;
   CHECK(gw_escrow_load(buf, GW_ESCROW_SZ, 3, &back) == GW_ESC_ERR_STATE, "settled without a champion");
   buf[5] = 4;
   CHECK(gw_escrow_load(buf, GW_ESCROW_SZ, 3, &back) == GW_ESC_ERR_STATE, "unknown flag");
   buf[5] = GW_ESCROW_HAS_CHAMPION;
-  buf[0] = 'X';
+  buf[3] = '1';
+  CHECK(gw_escrow_load(buf, GW_ESCROW_SZ, 3, &back) == GW_ESC_ERR_STATE, "the old GWE1 layout");
+  buf[0] = 'X'; buf[3] = '2';
   CHECK(gw_escrow_load(buf, GW_ESCROW_SZ, 3, &back) == GW_ESC_ERR_STATE, "bad magic");
 
   uint8_t ev[GW_ESCROW_EVENT_SZ];
   gw_escrow_event(&e, GW_ESCROW_EV_PAYOUT, 0x0102030405060708ull, ev);
-  CHECK(!memcmp(ev, "GW!E", 4) && ev[4] == 3 && ev[5] == 3 && ev[8] == 8 && ev[15] == 1 && !memcmp(ev + 16, "GWE1", 4),
+  CHECK(!memcmp(ev, "GW!E", 4) && ev[4] == 3 && ev[5] == 3 && ev[8] == 8 && ev[15] == 1 && !memcmp(ev + 16, "GWE2", 4),
     "event layout");
 
   uint8_t seed[32];
   gw_escrow_seed(6, seed);
   CHECK(!memcmp(seed, "gw-escrow", 9) && seed[9] == 0 && seed[30] == 0 && seed[31] == 6, "seed layout");
-  printf("escrow rules: bar, crown, ties, fuse, freeze, one-time payout, reopen, storage checked\n");
+  printf("escrow rules: fuse range, bar, best, crown, ties, fuse, freeze, one-time payout, reopen (theft PoC), storage checked\n");
 }
 
 /* ======================= part 2: the program on a simulated ledger ======================= */
@@ -276,6 +319,11 @@ ulong tsys_account_resize(ulong i, ulong n) {
   tx_acct(i)->data_sz = (uint)n;
   return 0;
 }
+ulong tsys_account_set_flags(ushort i, uchar flags) {
+  if (!WRITABLE[i]) return 1;                      /* the program's own, writable account */
+  tx_acct(i)->flags = flags;
+  return 0;
+}
 ulong tsys_emit_event(void const *data, ulong sz) {
   if (NEVENTS == 8 || sz > 1024) return 1;
   memcpy(EVENTS[NEVENTS], data, sz); EVENT_SZ[NEVENTS++] = sz;
@@ -339,12 +387,15 @@ static ulong submit_ix(uint8_t *buf, int vec) {
   memcpy(buf + 4, c->bytes, c->len);
   return 4 + c->len;
 }
-static ulong open_ix(uint8_t *buf, uint8_t puzzle, uint32_t fuse_s, uint32_t bar, int proof) {
+/* OPEN: fuse, a state proof when `proof`, and the bar machine VEC_SUBMITS[bar_vec] (-1: no bar) */
+static ulong open_ix(uint8_t *buf, uint8_t puzzle, uint32_t fuse_s, int bar_vec, int proof) {
   buf[0] = 0x10; buf[1] = puzzle;
-  for (int i = 0; i < 4; i++) { buf[2 + i] = (uint8_t)(fuse_s >> (8 * i)); buf[6 + i] = (uint8_t)(bar >> (8 * i)); }
-  if (!proof) return 10;
-  memcpy(buf + 10, "proof", 5);
-  return 15;
+  for (int i = 0; i < 4; i++) buf[2 + i] = (uint8_t)(fuse_s >> (8 * i));
+  buf[6] = proof ? 5 : 0; buf[7] = 0;
+  ulong n = 8;
+  if (proof) { memcpy(buf + n, "proof", 5); n += 5; }
+  if (bar_vec >= 0) { memcpy(buf + n, VEC_SUBMITS[bar_vec].bytes, VEC_SUBMITS[bar_vec].len); n += VEC_SUBMITS[bar_vec].len; }
+  return n;
 }
 
 static result_t submit_as(int who, int vec, int esc_rw) {
@@ -353,9 +404,9 @@ static result_t submit_as(int who, int vec, int esc_rw) {
   int esc = ESC0 + VEC_SUBMITS[vec].puzzle;
   return esc_rw ? run(who, &esc, 1, 0, 0, ix, n, -1, -1) : run(who, 0, 0, &esc, 1, ix, n, -1, -1);
 }
-static result_t open_as(int who, uint8_t puzzle, uint32_t fuse_s, uint32_t bar) {
-  uint8_t ix[64];
-  ulong n = open_ix(ix, puzzle, fuse_s, bar, !LEDGER[ESC0 + puzzle].exists);
+static result_t open_as(int who, uint8_t puzzle, uint32_t fuse_s, int bar_vec) {
+  uint8_t ix[2048];
+  ulong n = open_ix(ix, puzzle, fuse_s, bar_vec, !LEDGER[ESC0 + puzzle].exists);
   int esc = ESC0 + puzzle;
   return run(who, &esc, 1, 0, 0, ix, n, -1, -1);
 }
@@ -382,14 +433,16 @@ static int has_event(const char *magic, int kind) {
 #define OK(r)        ((r).reverted == 0 && (r).code == 0)
 #define REVERTS(r, c) ((r).reverted && (r).code == (c))
 
-/* VEC_SUBMITS: puzzle 0 courier (sum 179, two layouts), ferris (163), crane (232) */
-enum { COURIER = 0, COURIER_R2 = 1, FERRIS = 2, FERRIS_R2 = 3, CRANE = 4, BAD_LAYOUT = 18 };
+/* VEC_SUBMITS: puzzle 0 courier (sum 179, two layouts), ferris (163), crane (232); puzzle 1 beadwheel (186) */
+enum { COURIER = 0, COURIER_R2 = 1, FERRIS = 2, FERRIS_R2 = 3, CRANE = 4, BEAD = 6, BEAD_R2 = 7, BAD_LAYOUT = 18 };
+#define NOBAR (-1)
+#define HOUR (3600u)
 
 static void program(void) {
   result_t r;
   ledger_reset();
 
-  /* every submission names its puzzle's escrow account, existing or not */
+  /* every submission names its puzzle's escrow account, existing or not, read-write */
   { uint8_t ix[2048]; ulong n = submit_ix(ix, COURIER);
     r = run(ALICE, 0, 0, 0, 0, ix, n, -1, -1);
     CHECK(REVERTS(r, 0x06), "submit without the escrow account: %lx", r.code);
@@ -400,6 +453,8 @@ static void program(void) {
     int esc = ESC0;
     r = run(ALICE, &esc, 1, 0, 0, ix, n, -1, -1);
     CHECK(REVERTS(r, 0x01), "instruction v2 is retired: %lx", r.code); }
+  r = submit_as(ALICE, COURIER, 0);
+  CHECK(REVERTS(r, 0x07), "submit with the (absent) escrow read-only: %lx", r.code);
 
   /* no escrow yet: the record works as before */
   r = submit_as(ALICE, COURIER, 1);
@@ -412,54 +467,71 @@ static void program(void) {
   r = claim_as(ALICE, 0, ALICE, 1);
   CHECK(REVERTS(r, 0x0B), "claim without an escrow: %lx", r.code);
 
-  /* OPEN: anyone, at the derived address, with a state proof the first time */
-  r = open_as(ALICE, 0, 0, GW_ESCROW_NO_SUM);
+  /* OPEN: anyone, at the derived address, with a state proof the first time,
+     a fuse of 10 minutes to a year, and a bar that is a verified machine */
+  r = open_as(ALICE, 0, 0, NOBAR);
   CHECK(REVERTS(r, 0x0A) && !LEDGER[ESC0].exists, "open with a zero fuse: %lx", r.code);
-  { uint8_t ix[64]; ulong n = open_ix(ix, 0, 60, GW_ESCROW_NO_SUM, 0);
+  r = open_as(ALICE, 0, 1, NOBAR);
+  CHECK(REVERTS(r, 0x0A) && !LEDGER[ESC0].exists, "open with a 1 s fuse: %lx", r.code);
+  r = open_as(ALICE, 0, GW_ESCROW_FUSE_MIN - 1, NOBAR);
+  CHECK(REVERTS(r, 0x0A), "open with a 599 s fuse: %lx", r.code);
+  r = open_as(ALICE, 0, GW_ESCROW_FUSE_MAX + 1, NOBAR);
+  CHECK(REVERTS(r, 0x0A), "open with a fuse over a year: %lx", r.code);
+  r = open_as(ALICE, 0, 0xFFFFFFFFu, NOBAR);
+  CHECK(REVERTS(r, 0x0A), "open with a 136-year fuse (review PoC B): %lx", r.code);
+  r = open_as(ALICE, 0, HOUR, BAD_LAYOUT);
+  CHECK(REVERTS(r, 0x100 + GW_ERR_LAYOUT) && !LEDGER[ESC0].exists, "a bar must verify: %lx", r.code);
+  r = open_as(ALICE, 0, HOUR, BEAD);
+  CHECK(r.reverted && !LEDGER[ESC0].exists, "a bar must verify on this puzzle: %lx", r.code);
+  { uint8_t ix[64]; ulong n = open_ix(ix, 0, 600, NOBAR, 0);
     int esc = ESC0;
     r = run(DAVE, &esc, 1, 0, 0, ix, n, -1, -1);
     CHECK(REVERTS(r, 0x01), "first open without a state proof: %lx", r.code);
-    n = open_ix(ix, 0, 60, GW_ESCROW_NO_SUM, 1);
+    n = open_ix(ix, 0, 600, NOBAR, 1);
     r = run(DAVE, 0, 0, &esc, 1, ix, n, -1, -1);
     CHECK(REVERTS(r, 0x07), "open with the escrow read-only: %lx", r.code);
     int wrong = ESC1;
     r = run(DAVE, &wrong, 1, 0, 0, ix, n, -1, -1);
-    CHECK(REVERTS(r, 0x06), "open naming another puzzle's escrow: %lx", r.code); }
-  r = open_as(DAVE, 0, GW_ESCROW_FUSE_30D, GW_ESCROW_NO_SUM);
-  CHECK(OK(r) && LEDGER[ESC0].exists && has_event("GW!E", GW_ESCROW_EV_OPEN), "dave, nobody special, opens puzzle 0: %lx", r.code);
-  CHECK(!memcmp(LEDGER[ESC0].owner.uc, LEDGER[PROGRAM].key.uc, 32) && LEDGER[ESC0].data_sz == GW_ESCROW_SZ, "program owns the escrow");
-  r = open_as(DAVE, 0, GW_ESCROW_FUSE_30D, GW_ESCROW_NO_SUM);
-  CHECK(REVERTS(r, 0x09), "open over an open escrow: %lx", r.code);
-  CHECK(!(escrow(0).flags & GW_ESCROW_HAS_CHAMPION) && escrow(0).round == 1, "the crown starts empty");
+    CHECK(REVERTS(r, 0x06), "open naming another puzzle's escrow: %lx", r.code);
+    ix[6] = 99;
+    r = run(DAVE, &esc, 1, 0, 0, ix, n, -1, -1);
+    CHECK(REVERTS(r, 0x01), "proof length past the end: %lx", r.code); }
 
-  /* deposits: plain native transfers into the escrow address, from anyone */
+  /* dave, nobody special, opens puzzle 0 with the record (alice's courier, 179) as the bar */
+  r = open_as(DAVE, 0, GW_ESCROW_FUSE_30D, COURIER_R2);
+  CHECK(OK(r) && LEDGER[ESC0].exists && has_event("GW!E", GW_ESCROW_EV_OPEN), "dave opens puzzle 0: %lx", r.code);
+  CHECK(has_event("GW!2", -1), "the bar machine is sealed on the record like any submission");
+  CHECK(!memcmp(LEDGER[ESC0].owner.uc, LEDGER[PROGRAM].key.uc, 32) && LEDGER[ESC0].data_sz == GW_ESCROW_SZ, "program owns the escrow");
+  CHECK(LEDGER[ESC0].flags & TSDK_ACCOUNT_FLAG_UNCOMPRESSABLE, "the escrow asks to stay uncompressed");
+  CHECK(escrow(0).to_beat == 179 && escrow(0).best == 179 && escrow(0).round == 1 && !(escrow(0).flags & GW_ESCROW_HAS_CHAMPION),
+    "the crown starts empty; 179 to beat");
+  r = open_as(DAVE, 0, GW_ESCROW_FUSE_30D, NOBAR);
+  CHECK(REVERTS(r, 0x09), "open over an open escrow: %lx", r.code);
+
+  /* deposits: plain native transfers into the (existing) escrow address, from anyone */
   LEDGER[ESC0].balance += 300;      /* carol */
   LEDGER[ESC0].balance += 200;      /* bob */
   r = claim_as(CAROL, 0, CAROL, 1);
   CHECK(REVERTS(r, 0x0C), "claim with nobody crowned: %lx", r.code);
 
-  /* the first verified sum takes the crown */
-  r = submit_as(ALICE, COURIER, 1);
-  CHECK(OK(r) && has_event("GW!2", -1) && has_event("GW!E", GW_ESCROW_EV_CROWN), "alice's 179 crowns");
-  CHECK(champion_is(0, ALICE) && escrow(0).best_sum == 179 && escrow(0).fuse_end == T0 + 30 * DAY, "alice holds at 179");
-
-  /* copies and ties change nothing (but are still sealed on the record) */
+  /* copies and ties of the bar change nothing (but are still sealed on the record) */
   r = submit_as(BOB, COURIER, 1);
-  CHECK(OK(r) && has_event("GW!2", -1) && !has_event("GW!E", -1), "bob's byte-for-byte copy: sealed, no crown");
-  r = submit_as(BOB, COURIER_R2, 1);
-  CHECK(OK(r) && !has_event("GW!E", -1) && champion_is(0, ALICE), "bob's different 179: no crown");
+  CHECK(OK(r) && has_event("GW!2", -1) && !has_event("GW!E", -1), "bob's byte-for-byte copy of the record: sealed, no crown");
   r = submit_as(BOB, CRANE, 1);
-  CHECK(OK(r) && !has_event("GW!E", -1) && champion_is(0, ALICE), "bob's worse 232: no crown");
+  CHECK(OK(r) && !has_event("GW!E", -1) && !(escrow(0).flags & GW_ESCROW_HAS_CHAMPION), "bob's worse 232: no crown");
 
-  /* a better machine must go through the escrow: read-only would let it slip past */
+  /* the escrow must ride read-write once it exists, whatever the sum */
+  r = submit_as(BOB, CRANE, 0);
+  CHECK(REVERTS(r, 0x07), "a worse sum with the escrow read-only reverts: %lx", r.code);
   r = submit_as(BOB, FERRIS, 0);
-  CHECK(REVERTS(r, 0x07) && champion_is(0, ALICE), "better sum with the escrow read-only reverts: %lx", r.code);
+  CHECK(REVERTS(r, 0x07) && escrow(0).best == 179, "a better sum with the escrow read-only reverts: %lx", r.code);
 
-  /* strictly better takes the crown and resets the fuse */
+  /* strictly better takes the crown and lights the fuse */
   BLOCK.block_time = T0 + 20 * DAY;
   r = submit_as(BOB, FERRIS, 1);
   CHECK(OK(r) && has_event("GW!E", GW_ESCROW_EV_CROWN), "bob's 163 crowns");
-  CHECK(champion_is(0, BOB) && escrow(0).best_sum == 163 && escrow(0).fuse_end == T0 + 50 * DAY, "bob holds, fuse reset");
+  CHECK(champion_is(0, BOB) && escrow(0).to_beat == 163 && escrow(0).best == 163 && escrow(0).fuse_end == T0 + 50 * DAY,
+    "bob holds, fuse lit");
   r = submit_as(ALICE, FERRIS_R2, 1);
   CHECK(OK(r) && champion_is(0, BOB), "alice ties bob: nothing");
 
@@ -490,52 +562,28 @@ static void program(void) {
   r = submit_as(ALICE, FERRIS, 1);
   CHECK(OK(r) && has_event("GW!2", -1) && !has_event("GW!E", -1), "after the payout: sealed on the record, no crown");
 
-  /* a settled escrow may be opened afresh; the late deposit seeds its pot */
-  r = open_as(CAROL, 0, 3600, 163);
-  CHECK(OK(r) && has_event("GW!E", GW_ESCROW_EV_OPEN), "carol reopens puzzle 0 with bar 163: %lx", r.code);
-  CHECK(escrow(0).round == 2 && escrow(0).best_sum == 163 && !(escrow(0).flags & GW_ESCROW_HAS_CHAMPION) &&
-        LEDGER[ESC0].balance == 50, "round 2: empty crown, bar 163, pot 50");
-  { uint8_t ix[64]; ulong n = open_ix(ix, 0, 60, 1, 0); int esc = ESC0;
+  /* a settled escrow may be opened afresh; the late deposit is its pot and
+     best (163) is its bar even though carol asks for none */
+  r = open_as(CAROL, 0, HOUR, NOBAR);
+  CHECK(OK(r) && has_event("GW!E", GW_ESCROW_EV_OPEN), "carol reopens puzzle 0: %lx", r.code);
+  CHECK(escrow(0).round == 2 && escrow(0).to_beat == 163 && escrow(0).best == 163 && !(escrow(0).flags & GW_ESCROW_HAS_CHAMPION) &&
+        LEDGER[ESC0].balance == 50, "round 2: empty crown, 163 to beat, pot 50");
+  { uint8_t ix[2048]; ulong n = open_ix(ix, 0, 600, NOBAR, 0); int esc = ESC0;
     r = run(DAVE, &esc, 1, 0, 0, ix, n, -1, -1);
     CHECK(REVERTS(r, 0x09), "nobody can reopen over a live bar: %lx", r.code); }
   r = submit_as(BOB, FERRIS_R2, 1);
-  CHECK(OK(r) && !has_event("GW!E", -1), "a copy of the record does not beat the bar");
-
-  /* puzzle 1: an unbeatable bar lapses after one fuse length */
-  r = open_as(DAVE, 1, 3600, 1);
-  CHECK(OK(r) && escrow(1).best_sum == 1, "dave opens puzzle 1 with an unbeatable bar");
-  LEDGER[ESC1].balance = 900;
-  r = submit_as(ALICE, 7, 1);         /* beadwheel r2: 186 */
-  CHECK(OK(r) && !has_event("GW!E", -1), "186 does not beat a bar of 1");
-  r = open_as(ALICE, 1, 3600, 187);
-  CHECK(REVERTS(r, 0x09), "too early to reopen: %lx", r.code);
-  BLOCK.block_time += 3600 * S;
-  r = open_as(ALICE, 1, 3600, 187);
-  CHECK(OK(r) && escrow(1).best_sum == 187 && LEDGER[ESC1].balance == 900, "alice reopens with a fair bar, pot kept: %lx", r.code);
-  r = submit_as(CAROL, 7, 1);
-  CHECK(OK(r) && has_event("GW!E", GW_ESCROW_EV_CROWN) && champion_is(1, CAROL), "carol's 186 beats 187");
-  BLOCK.block_time += 3600 * S;
-  { /* a strictly better sum after the fuse: still sealed, crown frozen. There
-       is no better puzzle-1 machine in the vectors, so offer one directly. */
-    gw_escrow_t e = escrow(1);
-    CHECK(gw_escrow_offer(&e, 100, LEDGER[ALICE].key.uc, BLOCK.block_time, BLOCK.slot) == GW_ESC_FROZEN, "frozen");
-    r = submit_as(ALICE, 6, 1);
-    CHECK(OK(r) && !has_event("GW!E", -1) && champion_is(1, CAROL), "post-fuse submission sealed, crown frozen"); }
-  r = open_as(ALICE, 1, 3600, 1);
-  CHECK(REVERTS(r, 0x09), "an unpaid champion cannot be opened over: %lx", r.code);
-  r = claim_as(ALICE, 1, CAROL, 1);
-  CHECK(OK(r) && LEDGER[CAROL].balance == 1900 && LEDGER[ESC1].balance == 0, "carol paid 900");
+  CHECK(OK(r) && !has_event("GW!E", -1), "a copy of the champion does not take round 2");
 
   /* via a wrapper (the passkey manager): the vouched wallet is the solver and champion */
   ledger_reset();
-  r = open_as(PAYER, 0, 60, GW_ESCROW_NO_SUM);
-  CHECK(OK(r), "open on a fresh ledger");
+  r = open_as(PAYER, 0, 600, NOBAR);
+  CHECK(OK(r) && NEVENTS == 1, "open on a fresh ledger, no bar: nothing sealed");
   { uint8_t ix[2048]; ulong n = submit_ix(ix, FERRIS);
     int rw[2] = { WALLET, ESC0 };
     r = run(PAYER, rw, 2, 0, 0, ix, n, WRAPPER, WALLET);
     CHECK(OK(r) && champion_is(0, WALLET), "a passkey wallet takes the crown, not the relayer: %lx", r.code); }
   LEDGER[ESC0].balance = 42;
-  BLOCK.block_time += 60 * S;
+  BLOCK.block_time += 600 * S;
   r = claim_as(PAYER, 0, WALLET, 1);
   CHECK(OK(r) && LEDGER[WALLET].balance == 1042, "the wallet is paid");
 
@@ -543,12 +591,98 @@ static void program(void) {
   BLOCK.block_time = 0;
   r = claim_as(PAYER, 0, WALLET, 1);
   CHECK(REVERTS(r, 0x10), "claim with no block time: %lx", r.code);
-  printf("escrow program: open by anyone, bar, reopen, deposits, crown, copies, fuse, payout, wrapper checked on a simulated ledger\n");
+  printf("escrow program: open by anyone, fuse range, verified bar, best, reopen, deposits, crown, copies, fuse, payout, wrapper checked on a simulated ledger\n");
+}
+
+/* ---- the review's attacks, replayed against the program ---- */
+static void attacks(void) {
+  result_t r;
+
+  /* A. reopen theft. The record (ferris, 163) is sealed before any escrow.
+     An honest opener names it as the bar; donors fund the pot; nobody beats
+     163 within the fuse. Mallory reopens with no bar and the shortest fuse,
+     then submits the worst machine and a copy of the record, and claims. */
+  ledger_reset();
+  r = submit_as(ALICE, FERRIS, 1);
+  CHECK(OK(r), "the record, sealed before the escrow");
+  r = open_as(DAVE, 0, HOUR, FERRIS_R2);
+  CHECK(OK(r) && escrow(0).to_beat == 163 && escrow(0).best == 163, "honest open over the record: %lx", r.code);
+  LEDGER[ESC0].balance = 10000;
+  BLOCK.block_time += HOUR * S;                      /* the bar lapses unbeaten */
+  r = open_as(BOB, 0, 1, NOBAR);
+  CHECK(REVERTS(r, 0x0A), "mallory's 1 s fuse: %lx", r.code);
+  r = open_as(BOB, 0, GW_ESCROW_FUSE_MIN, NOBAR);
+  CHECK(OK(r) && escrow(0).round == 2 && escrow(0).to_beat == 163 && escrow(0).best == 163 && LEDGER[ESC0].balance == 10000,
+    "mallory may reopen, but best carries over: 163 to beat: %lx", r.code);
+  r = open_as(BOB, 0, GW_ESCROW_FUSE_MIN, CRANE);
+  CHECK(REVERTS(r, 0x09), "and cannot reopen again over the live bar: %lx", r.code);
+  r = submit_as(BOB, CRANE, 1);
+  CHECK(OK(r) && !has_event("GW!E", -1), "the worst machine on the board takes nothing");
+  r = submit_as(BOB, FERRIS, 1);
+  CHECK(OK(r) && !has_event("GW!E", -1), "a copy of the record takes nothing");
+  BLOCK.block_time += GW_ESCROW_FUSE_MIN * S;
+  ulong before = LEDGER[BOB].balance;
+  r = claim_as(BOB, 0, BOB, 1);
+  CHECK(REVERTS(r, 0x0C) && LEDGER[BOB].balance == before && LEDGER[ESC0].balance == 10000, "mallory gains nothing: %lx", r.code);
+
+  /* A'. the same with a settled escrow that received deposits after its
+     payout, and a better sum sealed after the fuse burnt out: best (not the
+     paid champion's sum, not a looser bar) guards the next round */
+  ledger_reset();
+  r = open_as(DAVE, 0, HOUR, NOBAR);
+  CHECK(OK(r), "open, no bar");
+  r = submit_as(ALICE, COURIER, 1);
+  CHECK(OK(r) && champion_is(0, ALICE) && escrow(0).to_beat == 179, "alice crowned at 179");
+  BLOCK.block_time += HOUR * S;
+  r = submit_as(CAROL, FERRIS, 1);
+  CHECK(OK(r) && !has_event("GW!E", -1) && champion_is(0, ALICE) && escrow(0).best == 163,
+    "carol's 163 after the fuse: no crown, but best remembers it");
+  LEDGER[ESC0].balance = 700;
+  r = claim_as(DAVE, 0, ALICE, 1);
+  CHECK(OK(r) && LEDGER[ALICE].balance == 1700, "alice paid");
+  LEDGER[ESC0].balance = 9000;                       /* donations after the payout */
+  r = open_as(BOB, 0, GW_ESCROW_FUSE_MIN, COURIER);
+  CHECK(OK(r) && escrow(0).to_beat == 163, "reopened with a looser bar (179): best 163 still to beat: %lx", r.code);
+  r = submit_as(BOB, FERRIS_R2, 1);
+  CHECK(OK(r) && !has_event("GW!E", -1), "a copy of carol's 163 takes nothing");
+  BLOCK.block_time += GW_ESCROW_FUSE_MIN * S;
+  r = claim_as(BOB, 0, BOB, 1);
+  CHECK(REVERTS(r, 0x0C) && LEDGER[ESC0].balance == 9000, "the carried pot stays put: %lx", r.code);
+
+  /* B. a foreign-owned account at the escrow address (cannot happen on Thru:
+     only this program creates there, and a transfer creates nothing) never
+     blocks sealing, and holds no pot of ours */
+  ledger_reset();
+  LEDGER[ESC1].exists = 1; LEDGER[ESC1].owner = LEDGER[DAVE].key; LEDGER[ESC1].balance = 1;
+  r = submit_as(ALICE, BEAD, 1);
+  CHECK(OK(r) && has_event("GW!2", -1) && !has_event("GW!E", -1), "submit past a foreign account: sealed, no crown: %lx", r.code);
+  r = open_as(ALICE, 1, HOUR, NOBAR);
+  CHECK(REVERTS(r, 0x07), "open over a foreign account: %lx", r.code);
+  r = claim_as(ALICE, 1, ALICE, 1);
+  CHECK(REVERTS(r, 0x07), "claim on a foreign account: %lx", r.code);
+
+  /* C. a compressed escrow is refused, never silently skipped (its best
+     would be stale); anyone may decompress it */
+  ledger_reset();
+  r = open_as(DAVE, 1, HOUR, BEAD);
+  CHECK(OK(r), "open puzzle 1");
+  LEDGER[ESC1].flags |= TSDK_ACCOUNT_FLAG_COMPRESSED;
+  r = submit_as(ALICE, BEAD_R2, 1);
+  CHECK(REVERTS(r, 0x12), "submit over a compressed escrow: %lx", r.code);
+  r = open_as(ALICE, 1, HOUR, NOBAR);
+  CHECK(REVERTS(r, 0x12), "open over a compressed escrow: %lx", r.code);
+  r = claim_as(ALICE, 1, ALICE, 1);
+  CHECK(REVERTS(r, 0x12), "claim on a compressed escrow: %lx", r.code);
+  LEDGER[ESC1].flags &= (uchar)~TSDK_ACCOUNT_FLAG_COMPRESSED;
+  r = submit_as(ALICE, BEAD_R2, 1);
+  CHECK(OK(r), "decompressed: sealing resumes");
+  printf("escrow attacks: reopen theft, settled-pot theft, foreign account, compressed account all fail\n");
 }
 
 int main(void) {
   unit();
   program();
+  attacks();
   if (failures) { printf("%d FAILURES\n", failures); return 1; }
   printf("all escrow checks pass\n");
   return 0;

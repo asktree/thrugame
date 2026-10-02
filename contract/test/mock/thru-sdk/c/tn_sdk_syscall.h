@@ -10,5 +10,6 @@ ulong tsys_increment_anonymous_segment_sz( void * segment_addr, ulong delta, voi
 ulong tsys_account_create( ulong account_idx, uchar const seed[ TN_SEED_SIZE ], void const * proof, ulong proof_sz );
 ulong tsys_account_resize( ulong account_idx, ulong new_size );
 ulong tsys_emit_event( void const * data, ulong data_sz );
+ulong tsys_account_set_flags( ushort account_idx, uchar flags );
 
 #endif
