@@ -42,6 +42,8 @@
 #define GW_ESCROW_FUSE_30D  2592000u       /* SPEC §13: a 30-day fuse, in seconds */
 #define GW_ESCROW_FUSE_MIN  600u           /* 10 minutes: the shortest fuse OPEN takes */
 #define GW_ESCROW_FUSE_MAX  2592000u       /* 30 days: the longest (the documented default) */
+#define GW_ESCROW_GRACE_S   7776000u       /* 90 days after the fuse: a champion still
+                                              missing then is taken to be gone */
 #define GW_NS_PER_S         1000000000ull
 
 /* the escrow account's 32-byte derivation seed: "gw-escrow", zero padding,
@@ -88,6 +90,8 @@ enum {
   GW_ESC_ERR_PAID,         /* claim: already paid out */
   GW_ESC_ERR_BURNING,      /* claim: the fuse is still burning */
   GW_ESC_ERR_CLOCK,        /* block time unavailable (0) */
+  GW_ESC_ERR_PAYEE_MISSING,/* claim: the champion's account reads as absent (compressed,
+                              most likely) and the grace period has not run out */
 };
 
 void gw_escrow_seed(uint8_t puzzle, uint8_t seed[32]);
@@ -132,12 +136,21 @@ int  gw_escrow_offer(gw_escrow_t *e, uint64_t sum, const uint8_t solver[32],
 /* Has the fuse burnt out (a champion has won the current round)? */
 int  gw_escrow_expired(const gw_escrow_t *e, uint64_t now);
 
+/* What the shell sees of the champion's account at payout time. */
+enum {
+  GW_PAYEE_OK = 0,         /* present and creditable: pay it */
+  GW_PAYEE_GONE,           /* present but DELETED (or EPHEMERAL): it can never be paid */
+  GW_PAYEE_MISSING,        /* reads as absent: on Thru that is how a compressed account
+                              looks, so wait — unless the grace period is over */
+};
+
 /* Settle the round, once: GW_ESC_OK with *pay = the whole balance, owed to
-   e->champion; or, when `payable` is 0 (the champion's account cannot be
-   credited), GW_ESC_UNPAID with *pay = 0 — the round settles marked UNPAID and
-   the balance stays for the next round. Either way the fuse never relights.
-   Anything else is an error. */
-int  gw_escrow_claim(gw_escrow_t *e, uint64_t balance, int payable, uint64_t now,
+   e->champion. GW_ESC_UNPAID with *pay = 0 when the payee is GONE, or MISSING
+   at or after fuse end + GW_ESCROW_GRACE_S: the round settles marked UNPAID and
+   the balance stays for the next round. MISSING before that:
+   GW_ESC_ERR_PAYEE_MISSING (decompress the champion and claim again). Either
+   way a settled round's fuse never relights. Anything else is an error. */
+int  gw_escrow_claim(gw_escrow_t *e, uint64_t balance, int payee, uint64_t now,
                      uint64_t slot, uint64_t *pay);
 
 /* Event payload "GW!E": kind, puzzle, amount, then the escrow as stored (GWE2). */

@@ -13,7 +13,9 @@
  * only spare the verifier's compute; gw_escrow_open re-checks both, so
  * removing them changes no outcome (equivalent mutants); likewise the rules'
  * explicit "an idle escrow is reopenable" (its fuse end 0 has always lapsed).
- * Nor the shell's
+ * The order of escrow_kind's compressed and existence checks is not listed
+ * either: the runtime (and so the mock) shows a compressed account as absent
+ * with no flags, so either order behaves the same. Nor the shell's
  * verified-sum range check (0 < sum < 0xFFFFFFFF): no machine in the vectors
  * reaches it, and the rules module ignores such a sum anyway. */
 'use strict';
@@ -55,13 +57,13 @@ const MUTANTS = [
     '  if (e->round == 0) { if (sum < (uint64_t)e->best) e->best = (uint32_t)sum; return GW_ESC_IDLE; }\n  if (now && sum < (uint64_t)e->best) e->best = (uint32_t)sum;'],  ['SUBMIT takes the escrow read-only', SHELL, 'if( !tsdk_txn_is_account_idx_writable( tsdk_get_txn( ), esc_idx ) ) tsdk_revert( RC_ESCROW_BAD );', ''],
   ['SUBMIT does not save a lower best', SHELL, 'if( r == GW_ESC_CROWNED || e.best != best0 ) escrow_save', 'if( r == GW_ESC_CROWNED ) escrow_save'],
   ['SUBMIT seals before INIT', SHELL, 'if( kind == ESC_NONE ) tsdk_revert( RC_NO_INIT );', ''],
-  ['a compressed escrow that reads as absent slips through', SHELL,
-    '  if( tsdk_get_account_meta( idx )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );\n  if( !tsdk_account_exists( idx ) ) return ESC_NONE;',
-    '  if( !tsdk_account_exists( idx ) ) return ESC_NONE;\n  if( tsdk_get_account_meta( idx )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );'],
   ['SUBMIT needs a clock', SHELL, 'payable( sidx ), blk->block_time,', 'payable( sidx ), block_time( ),'],
   ['an ephemeral solver counts as payable', SHELL, '!( meta->flags & ( TSDK_ACCOUNT_FLAG_EPHEMERAL | TSDK_ACCOUNT_FLAG_DELETED ) )', '1'],
-  ['a refused payout transfer reverts the claim', SHELL, 'e = before;\n    r = gw_escrow_claim( &e, balance, 0, now, blk->slot, &pay );', 'tsdk_revert( RC_TRANSFER );'],
-  ['a compressed champion is paid nothing', SHELL, 'if( tsdk_get_account_meta( (ushort)champ )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );', ''],
+  ['a refused payout transfer is ignored', SHELL, 'tsys_account_transfer( idx, (ulong)champ, pay ) ) tsdk_revert( RC_TRANSFER );', 'tsys_account_transfer( idx, (ulong)champ, pay ) ) {}'],
+  ['an absent (compressed) champion is taken as gone', SHELL, 'if( !tsdk_account_exists( idx ) ) return GW_PAYEE_MISSING;', 'if( !tsdk_account_exists( idx ) ) return GW_PAYEE_GONE;'],
+  ['a deleted champion is paid', SHELL, 'if( tsdk_get_account_meta( idx )->flags & ( TSDK_ACCOUNT_FLAG_EPHEMERAL | TSDK_ACCOUNT_FLAG_DELETED ) ) return GW_PAYEE_GONE;', ''],
+  ['a missing champion forfeits at once', RULES, 'if (now < until) return GW_ESC_ERR_PAYEE_MISSING;', ''],
+  ['a missing champion locks the pot forever', RULES, '    gone = 1;\n  }', '    return GW_ESC_ERR_PAYEE_MISSING;\n  }'],
   ['INIT over an existing escrow', SHELL, 'if( escrow_load( idx, puzzle, &e ) ) tsdk_return( 0UL );', 'if( 0 && escrow_load( idx, puzzle, &e ) ) tsdk_return( 0UL );'],
   ['SUBMIT skips a compressed escrow', SHELL, 'if( tsdk_get_account_meta( idx )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );', ''],
   ['a foreign account blocks sealing', SHELL, 'if( !tsdk_is_account_owned_by_current_program( idx ) ) return ESC_FOREIGN;', 'if( !tsdk_is_account_owned_by_current_program( idx ) ) tsdk_revert( RC_ESCROW_BAD );'],

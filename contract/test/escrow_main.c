@@ -55,7 +55,7 @@ static void unit(void) {
   CHECK(!(e.flags & GW_ESCROW_HAS_CHAMPION) && e.to_beat == GW_ESCROW_NO_SUM && e.best == GW_ESCROW_NO_SUM && e.round == 1,
     "fresh escrow state");
   CHECK(e.fuse_end == T0 + 30 * DAY, "the bar lapses one fuse length after opening");
-  CHECK(gw_escrow_claim(&e, 500, 1, T0 + 365 * DAY, 2, &pay) == GW_ESC_ERR_NO_CHAMPION && pay == 0, "claim with no champion");
+  CHECK(gw_escrow_claim(&e, 500, GW_PAYEE_OK, T0 + 365 * DAY, 2, &pay) == GW_ESC_ERR_NO_CHAMPION && pay == 0, "claim with no champion");
   CHECK(!gw_escrow_expired(&e, T0 + 365 * DAY), "a crownless escrow never expires");
   CHECK(!gw_escrow_reopenable(&e, T0 + 30 * DAY - 1) && gw_escrow_reopenable(&e, T0 + 30 * DAY), "lapsed bar reopenable");
 
@@ -86,7 +86,7 @@ static void unit(void) {
   /* the fuse burns out exactly at fuse_end */
   uint64_t end = e.fuse_end;
   CHECK(!gw_escrow_expired(&e, end - 1), "burning one ns before the end");
-  CHECK(gw_escrow_claim(&e, 500, 1, end - 1, 6, &pay) == GW_ESC_ERR_BURNING && pay == 0, "claim while burning");
+  CHECK(gw_escrow_claim(&e, 500, GW_PAYEE_OK, end - 1, 6, &pay) == GW_ESC_ERR_BURNING && pay == 0, "claim while burning");
   CHECK(gw_escrow_expired(&e, end), "out at the end");
   CHECK(!gw_escrow_reopenable(&e, end + 99 * DAY), "an unpaid champion's escrow cannot be reopened");
 
@@ -99,11 +99,11 @@ static void unit(void) {
   CHECK(e.best == 150, "best remembers the frozen-out 150");
 
   /* payout: the whole balance, once; the fuse never relights */
-  CHECK(gw_escrow_claim(&e, 25000, 1, end + 3 * DAY, 8, &pay) == GW_ESC_OK && pay == 25000, "claim pays the balance");
+  CHECK(gw_escrow_claim(&e, 25000, GW_PAYEE_OK, end + 3 * DAY, 8, &pay) == GW_ESC_OK && pay == 25000, "claim pays the balance");
   CHECK((e.flags & GW_ESCROW_SETTLED) && e.total_paid == 25000 && !memcmp(e.champion, bob, 32) && e.to_beat == 170,
     "settled, bob on the record");
   CHECK(e.fuse_end == end, "the fuse does not relight");
-  CHECK(gw_escrow_claim(&e, 25000, 1, end + 90 * DAY, 9, &pay) == GW_ESC_ERR_PAID && pay == 0, "no second payout, ever");
+  CHECK(gw_escrow_claim(&e, 25000, GW_PAYEE_OK, end + 90 * DAY, 9, &pay) == GW_ESC_ERR_PAID && pay == 0, "no second payout, ever");
   before = e;
   CHECK(gw_escrow_offer(&e, 140, carol, 1, end + 4 * DAY, 9) == GW_ESC_SETTLED, "a settled escrow takes no crowns");
   CHECK(!memcmp(e.champion, bob, 32) && e.to_beat == 170 && e.best == 140, "settled crown untouched, best 140");
@@ -136,7 +136,7 @@ static void unit(void) {
         theft.to_beat == 100 && theft.best == 100, "reopened without a bar: still 100 to beat");
   CHECK(gw_escrow_offer(&theft, 232, carol, 1, T0 + 3601 * S, 3) == GW_ESC_NOT_BETTER, "worse does not crown");
   CHECK(gw_escrow_offer(&theft, 100, carol, 1, T0 + 3601 * S, 3) == GW_ESC_NOT_BETTER, "a copy of the record does not crown");
-  CHECK(gw_escrow_claim(&theft, 10000, 1, T0 + 9999 * S, 4, &pay) == GW_ESC_ERR_NO_CHAMPION && pay == 0, "nothing to claim");
+  CHECK(gw_escrow_claim(&theft, 10000, GW_PAYEE_OK, T0 + 9999 * S, 4, &pay) == GW_ESC_ERR_NO_CHAMPION && pay == 0, "nothing to claim");
 
   /* an unbeaten bar lapses: anyone may reopen after one fuse length */
   gw_escrow_t lapse, again;
@@ -152,7 +152,7 @@ static void unit(void) {
         idle.fuse_s == 0 && idle.total_paid == 0, "idle escrow state");
   CHECK(gw_escrow_reopenable(&idle, T0), "an idle escrow may be opened at once");
   CHECK(gw_escrow_offer(&idle, 163, alice, 1, T0, 8) == GW_ESC_IDLE && idle.best == 163 && !idle.flags, "idle: best noted, no crown");
-  CHECK(gw_escrow_claim(&idle, 50, 1, T0, 9, &pay) == GW_ESC_ERR_NO_CHAMPION && pay == 0, "idle: nothing to claim");
+  CHECK(gw_escrow_claim(&idle, 50, GW_PAYEE_OK, T0, 9, &pay) == GW_ESC_ERR_NO_CHAMPION && pay == 0, "idle: nothing to claim");
   CHECK(gw_escrow_open(&op, &idle, 2, 600, GW_ESCROW_NO_SUM, T0, 10) == GW_ESC_OK && op.round == 1 && op.to_beat == 163,
     "first round over an idle escrow: the pre-round 163 is the bar (review2 P1)");
   CHECK(gw_escrow_offer(&op, 163, bob, 1, T0 + S, 11) == GW_ESC_NOT_BETTER, "a copy of the pre-round record takes nothing");
@@ -172,9 +172,16 @@ static void unit(void) {
 
   /* a champion who cannot be paid: the round settles unpaid, the pot stays */
   uint64_t oend = op.fuse_end;
-  CHECK(gw_escrow_claim(&op, 5000, 0, oend, 18, &pay) == GW_ESC_UNPAID && pay == 0 && (op.flags & GW_ESCROW_SETTLED) &&
+  gw_escrow_t wait = op;
+  CHECK(gw_escrow_claim(&wait, 5000, GW_PAYEE_MISSING, oend, 18, &pay) == GW_ESC_ERR_PAYEE_MISSING && pay == 0 &&
+        !(wait.flags & GW_ESCROW_SETTLED), "missing (compressed) champion: wait, nothing settles (review3 H2)");
+  CHECK(gw_escrow_claim(&wait, 5000, GW_PAYEE_MISSING, oend + GW_ESCROW_GRACE_S * S - 1, 18, &pay) == GW_ESC_ERR_PAYEE_MISSING,
+    "still waiting one ns before the 90-day grace runs out");
+  CHECK(gw_escrow_claim(&wait, 5000, GW_PAYEE_MISSING, oend + GW_ESCROW_GRACE_S * S, 18, &pay) == GW_ESC_UNPAID && pay == 0 &&
+        (wait.flags & GW_ESCROW_UNPAID), "missing 90 days after the fuse: settled unpaid");
+  CHECK(gw_escrow_claim(&op, 5000, GW_PAYEE_GONE, oend, 18, &pay) == GW_ESC_UNPAID && pay == 0 && (op.flags & GW_ESCROW_SETTLED) &&
         (op.flags & GW_ESCROW_UNPAID) && op.total_paid == 0, "unpayable champion: settled unpaid (review2 P2)");
-  CHECK(gw_escrow_claim(&op, 5000, 1, oend, 19, &pay) == GW_ESC_ERR_PAID, "and only once");
+  CHECK(gw_escrow_claim(&op, 5000, GW_PAYEE_OK, oend, 19, &pay) == GW_ESC_ERR_PAID, "and only once");
   gw_escrow_t next;
   CHECK(gw_escrow_open(&next, &op, 2, 600, GW_ESCROW_NO_SUM, oend + S, 20) == GW_ESC_OK && next.round == 2 && next.to_beat == 130 &&
         !(next.flags & GW_ESCROW_UNPAID), "the next round opens, best 130 to beat");
@@ -242,6 +249,7 @@ typedef struct {
   uchar  data[256];
   uint   data_sz;
   int    authorized;            /* signed, or vouched for by the calling program */
+  int    compressed;            /* in the compressed trie: absent, and not creatable */
 } acct_t;
 
 /* the ledger: every account the tests know about */
@@ -287,7 +295,8 @@ tsdk_account_meta_t const *tsdk_get_account_meta(ushort i) {
   acct_t *a = tx_acct(i);
   tsdk_account_meta_t *m = &METAS[i];
   memset(m, 0, sizeof *m);
-  m->flags = a->flags;          /* a compressed account may read as absent, flag and all */
+  /* absent (never created, or compressed: the runtime shows both the same
+     way) reads as version 0 with no flags */
   if (!a->exists) return m;
   m->version = 1; m->flags = a->flags; m->data_sz = a->data_sz; m->owner = a->owner; m->balance = a->balance;
   return m;
@@ -352,6 +361,7 @@ ulong tsys_increment_anonymous_segment_sz(void *seg, ulong delta, void **addr) {
 ulong tsys_account_create(ulong i, uchar const seed[32], void const *proof, ulong proof_sz) {
   if (!tsdk_txn_is_account_idx_writable(&TXN, (ushort)i)) return 1;
   if (tx_acct(i)->exists) return 2;
+  if (tx_acct(i)->compressed) return 6;            /* the creation proof cannot hold */
   if (!proof || !proof_sz) return 3;
   tn_pubkey_t want;
   tsdk_create_program_defined_account_address(tsdk_get_current_program_acc_addr(), 0, seed, &want);
@@ -783,50 +793,88 @@ static void attacks(void) {
     CHECK(OK(r) && champion_is(0, WALLET), "the wallet takes the crown at 179"); }
   LEDGER[ESC0].balance = 5000;
   BLOCK.block_time += GW_ESCROW_FUSE_MIN * S;
-  LEDGER[WALLET].exists = 0; LEDGER[WALLET].balance = 0;          /* deleted by its owner program */
   r = claim_as(DAVE, 0, -1, 0);
-  CHECK(REVERTS(r, 0x0E), "the champion's account must still be listed: %lx", r.code);
-  LEDGER[WALLET].flags |= TSDK_ACCOUNT_FLAG_COMPRESSED;
-  r = claim_as(DAVE, 0, WALLET, 1);
-  CHECK(REVERTS(r, 0x12) && !(escrow(0).flags & GW_ESCROW_SETTLED), "a compressed champion is not gone: decompress and claim: %lx", r.code);
-  LEDGER[WALLET].flags &= (uchar)~TSDK_ACCOUNT_FLAG_COMPRESSED;
+  CHECK(REVERTS(r, 0x0E), "the champion's account must be listed: %lx", r.code);
+  /* compressed by a third party: on Thru it reads as absent, no flags.
+     Absent is never "gone" before the grace period: wait for a decompress */
+  LEDGER[WALLET].exists = 0; LEDGER[WALLET].compressed = 1;
+  r = claim_as(BOB, 0, WALLET, 1);
+  CHECK(REVERTS(r, 0x12) && !(escrow(0).flags & GW_ESCROW_SETTLED) && LEDGER[ESC0].balance == 5000,
+    "a champion that reads as absent (compressed) is not robbed (review3 H2): %lx", r.code);
+  LEDGER[WALLET].exists = 1; LEDGER[WALLET].compressed = 0;
+  r = claim_as(BOB, 0, WALLET, 1);
+  CHECK(OK(r) && LEDGER[WALLET].balance == 6000 && LEDGER[ESC0].balance == 0, "decompressed: the champion is paid: %lx", r.code);
+  /* a champion account flagged DELETED can never be paid: settle unpaid, keep the pot */
+  { uint8_t ix[2048]; ulong n;
+    r = open_as(DAVE, 0, GW_ESCROW_FUSE_MIN, NOBAR);
+    n = submit_ix(ix, FERRIS); int rw[2] = { WALLET, ESC0 };
+    r = run(PAYER, rw, 2, 0, 0, ix, n, WRAPPER, WALLET);
+    CHECK(OK(r) && champion_is(0, WALLET), "the wallet takes round 2 at 163"); }
+  LEDGER[ESC0].balance = 5000;
+  BLOCK.block_time += GW_ESCROW_FUSE_MIN * S;
+  LEDGER[WALLET].flags |= TSDK_ACCOUNT_FLAG_DELETED;
   r = claim_as(DAVE, 0, WALLET, 1);
   CHECK(OK(r) && has_event("GW!E", GW_ESCROW_EV_UNPAID) && (escrow(0).flags & GW_ESCROW_UNPAID) && LEDGER[ESC0].balance == 5000 &&
-        escrow(0).total_paid == 0, "gone champion: settled unpaid, pot kept: %lx", r.code);
+        escrow(0).total_paid == 5000, "deleted champion: settled unpaid, pot kept: %lx", r.code);
   r = claim_as(DAVE, 0, WALLET, 1);
   CHECK(REVERTS(r, 0x11), "settled once: %lx", r.code);
   r = open_as(DAVE, 0, GW_ESCROW_FUSE_MIN, NOBAR);
-  CHECK(OK(r) && escrow(0).round == 2 && escrow(0).to_beat == 179, "the next round opens over it: %lx", r.code);
-  r = submit_as(ALICE, FERRIS, 1);
-  CHECK(OK(r) && champion_is(0, ALICE), "163 crowns round 2");
-  BLOCK.block_time += GW_ESCROW_FUSE_MIN * S;
-  r = claim_as(DAVE, 0, ALICE, 1);
-  CHECK(OK(r) && LEDGER[ALICE].balance == 6000 && LEDGER[ESC0].balance == 0, "and pays the carried pot: %lx", r.code);
+  CHECK(OK(r) && escrow(0).round == 3 && escrow(0).to_beat == 163 && LEDGER[ESC0].balance == 5000,
+    "the next round opens over it with the pot: %lx", r.code);
+  LEDGER[WALLET].flags &= (uchar)~TSDK_ACCOUNT_FLAG_DELETED;
 
-  /* P2c. a transfer the runtime refuses never locks the pot either */
+  /* P2d. a champion missing (compressed) for good: after 90 days past the fuse
+     the round settles unpaid, so a really gone account cannot lock the pot */
+  ledger_reset();
+  r = open_as(DAVE, 0, GW_ESCROW_FUSE_MIN, NOBAR);
+  r = submit_as(ALICE, FERRIS, 1);
+  LEDGER[ESC0].balance = 800;
+  BLOCK.block_time += GW_ESCROW_FUSE_MIN * S;
+  LEDGER[ALICE].exists = 0; LEDGER[ALICE].compressed = 1;
+  r = claim_as(BOB, 0, ALICE, 1);
+  CHECK(REVERTS(r, 0x12), "missing champion: wait: %lx", r.code);
+  BLOCK.block_time += (uint64_t)GW_ESCROW_GRACE_S * S - 1;
+  r = claim_as(BOB, 0, ALICE, 1);
+  CHECK(REVERTS(r, 0x12), "one ns short of the 90-day grace: still waiting: %lx", r.code);
+  BLOCK.block_time += 1;
+  r = claim_as(BOB, 0, ALICE, 1);
+  CHECK(OK(r) && (escrow(0).flags & GW_ESCROW_UNPAID) && LEDGER[ESC0].balance == 800, "90 days on: settled unpaid, pot kept: %lx", r.code);
+
+  /* P2c. a transfer the runtime refuses reverts the claim: the caller sets the
+     compute and memory units, so it says nothing about the champion (review3 H1) */
   ledger_reset();
   r = open_as(DAVE, 0, GW_ESCROW_FUSE_MIN, NOBAR);
   r = submit_as(ALICE, FERRIS, 1);
   LEDGER[ESC0].balance = 300;
   BLOCK.block_time += GW_ESCROW_FUSE_MIN * S;
   FAIL_TRANSFER = 1;
-  r = claim_as(DAVE, 0, ALICE, 1);
-  CHECK(OK(r) && (escrow(0).flags & GW_ESCROW_UNPAID) && LEDGER[ESC0].balance == 300 && LEDGER[ALICE].balance == 1000,
-    "refused transfer: settled unpaid, pot kept: %lx", r.code);
+  r = claim_as(BOB, 0, ALICE, 1);
+  CHECK(REVERTS(r, 0x0F) && !(escrow(0).flags & GW_ESCROW_SETTLED) && LEDGER[ESC0].balance == 300,
+    "refused transfer: reverted, nothing settled: %lx", r.code);
+  r = claim_as(BOB, 0, ALICE, 1);
+  CHECK(OK(r) && LEDGER[ALICE].balance == 1300 && LEDGER[ESC0].balance == 0, "retried: alice is paid: %lx", r.code);
 
-  /* P3. a compressed escrow that reads as absent is still refused, never skipped */
+  /* P3. a compressed escrow. Seen with its flag: refused. Seen the way the
+     runtime shows it — absent, no flag — SUBMIT reverts 0x13 and INIT cannot
+     recreate it (the creation proof fails): nothing seals past it either way */
   ledger_reset();
   r = open_as(DAVE, 0, HOUR, COURIER);
   CHECK(OK(r) && escrow(0).to_beat == 179 && escrow(0).best == 179, "a fresh escrow's bar is its machine's sum");
   LEDGER[ESC0].balance = 7000;
-  LEDGER[ESC0].exists = 0; LEDGER[ESC0].flags |= TSDK_ACCOUNT_FLAG_COMPRESSED;
+  LEDGER[ESC0].exists = 0; LEDGER[ESC0].compressed = 1;
   r = submit_as(ALICE, FERRIS, 1);
-  CHECK(REVERTS(r, 0x12), "sealing past a compressed (absent-looking) escrow: %lx", r.code);
+  CHECK(REVERTS(r, 0x13), "sealing past a compressed escrow (reads as absent): %lx", r.code);
   r = init_as(ALICE, 0, 1);
-  CHECK(REVERTS(r, 0x12), "INIT over a compressed escrow: %lx", r.code);
-  LEDGER[ESC0].exists = 1; LEDGER[ESC0].flags &= (uchar)~TSDK_ACCOUNT_FLAG_COMPRESSED;
+  CHECK(REVERTS(r, 0x07), "INIT cannot recreate a compressed escrow: %lx", r.code);
+  r = open_as(ALICE, 0, HOUR, NOBAR);
+  CHECK(r.reverted, "nor can OPEN: %lx", r.code);
+  LEDGER[ESC0].exists = 1; LEDGER[ESC0].compressed = 0;
+  LEDGER[ESC0].flags |= TSDK_ACCOUNT_FLAG_COMPRESSED;
   r = submit_as(ALICE, FERRIS, 1);
-  CHECK(OK(r) && champion_is(0, ALICE), "decompressed: sealing and the crown resume");
+  CHECK(REVERTS(r, 0x12), "a compressed flag, if ever visible, is refused too: %lx", r.code);
+  LEDGER[ESC0].flags &= (uchar)~TSDK_ACCOUNT_FLAG_COMPRESSED;
+  r = submit_as(ALICE, FERRIS, 1);
+  CHECK(OK(r) && champion_is(0, ALICE) && escrow(0).best == 163, "decompressed: sealing and the crown resume");
 
   /* P4. no block time never blocks sealing; best still learns the sum */
   ledger_reset();

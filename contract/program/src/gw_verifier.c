@@ -35,8 +35,10 @@
  * bar lapsed unbeaten. Deposits are plain native transfers to the escrow
  * address (which must exist: a transfer cannot create it). CLAIM, open to
  * anyone once the fuse has burnt out, pays the whole balance to the champion,
- * once — or, if the champion's account cannot be credited, settles the round
- * unpaid and keeps the balance for the next one. A solver whose account
+ * once — or, if the champion's account is deleted (or still missing 90 days
+ * after the fuse), settles the round unpaid and keeps the balance for the
+ * next one. A champion that reads as absent (compressed) waits for a
+ * decompress (0x12); a refused transfer reverts (0x0F). A solver whose account
  * cannot be paid (ephemeral) is sealed but never crowned.
  *
  * Score event GW!2 (little-endian, packed):
@@ -58,9 +60,10 @@
  * no escrow for this puzzle, 0x0C nobody holds the crown, 0x0D the fuse is
  * still burning, 0x0E the champion's account is not in the transaction
  * read-write, 0x0F transfer failed, 0x10 block time unavailable, 0x11 the
- * escrow has already paid out, 0x12 the escrow (or the champion's) account
- * is compressed (decompress it first — anyone may), 0x13 the puzzle's escrow
- * account does not exist yet (send INIT first), 0x14 a verified sum out of
+ * escrow has already paid out, 0x12 the escrow account is compressed, or the
+ * champion's account is missing or compressed (decompress it first — anyone
+ * may), 0x13 the puzzle's escrow account reads as absent: never created
+ * (send INIT) or compressed (decompress it), 0x14 a verified sum out of
  * the escrow's range,
  * 0x100 + GW_ERR_* (invalid submission),
  * 0x200 + GW_FAULT_* (the machine faulted), 0xBADBAD engine capacity panic. */
@@ -263,6 +266,18 @@ payable( ushort idx ) {
   return !( meta->flags & ( TSDK_ACCOUNT_FLAG_EPHEMERAL | TSDK_ACCOUNT_FLAG_DELETED ) );
 }
 
+/* the champion's account at payout time (gw_escrow_claim's GW_PAYEE_*). On
+   Thru a compressed account reads as absent — version 0, no flags — and any
+   third party may compress an idle account, so absent means "wait", never
+   "gone" (the rules give it a long grace period) */
+static int
+payee_state( ushort idx ) {
+  if( !tsdk_account_exists( idx ) ) return GW_PAYEE_MISSING;
+  if( tsdk_get_account_meta( idx )->flags & ( TSDK_ACCOUNT_FLAG_EPHEMERAL | TSDK_ACCOUNT_FLAG_DELETED ) ) return GW_PAYEE_GONE;
+  if( tsdk_get_account_meta( idx )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) return GW_PAYEE_MISSING;
+  return GW_PAYEE_OK;
+}
+
 /* Verify a machine for `puzzle` and seal it on the record: one GW!2 event
    naming the solver. Anything but a verified machine reverts. Returns the
    solver's index in the transaction. */
@@ -414,33 +429,32 @@ claim( uchar const * d, ulong sz ) {
   if( !escrow_load( idx, puzzle, &e ) ) tsdk_revert( RC_NO_ESCROW );
 
   /* the payee is fixed by the escrow, never by the caller: the champion's own
-     account must simply be present, read-write. If it is there but cannot be
-     credited (gone, ephemeral, deleted) the round settles unpaid and the
-     balance stays for the next round — a pot is never locked behind it. A
-     compressed champion is not gone: decompress it and claim again. */
+     account must simply be present, read-write. Present but DELETED (or
+     EPHEMERAL) — it can never be paid — the round settles unpaid and the
+     balance stays for the next round. Absent — on Thru, most likely
+     compressed by a third party — the claim waits for a decompress (0x12),
+     unless the champion is still missing 90 days after the fuse. */
+  int payee = GW_PAYEE_MISSING;
   long champ = -1L;
   if( e.flags & GW_ESCROW_HAS_CHAMPION ) {
     champ = find_account( e.champion );
     if( champ < 0 || !tsdk_txn_is_account_idx_writable( tsdk_get_txn( ), (ushort)champ ) ) tsdk_revert( RC_NO_CHAMP_ACCT );
-    if( tsdk_get_account_meta( (ushort)champ )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );
+    payee = payee_state( (ushort)champ );
   }
 
   tsdk_block_ctx_t const * blk     = tsdk_get_current_block_ctx( );
   ulong                    balance = tsdk_get_account_meta( idx )->balance;
-  ulong                    now     = block_time( );
-  gw_escrow_t              before  = e;
   ulong pay = 0UL;
-  int   r   = gw_escrow_claim( &e, balance, champ >= 0 && payable( (ushort)champ ), now, blk->slot, &pay );
-  if( r == GW_ESC_ERR_PAID )        tsdk_revert( RC_PAID );
-  if( r == GW_ESC_ERR_NO_CHAMPION ) tsdk_revert( RC_NO_CHAMPION );
-  if( r == GW_ESC_ERR_BURNING )     tsdk_revert( RC_BURNING );
+  int   r   = gw_escrow_claim( &e, balance, payee, block_time( ), blk->slot, &pay );
+  if( r == GW_ESC_ERR_PAID )          tsdk_revert( RC_PAID );
+  if( r == GW_ESC_ERR_NO_CHAMPION )   tsdk_revert( RC_NO_CHAMPION );
+  if( r == GW_ESC_ERR_BURNING )       tsdk_revert( RC_BURNING );
+  if( r == GW_ESC_ERR_PAYEE_MISSING ) tsdk_revert( RC_COMPRESSED );
   if( r != GW_ESC_OK && r != GW_ESC_UNPAID ) tsdk_revert( RC_ESCROW_BAD );
 
-  /* a transfer the runtime refuses moves nothing: settle unpaid instead */
-  if( r == GW_ESC_OK && pay && tsys_account_transfer( idx, (ulong)champ, pay ) ) {
-    e = before;
-    r = gw_escrow_claim( &e, balance, 0, now, blk->slot, &pay );
-  }
+  /* a refused transfer reverts: the caller sets the transaction's compute
+     and memory units, so a failure here says nothing about the champion */
+  if( r == GW_ESC_OK && pay && tsys_account_transfer( idx, (ulong)champ, pay ) ) tsdk_revert( RC_TRANSFER );
   escrow_save( idx, &e );
   if( r == GW_ESC_UNPAID ) escrow_emit( &e, GW_ESCROW_EV_UNPAID, balance );
   else                     escrow_emit( &e, GW_ESCROW_EV_PAYOUT, pay );

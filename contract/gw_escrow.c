@@ -137,16 +137,25 @@ int gw_escrow_offer(gw_escrow_t *e, uint64_t sum, const uint8_t solver[32],
   return GW_ESC_CROWNED;
 }
 
-int gw_escrow_claim(gw_escrow_t *e, uint64_t balance, int payable, uint64_t now,
+int gw_escrow_claim(gw_escrow_t *e, uint64_t balance, int payee, uint64_t now,
                     uint64_t slot, uint64_t *pay) {
   *pay = 0;
   if (now == 0) return GW_ESC_ERR_CLOCK;
   if (e->flags & GW_ESCROW_SETTLED) return GW_ESC_ERR_PAID;
   if (!(e->flags & GW_ESCROW_HAS_CHAMPION)) return GW_ESC_ERR_NO_CHAMPION;
   if (!gw_escrow_expired(e, now)) return GW_ESC_ERR_BURNING;
+  int gone = payee == GW_PAYEE_GONE;
+  if (payee == GW_PAYEE_MISSING) {
+    /* most likely compressed by a third party: the champion decompresses and
+       is paid. Only a champion still missing long after the fuse is gone */
+    uint64_t grace = (uint64_t)GW_ESCROW_GRACE_S * GW_NS_PER_S;
+    uint64_t until = e->fuse_end > UINT64_MAX - grace ? UINT64_MAX : e->fuse_end + grace;
+    if (now < until) return GW_ESC_ERR_PAYEE_MISSING;
+    gone = 1;
+  }
   e->flags |= GW_ESCROW_SETTLED;   /* one time: the fuse never relights */
   e->crowned_slot = slot;
-  if (!payable) {                  /* nowhere to send it: it stays for the next round */
+  if (gone) {                      /* nowhere to send it: it stays for the next round */
     e->flags |= GW_ESCROW_UNPAID;
     return GW_ESC_UNPAID;
   }
