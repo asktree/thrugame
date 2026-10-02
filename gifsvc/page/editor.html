@@ -2671,6 +2671,7 @@
     ],
     ablativecrystal: ['The last puzzle, and nobody has solved it yet. Everything you have learned is needed here, and the first solution sets the record.'],
   };
+  const SCORE_LESSON = BASES.findIndex(b => b.key === 'surrenderflare');   // where SUM and Submit are first explained
   const LESSON_STEPS_FIRST = [
     'Drag an <span class="ui">ARM</span> from the tray onto the board, between the reagents and <span class="ui">OUT</span>. Drag its round handle to aim and lengthen it.',
     'Drag a <span class="ui">BOND</span> glyph onto the board: lead and quicksilver resting on its two cells get bonded at the end of a cycle.',
@@ -2708,8 +2709,9 @@
       t.classList.toggle('locked', !open);
       t.classList.toggle('solved', solved.has(BASES[k].key));
       t.setAttribute('aria-disabled', open ? 'false' : 'true');
-      t.title = open ? BASES[k].blurb : 'solve ' + BASES[k - 1].name + ' to unlock';
-      t.setAttribute('aria-label', open ? BASES[k].name : BASES[k].name + ' (locked: solve ' + BASES[k - 1].name + ' to unlock)');
+      // a locked puzzle keeps its name to itself until it opens
+      t.title = open ? BASES[k].blurb : 'solve puzzle ' + k + ' to unlock';
+      t.setAttribute('aria-label', open ? BASES[k].name : 'Puzzle ' + (k + 1) + ', locked: solve puzzle ' + k + ' to unlock');
     });
     const all = $('btnUnlockAll');
     if (all) all.hidden = BASES.every((b, k) => isOpen(k));
@@ -3736,7 +3738,7 @@
       if (!done) {
         const opened = watching ? false : markSolved();
         if (/^testing/.test($('status').textContent))
-          setStatus('verified · SUM ' + m.sum + ' — Submit seals it on chain' + (opened ? ' · ' + BASES[pIdx + 1].name + ' unlocked' : ''), 'good');
+          setStatus('verified · SUM ' + m.sum + (pIdx >= SCORE_LESSON ? ' — Submit seals it on chain' : '') + (opened ? ' · ' + BASES[pIdx + 1].name + ' unlocked' : ''), 'good');
       }
       el.classList.add('show'); done = true;
     } else { el.classList.remove('show'); done = false; }
