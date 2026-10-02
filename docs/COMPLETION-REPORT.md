@@ -56,12 +56,15 @@ organizer, no judges."*
     (The program itself remains upgradeable by its deployer, as every
     managed Thru program is until it is finalized, and an upgrade could
     change these rules. We can finalize it once you're happy with it.)
-  - A verified sum strictly below the best the escrow has seen takes the
-    crown and relights the fuse — 30 days for the demo; an opener may choose
-    10 minutes to a year. Ties and copies change nothing, and reopening an
-    escrow never lowers the bar.
+  - Every score on a puzzle passes through its escrow, so the escrow knows
+    the best sum ever sealed there. A verified sum strictly below it takes
+    the crown and relights the fuse — 30 days for the demo, never longer; an
+    opener may choose as little as 10 minutes. Ties and copies change
+    nothing, and reopening an escrow never lowers the bar.
   - When the fuse burns out, the crown freezes. Anyone may then trigger the
-    payout, and the contract sends the whole pot to the champion, once.
+    payout, and the contract sends the whole pot to the champion, once. (If
+    the champion's account no longer exists, the pot stays for the next
+    round rather than being locked.)
 - **Demo:** an escrow is open on *Lead Amalgam* [after deploy: pot]. The
   bar is the current record, so only a better machine can take it.
 - **Known limitation:** a crowning submission is public while in flight, so

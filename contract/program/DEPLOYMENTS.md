@@ -25,10 +25,13 @@ a new one (alphanet fees are zero).
 
 ```sh
 make -C contract check                         # host tests green first
-node contract/test/mutate.js                   # every escrow rule guarded (24 mutations caught)
+node contract/test/mutate.js                   # every escrow rule guarded (39 mutations caught)
 cd contract/program && make                    # -> build/thruvm/bin/gw_verifier_c.bin
 thru program create greatwork-test build/thruvm/bin/gw_verifier_c.bin
 #   expect "Program account: tar_NQqeiWnJEIhya2UBpcEpxV4UKBpbnRGf6cMpay0EiS"
+node client/escrow.js init --all --test        # IMMEDIATELY: every puzzle's escrow account (idle).
+#   Until a puzzle's account exists nothing can be sealed on it (SUBMIT reverts
+#   0x13), so the escrow's best sees the whole record from the first score.
 
 # smoke test on the test program (from the repo root; GW_PRIVATE_KEY or the CLI default key)
 node client/submit.js amalgam.AgEAAAAFABBYJEgKtmwBAAEABQIAAgEAAQIAAAEAAgA --name smoke --test        # courier, sum 179
@@ -47,6 +50,7 @@ node client/escrow.js amalgam claim --test     # pays the champion; then `escrow
 # the public program
 thru program create greatwork-v3 build/thruvm/bin/gw_verifier_c.bin
 #   expect "Program account: taWilrUWWu-_nAzyv3koRVoQQOnIepAGVe1tkzbnu3XNdZ"
+node client/escrow.js init --all               # IMMEDIATELY after the deploy, before anyone submits
 node client/escrow.js amalgam open             # the demo escrow: 30-day fuse, bar = the record
 ```
 
