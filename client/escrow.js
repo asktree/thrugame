@@ -3,17 +3,21 @@
  *
  *   node client/escrow.js <puzzle>                       status: pot, champion, fuse
  *   node client/escrow.js <puzzle> history               opened / crowned / paid events
- *   node client/escrow.js <puzzle> open [--fuse 30d] [--bar record|none|<sum>]
- *   node client/escrow.js <puzzle> deposit --amount <n>  a plain transfer into the pot
+ *   node client/escrow.js <puzzle> open [--fuse 30d] [--bar record|none|<code>]
+ *   node client/escrow.js <puzzle> deposit --amount <n>  a plain transfer into an open round's pot
  *   node client/escrow.js <puzzle> claim                 after the fuse: pays the champion
  *
  * Add --test to use the test copy of the program (NETWORKS.alphanet.testProgram)
  * instead of the public one. Anyone may open, deposit or claim; the key (as in
  * submit.js: GW_PRIVATE_KEY, else the `default` key in ~/.thru/cli/config.yaml)
- * only signs and pays. --fuse takes seconds or a unit: 90s, 15m, 6h, 30d.
- * --bar is the sum a machine must strictly beat to take the first crown; the
- * default `record` is the puzzle's best sum on the leaderboard, so a copy of
- * the leader cannot take the pot. */
+ * only signs and pays. --fuse takes seconds or a unit, 10m to 365d: 600s,
+ * 15m, 6h, 30d. --bar is a machine whose sum the first crown must strictly
+ * beat: the default `record` sends the puzzle's best sealed machine, so a copy
+ * of the leader cannot take the pot; `none` sends none; a solution code
+ * (<puzzle>.<code>, as submit.js takes) sends that machine. The program
+ * verifies it, and never lets a round be won with a sum the escrow has
+ * already seen, whatever bar is asked for. Deposits are refused unless a
+ * round is open or burning (--force sends anyway). */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,6 +26,7 @@ import * as G from './gw-chain.js';
 
 const require = createRequire(import.meta.url);
 const PUZ = require('../engine/gen-puzzles.js');
+const CODEC = require('../engine/codec.js');
 
 function loadKey() {
   if (process.env.GW_PRIVATE_KEY) return G.hexToBytes(process.env.GW_PRIVATE_KEY.trim());
@@ -45,7 +50,7 @@ export function fmtDuration(sec) {
 
 const argv = process.argv.slice(2);
 const opt = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : undefined; };
-const positional = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && argv[i - 1] !== '--test'));
+const positional = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && argv[i - 1] !== '--test' && argv[i - 1] !== '--force'));
 const [key, cmd = 'status'] = positional;
 const puzzles = PUZ.puzzles();
 const puzzle = puzzles.find(p => p.key === key);
@@ -62,10 +67,12 @@ async function status() {
   const e = s.escrow, now = G.nowNs(), phase = G.escrowPhase(e, now);
   console.log(`${puzzle.name} — escrow ${s.address}  (program ${program})`);
   console.log(`pot      ${s.balance}`);
-  if (!e) { console.log(s.exists ? 'state    unreadable account data' : 'state    no escrow yet: anyone may open one (deposits made now wait for it)'); return; }
+  if (!e) { console.log(s.exists ? 'state    not a readable escrow of this program (owner ' + s.owner + ')' : 'state    no escrow yet: anyone may open one (nothing can be deposited before that)'); return; }
   const left = Number(e.fuseEndNs - now) / 1e9;
   const bar = e.sumToBeat === G.NO_SUM ? 'any verified sum' : 'SUM < ' + e.sumToBeat;
-  console.log(`escrow   #${e.round} on this puzzle, ${fmtDuration(e.fuseSeconds)} fuse, ${e.totalPaid} paid out so far`);
+  console.log(`escrow   round ${e.round} on this puzzle, ${fmtDuration(e.fuseSeconds)} fuse; ${e.totalPaid} paid out over all rounds`);
+  console.log(`best     ${e.best === G.NO_SUM ? 'none yet' : 'SUM ' + e.best + ' — no round can be won with this sum or worse'}`);
+  console.log(`account  ${s.uncompressable ? 'uncompressable' : 'COMPRESSIBLE (the runtime did not keep the flag)'}${s.compressed ? ', COMPRESSED: decompress it before anything else' : ''}`);
   if (phase === 'open')    console.log(`state    open: no champion; ${bar} takes the crown. Bar lapses in ${fmtDuration(left)}`);
   if (phase === 'lapsed')  console.log(`state    open, bar lapsed: ${bar} still takes the crown, and anyone may reopen`);
   if (phase === 'burning') console.log(`state    champion ${e.champion} at SUM ${e.sumToBeat}; fuse burns out in ${fmtDuration(left)}; resets on SUM ≤ ${e.sumToBeat - 1}`);
@@ -80,7 +87,7 @@ async function main() {
     if (!evs.length) console.log('no escrow events for ' + puzzle.name);
     for (const ev of evs) {
       const e = ev.escrow;
-      const what = ev.kind === 'opened' ? `opened #${e.round}, bar ${e.sumToBeat === G.NO_SUM ? 'none' : e.sumToBeat}, fuse ${fmtDuration(e.fuseSeconds)}, pot ${ev.amount}`
+      const what = ev.kind === 'opened' ? `opened round ${e.round}, to beat ${e.sumToBeat === G.NO_SUM ? 'none' : e.sumToBeat}, fuse ${fmtDuration(e.fuseSeconds)}, pot ${ev.amount}`
         : ev.kind === 'crowned' ? `crowned ${e.champion} at SUM ${e.sumToBeat}`
         : `paid ${ev.amount} to ${e.champion}`;
       console.log(`slot ${ev.slot}  ${what}  txn ${ev.signature}`);
@@ -92,15 +99,21 @@ async function main() {
   const acct = await G.ensureAccount(client, wallet);
   if (acct.created) console.log(`account created (${acct.signature})`);
   if (cmd === 'open') {
-    const fuseSeconds = parseDuration(opt('--fuse') || '30d');
+    const fuseSeconds = G.checkFuse(parseDuration(opt('--fuse') || '30d'));
     const b = opt('--bar') || 'record';
-    const bar = b === 'record' ? undefined : b === 'none' ? G.NO_SUM : Number(b);
+    let bar = b;
+    if (b !== 'record' && b !== 'none') {
+      const dot = b.indexOf('.');
+      if (dot <= 0 || b.slice(0, dot) !== puzzle.key) throw new Error('--bar takes record, none, or a ' + puzzle.key + '.<code> solution');
+      bar = CODEC.fromString(b.slice(dot + 1).trim());
+      CODEC.decodeMachine(bar);
+    }
     const r = await G.openEscrow(client, { wallet, puzzleId, fuseSeconds, bar, program });
-    console.log(`OPENED  ${puzzle.name}: bar ${r.bar === G.NO_SUM ? 'none' : 'SUM < ' + r.bar}, fuse ${fmtDuration(fuseSeconds)}  txn ${r.signature}`);
+    console.log(`OPENED  ${puzzle.name}: ${b === 'record' ? (r.bar === G.NO_SUM ? 'no record yet, no bar' : 'bar = the record, SUM ' + r.bar) : b === 'none' ? 'no bar of its own' : 'bar = that machine'}, fuse ${fmtDuration(fuseSeconds)}  txn ${r.signature}`);
   } else if (cmd === 'deposit') {
     const amount = BigInt(opt('--amount') || 0);
     if (amount <= 0n) throw new Error('--amount <n> is required');
-    const r = await G.depositToEscrow(client, { wallet, puzzleId, amount, program });
+    const r = await G.depositToEscrow(client, { wallet, puzzleId, amount, program, force: argv.includes('--force') });
     console.log(`DEPOSITED  ${amount} into ${G.escrowAddress(puzzleId, program)}  txn ${r.signature}`);
   } else if (cmd === 'claim') {
     const r = await G.claimEscrow(client, { wallet, puzzleId, program });
