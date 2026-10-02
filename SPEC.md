@@ -280,6 +280,27 @@ any cap overrides, and optionally a **prize escrow**:
 - If the fuse reaches zero, the contract pays the reigning champion. No organizer, no
   ceremony.
 
+How the contract keeps it (encoding in FORMAT.md, rules in `contract/gw_escrow.c`):
+
+- **One escrow per puzzle**, an account of the rules contract at an address derived
+  from the puzzle id. Its native balance is the pot: anyone deposits by an ordinary
+  transfer to that address, at any time, any number of times.
+- **Opening** creates the escrow. It is the one organized act: the escrow authority
+  opens it, either seeding the crown with the puzzle's current leader from the public
+  record (best SUM and solver — the fuse lights at once) or leaving the crown open (the
+  fuse lights with the first verified submission). The fuse length is fixed at opening;
+  30 days unless stated.
+- **The crown.** Every submission passes through its puzzle's escrow. A verified SUM
+  strictly below the reigning best crowns the solver and relights the fuse to its full
+  length; an equal or worse SUM is still sealed on the record but changes nothing. The
+  champion may improve on their own SUM like anyone else.
+- **The fuse** is chain time (block time). The instant it burns out the crown freezes:
+  that round is won, and no later submission — however good — can take it.
+- **The payout** is permissionless: once the fuse is out, anyone may trigger it, and the
+  contract pays the escrow's entire balance to the champion, never to the caller.
+  Payout ends the round, not the escrow: the fuse relights with the champion defending,
+  and deposits that arrive from then on are the next round's pot, won the same way.
+
 ## 14. Open questions
 
 - **Pistons** (runtime-variable arm length) — likely 40g if adopted; interacts with the

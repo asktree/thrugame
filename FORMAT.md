@@ -86,10 +86,12 @@ prefixes the puzzle key and a dot: `surrenderflare.AQMFAtT_…`
 
 ## On-chain submission
 
-The verifier program (`contract/program`) takes one instruction whose data is
+The verifier program (`contract/program`) takes three instructions, told apart
+by the first byte: SUBMIT (3), and the prize escrow's OPEN (0x10) and CLAIM
+(0x11), below. A submission's data is
 
 ```
-u8   instruction version  (2)
+u8   instruction version  (3)
 u8   puzzle id            index into the on-chain catalog (contract/puzzles.h,
                           generated from engine/examples.js: one entry per
                           PRODUCT, in PRODUCTS order)
@@ -100,6 +102,13 @@ u8   username length      (<= 24 bytes)
      machine bytes        a version-2 payload, exactly as above
 ```
 
+Version 3 has version 2's layout; what changed is that the transaction must
+list the puzzle's **escrow account** (see *Prize escrow*), read-write, whether or
+not an escrow has been opened there — a missing account reverts `0x06`. Version 2
+instructions are no longer accepted (`0x01`): a submission that could bypass
+the escrow could seal a better machine without taking the crown, and anyone
+could then copy it into the crown.
+
 The program rebuilds the puzzle from the catalog entry and the submission's own
 placements, runs the rules engine to its verdict, and — only if the machine is
 **verified** — emits one event and returns 0. Anything else reverts, so
@@ -107,7 +116,8 @@ nothing invalid ever lands on-chain: `0x100 + GW_ERR_*` for a rejected
 submission (malformed bytes, no layout, a reagent missing or placed twice, no
 product glyph, glyph overlap, …), `0x200 + GW_FAULT_*` when the machine
 faulted (collision, overconstraint, grab-cycle, exhaustion), and small codes
-for a bad header (`0x01`), an unknown puzzle (`0x02`) or no solver (`0x05`).
+for a bad header (`0x01`), an unknown puzzle (`0x02`) or no solver (`0x05`);
+the escrow's codes are listed below.
 
 ### Who is the solver
 
@@ -142,3 +152,109 @@ solution, lowest sum first, earliest slot breaking ties. `client/gw-chain.js`
 implements both directions (direct and via a passkey wallet);
 `client/submit.js` and `client/leaderboard.js` are the CLIs, and the same
 module bundles into the editor as `demo/gw-chain.js`.
+
+## Prize escrow
+
+SPEC §13; the rules live in `contract/gw_escrow.c`, the instruction handling in
+`contract/program/src/gw_verifier.c`.
+
+### The escrow account
+
+Each puzzle has one escrow account, at the verifier program's derived address
+for the 32-byte seed
+
+```
+"gw-escrow" (9 ASCII bytes), zero bytes up to byte 30, u8 puzzle id at byte 31
+```
+
+i.e. `sha256(program address ‖ 0x00 ‖ seed)` — `deriveProgramAddress({ programAddress,
+seed })` in `@thru/sdk`. The program owns it; its **native balance is the pot**,
+and its data (little-endian, packed, 80 bytes) is the crown:
+
+```
+0   "GWE1"        magic + layout version
+4   u8   puzzle id
+5   u8   flags          bit 0: someone holds the crown
+6   u16  reserved (0)
+8   u32  best sum       0xFFFFFFFF while nobody holds the crown
+12  u32  fuse length    seconds (2592000 = 30 days)
+16  u64  fuse end       block time, ns, at which the fuse burns out; 0 = unlit
+24  u64  slot of the last crown change or round start
+32  u32  round          payouts made so far
+36  u32  reserved (0)
+40  u64  total paid     over all rounds
+48  32B  champion       the solver key the pot is owed to
+```
+
+The fuse has burnt out when someone holds the crown and block time ≥ fuse end.
+
+### Deposits
+
+There is no deposit instruction: a deposit is an ordinary native transfer to
+the escrow address (the EOA program's TRANSFER, or the passkey manager's), from
+anyone, at any time. Deposit only into an opened escrow.
+
+### OPEN (0x10)
+
+```
+u8   0x10
+u8   puzzle id
+u32  fuse length, seconds (non-zero)
+u32  seed sum            0xFFFFFFFF: leave the crown open, fuse unlit
+32B  seed champion       the puzzle's current leader; ignored for an open crown
+     state proof         the escrow account's absence (proof type CREATING)
+```
+
+Accounts: the escrow account, read-write. Must be authorized by the escrow
+authority (`GW_ESCROW_AUTHORITY_BYTES` in the program: the alphanet deployer
+`tawXEVKY…`), as fee payer or vouched for by a wrapper. A seeded crown lights
+the fuse at once. Emits `GW!E` kind 1.
+
+### SUBMIT and the crown
+
+After sealing the `GW!2` score event, a submission whose puzzle has an escrow
+offers its sum: strictly below the best sum, with the fuse not burnt out, it
+crowns the solver, relights the fuse to its full length and emits `GW!E` kind 2.
+Anything else leaves the escrow untouched (and need not write it — but a
+crowning submission whose escrow account is read-only reverts `0x07`, so list it
+read-write).
+
+### CLAIM (0x11)
+
+```
+u8   0x11
+u8   puzzle id
+```
+
+Accounts: the escrow account and the champion's account, both read-write. Anyone
+may send it once the fuse has burnt out. The program pays the escrow's whole
+balance to the champion recorded in the escrow — the caller chooses nothing —
+advances the round, and relights the fuse with the champion defending. Emits
+`GW!E` kind 3 with the amount paid.
+
+### Escrow event (`GW!E`), little-endian, packed
+
+```
+0   "GW!E"
+4   u8   kind           1 opened, 2 crown taken, 3 paid out
+5   u8   puzzle id
+6   u16  reserved (0)
+8   u64  amount         paid out (kind 3), else 0
+16  80B  the escrow account's data after the change
+```
+
+### Revert codes
+
+| Code | Meaning |
+|---|---|
+| `0x06` | the puzzle's escrow account is not in the transaction |
+| `0x07` | escrow account unusable: not read-write when it must be written, wrong owner, or bad data |
+| `0x08` | OPEN not authorized by the escrow authority |
+| `0x09` | the escrow is already open |
+| `0x0A` | bad OPEN arguments (zero fuse) |
+| `0x0B` | CLAIM on a puzzle with no escrow |
+| `0x0C` | CLAIM with nobody holding the crown |
+| `0x0D` | CLAIM while the fuse is still burning |
+| `0x0E` | the champion's account is not in the transaction read-write |
+| `0x0F` | the transfer failed |
+| `0x10` | block time unavailable |

@@ -7,10 +7,17 @@ result. `src/gw_verifier.c` is the program shell; the engine sources are copied
 in by `sync.sh` at build time and are git-ignored here so this directory holds
 only the shell.
 
-The current shell is a **smoke build**: it runs the embedded `courier`
-conformance case end to end inside the VM and returns its SUM (179) via
-`tsdk_return`, proving the full engine compiles and runs under the SDK. The next
-step reads the machine from instruction data and the puzzle from an account.
+The shell handles three instructions (FORMAT.md): SUBMIT seals a verified
+machine as a `GW!2` score event and offers its sum to the puzzle's prize
+escrow; OPEN and CLAIM open an escrow and pay it out (SPEC §13, rules in
+`../gw_escrow.c`). `make -C .. check` runs this exact file on the host against a
+stand-in SDK (`../test/mock`) and a simulated ledger.
+
+**Client compatibility.** The escrow build takes SUBMIT version 3 and needs the
+puzzle's escrow account in every submission; version 2 reverts. Ship it together
+with a client that sends version 3 and lists the escrow address read-write
+(`client/gw-chain.js` still sends version 2), and deploy to `greatwork-test`
+first.
 
 ## Building
 
