@@ -1,6 +1,9 @@
 # Deployments
 
-Managed programs created with `thru program create <seed> build/thruvm/bin/gw_verifier_c.bin`.
+Managed programs created with `thru program create <seed> build/thruvm/bin/gw_verifier_c.bin`,
+or with `node client/deploy.js <seed> build/thruvm/bin/gw_verifier_c.bin [--upgrade]`
+where the Rust CLI can't reach the RPC (it brings its own CA roots, so it fails
+behind a TLS-intercepting proxy; the Node path doesn't).
 The program account is what a client targets; the meta account is the manager's
 record for upgrades. A managed program's address is fixed by its seed and the
 manager program (`deriveManagedProgramAddresses` in `@thru/programs/manager`),
@@ -11,8 +14,8 @@ addresses against their seeds.
 
 | Network | Seed | Program account | Notes |
 |---|---|---|---|
-| alphanet | `greatwork-v3` | `taWilrUWWu-_nAzyv3koRVoQQOnIepAGVe1tkzbnu3XNdZ` | **to deploy** — the escrow build: SUBMIT v3, OPEN, CLAIM, events `GW!2` / `GW!E`. The public record. |
-| alphanet | `greatwork-test` | `tar_NQqeiWnJEIhya2UBpcEpxV4UKBpbnRGf6cMpay0EiS` | **to deploy** — same binary, for automated tests only — never the public record |
+| alphanet | `greatwork-v3` | `taWilrUWWu-_nAzyv3koRVoQQOnIepAGVe1tkzbnu3XNdZ` | **live** since 2026-10-02 (version 0, 52,736 bytes, sha256 `868d4293…3d17`): the escrow build with SUBMIT v3, INIT, OPEN, CLAIM, and events `GW!2` / `GW!E`. All 7 escrows initialised. Lead Amalgam carries the reference Courier (179) and a demo escrow (30-day fuse, sum to beat 179, pot 0: the post-reset faucet vault doesn't exist). This is the public record. |
+| alphanet | `greatwork-test` | `tar_NQqeiWnJEIhya2UBpcEpxV4UKBpbnRGf6cMpay0EiS` | **live** since 2026-10-02, upgraded the same day to version 1 (same binary as v3). For automated tests only, never the public record. The smoke test passed on it: INIT ×7, seal 179, OPEN (10m), seal 163 + crown, a cross-puzzle machine rejected, CLAIM paid the champion, a second CLAIM refused. |
 
 ### Runbook (fresh deploy)
 
@@ -57,6 +60,10 @@ node client/escrow.js amalgam open             # the demo escrow: 30-day fuse, b
 
 Then merge the client (it already targets these addresses) so GitHub Pages
 redeploys https://greatwork.quest, and fill in the date and deployer key here.
+
+Deployer and upgrade authority (alphanet, throwaway dev key): `ta30eTZPkXvPNkQYtis-B9g5cl8AKx8fRC8220ygSUYeJA`.
+Observed on the live runtime: 10,000 memory units is enough for SUBMIT and OPEN (SUBMIT ≈ 10.25M compute units).
+`block_time` is real. The UNCOMPRESSABLE flag request is **not** kept, so an idle escrow can be compressed (see SPEC §13).
 
 ## Before the reset (gone from chain)
 

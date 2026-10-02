@@ -1,8 +1,8 @@
 <!--
 DRAFT — not sent. For Iggy to review and send to Will Yoo (Unto Labs) once
 the escrow build is deployed (IGG-29) and merged, so every link below is live.
-Before sending: run the smoke test in contract/program/DEPLOYMENTS.md, fill
-the two [after deploy] slots, open the demo escrow, delete this comment.
+Deployed, smoke-tested and the demo escrow opened on 2026-10-02. Before
+sending: fill [send date], then delete this comment.
 Tracked in Linear IGG-30.
 -->
 
@@ -24,7 +24,7 @@ sum on-chain."*
 
 - **On chain:** the verifier program `greatwork-v3`,
   `taWilrUWWu-_nAzyv3koRVoQQOnIepAGVe1tkzbnu3XNdZ` on alphanet, deployed
-  [after deploy: date]. A submission is one transaction: the machine's bytes
+  2026-10-02 (a fresh deploy: Thru's ~Sept 30 alphanet reset wiped the first one). A submission is one transaction: the machine's bytes
   are the instruction data.
 - **Deterministic:** integer and fixed-point arithmetic only. The C engine
   in the program is a line-for-line port of the JavaScript reference engine,
@@ -66,8 +66,10 @@ organizer, no judges."*
     the champion's account has been deleted, or is still missing 90 days
     after the fuse, the pot stays for the next round rather than being
     locked.)
-- **Demo:** an escrow is open on *Lead Amalgam* [after deploy: pot]. The
-  bar is the current record, so only a better machine can take it.
+- **Demo:** an escrow is open on *Lead Amalgam* with a 30-day fuse. The pot is
+  empty for now: alphanet's faucet hasn't come back since the reset, so there's
+  no test THRU to put in it. The
+  bar is the current record (the reference Courier, SUM 179), so only a better machine can take it.
 - **Known limitation:** a crowning submission is public while in flight, so
   someone could copy it and get the copy ordered first. Commit–reveal
   submissions would close that; they are not built yet (SPEC §13).
