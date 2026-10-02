@@ -1,0 +1,43 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Engine golden tests
+        run: node engine/run-tests.js
+
+      - name: C engine conformance + escrow (host harness)
+        run: make -C contract check
+
+      - name: Escrow mutation check (every rule guarded by a test)
+        run: node contract/test/mutate.js
+
+      - name: Client
+        working-directory: client
+        run: |
+          npm ci
+          npm test
+
+      - name: Generated files are current
+        run: |
+          node engine/gen-vectors.js
+          node lab/build.js
+          (cd client && npm run bundle)
+          git diff --exit-code -- demo gifsvc/page contract/test/vectors.h contract/puzzles.h \
+            || { echo "::error::generated files are stale: run 'node engine/gen-vectors.js', 'node lab/build.js' and 'cd client && npm run bundle', then commit"; exit 1; }
