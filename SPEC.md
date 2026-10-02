@@ -283,27 +283,52 @@ any cap overrides, and optionally a **prize escrow**:
 How the contract keeps it (encoding in FORMAT.md, rules in `contract/gw_escrow.c`):
 
 - **One escrow per puzzle**, an account of the rules contract at an address derived
-  from the puzzle id. Its native balance is the pot: anyone deposits by an ordinary
-  transfer to that address, at any time, any number of times.
+  from the puzzle id. Its native balance is the pot: once the escrow exists, anyone
+  deposits by an ordinary transfer to that address, any number of times. (Before the
+  first opening there is no account, and a transfer cannot create one.)
+- **The escrow remembers its best**: the lowest verified SUM it has ever seen — every
+  submission to the puzzle while the escrow exists, in every state, and every bar an
+  opener names. It never rises, and it survives every payout and reopening.
 - **Opening** is open to anyone and organizes nothing. The opener picks the fuse length
-  (30 days unless stated) and the **bar**: the SUM a machine must strictly beat to take
-  the first crown, normally the puzzle's current record so a copy of the public leader
-  cannot walk off with the pot (or no bar, so any verified machine may take it). The
-  opener never names a champion: the crown starts empty and the fuse lights with the
-  first machine to beat the bar. If nobody beats the bar within one fuse length, anyone
-  may reopen the escrow with a new bar and fuse, the balance carried over — so an
-  unbeatable bar cannot lock a puzzle.
+  (30 days unless stated; 10 minutes to 365 days) and, optionally, the **bar**: a
+  machine the contract verifies and seals, normally a copy of the puzzle's current
+  record, so a copy of the public leader cannot walk off with the pot. The bar is never
+  a bare number, so nobody can open with a bar nobody could reach. The first crown
+  needs a SUM strictly below both the bar and the best: **no round — fresh, or reopened
+  with a balance carried over — can be won with a SUM someone has already reached.**
+  The opener never names a champion: the crown starts empty and the fuse lights with
+  the first machine to beat the bar. If nobody beats it within one fuse length, anyone
+  may reopen the escrow with a new fuse, the balance carried over — the bar stays where
+  the best is.
 - **The crown.** Every submission passes through its puzzle's escrow. A verified SUM
-  strictly below the reigning best crowns the solver and relights the fuse to its full
+  strictly below the round's best crowns the solver and relights the fuse to its full
   length; an equal or worse SUM is still sealed on the record but changes nothing. The
   champion may improve on their own SUM like anyone else.
 - **The fuse** is chain time (block time). The instant it burns out the crown freezes:
-  the escrow is won, and no later submission — however good — can take it.
+  the escrow is won, and no later submission — however good — can take it (though the
+  escrow's best remembers it).
 - **The payout** is permissionless and happens once: anyone may trigger it after the
   fuse is out, and the contract pays the escrow's entire balance to the champion, never
-  to the caller. The escrow is then settled; its fuse never relights. Anyone may open a
-  new escrow on the puzzle afterwards, and anything deposited after the payout becomes
-  that escrow's pot.
+  to the caller. The round is then settled; its fuse never relights. Anyone may open a
+  new round on the puzzle afterwards, and anything deposited after the payout becomes
+  that round's pot — still guarded by the best.
+- **What nobody can do.** No key can withdraw a pot, redirect a payout or name a
+  champion: the only way out of an escrow is the payout to a champion who beat every
+  SUM the escrow had seen. The flip side: a pot whose best is already the optimum for
+  its puzzle can never be won, and stays where it is.
+
+Known limitations:
+
+- **Front-running.** A submission is public as soon as it is broadcast. Someone who
+  sees a crowning machine in flight can copy it and get their copy ordered first; the
+  contract cannot tell the two apart and crowns whichever lands first. The fix is
+  commit–reveal (seal a hash of machine and solver first, reveal it a few slots later,
+  crown by commit order); not implemented.
+- **Block time** is the block producer's clock; the fuse is only as honest as it is.
+- **Compression.** The escrow asks the runtime not to compress it. If it ever is
+  compressed, the contract refuses every escrow instruction (and so every submission
+  to that puzzle) until someone decompresses it — any account may — rather than act
+  on a stale best.
 
 ## 14. Open questions
 

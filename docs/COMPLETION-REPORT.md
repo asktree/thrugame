@@ -50,16 +50,23 @@ organizer, no judges."*
 - **The prize escrow is in the contract.** Each puzzle has one escrow
   account owned by the program, and its balance is the pot.
   - Anyone may open one. Opening grants the opener nothing, and the escrow
-    has no admin key: no one can withdraw, redirect or override a payout.
+    has no admin key: no instruction lets anyone withdraw a pot, redirect a
+    payout or name a champion. The only way money leaves an escrow is the
+    payout to a champion whose sum beat every sum the escrow had seen.
     (The program itself remains upgradeable by its deployer, as every
-    managed Thru program is until it is finalized. We can finalize it once
-    you're happy with it.)
-  - A verified sum strictly below the reigning best takes the crown and
-    relights a 30-day fuse. Ties and copies change nothing.
+    managed Thru program is until it is finalized, and an upgrade could
+    change these rules. We can finalize it once you're happy with it.)
+  - A verified sum strictly below the best the escrow has seen takes the
+    crown and relights the fuse — 30 days for the demo; an opener may choose
+    10 minutes to a year. Ties and copies change nothing, and reopening an
+    escrow never lowers the bar.
   - When the fuse burns out, the crown freezes. Anyone may then trigger the
     payout, and the contract sends the whole pot to the champion, once.
 - **Demo:** an escrow is open on *Lead Amalgam* [after deploy: pot]. The
   bar is the current record, so only a better machine can take it.
+- **Known limitation:** a crowning submission is public while in flight, so
+  someone could copy it and get the copy ordered first. Commit–reveal
+  submissions would close that; they are not built yet (SPEC §13).
 
 ## D·3 — Frontend client
 

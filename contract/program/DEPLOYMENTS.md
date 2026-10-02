@@ -25,6 +25,7 @@ a new one (alphanet fees are zero).
 
 ```sh
 make -C contract check                         # host tests green first
+node contract/test/mutate.js                   # every escrow rule guarded (24 mutations caught)
 cd contract/program && make                    # -> build/thruvm/bin/gw_verifier_c.bin
 thru program create greatwork-test build/thruvm/bin/gw_verifier_c.bin
 #   expect "Program account: tar_NQqeiWnJEIhya2UBpcEpxV4UKBpbnRGf6cMpay0EiS"
@@ -33,7 +34,12 @@ thru program create greatwork-test build/thruvm/bin/gw_verifier_c.bin
 node client/submit.js amalgam.AgEAAAAFABBYJEgKtmwBAAEABQIAAgEAAQIAAAEAAgA --name smoke --test        # courier, sum 179
 node client/escrow.js amalgam open --test --fuse 10m --bar none
 node client/submit.js amalgam.AgMEAAAAAAi2ZXsQAAEFAAhQjMUABAIEBwiQstkBAAQAAgIABAEAAQAEAAEGAAQ --name smoke-ferris --test   # 163: takes the crown
-node client/escrow.js amalgam --test           # champion = your key, SUM 163, fuse ~10m
+node client/escrow.js amalgam --test           # champion = your key, SUM 163, best 163, fuse ~10m
+#   CHECK the "account" line: "uncompressable" means the runtime kept the flag
+#   OPEN asked for. "COMPRESSIBLE" means it did not (the program carries on: a
+#   compressed escrow is refused, 0x12, until decompressed) — note it here.
+#   If any transaction fails on resources, the client's UNITS (client/gw-chain.js)
+#   are the place: 10,000 memory units, state units only where an account is made.
 node client/leaderboard.js amalgam --test      # both entries, with watch links
 #   …10 minutes later:
 node client/escrow.js amalgam claim --test     # pays the champion; then `escrow.js amalgam --test` says "paid out"

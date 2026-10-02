@@ -104,7 +104,8 @@ u8   username length      (<= 24 bytes)
 
 Version 3 has version 2's layout; what changed is that the transaction must
 list the puzzle's **escrow account** (see *Prize escrow*), read-write, whether or
-not an escrow has been opened there — a missing account reverts `0x06`. Version 2
+not an escrow has been opened there — a missing account reverts `0x06`, a
+read-only one `0x07`. Version 2
 instructions are no longer accepted (`0x01`): a submission that could bypass
 the escrow could seal a better machine without taking the crown, and anyone
 could then copy it into the crown.
@@ -168,64 +169,96 @@ for the 32-byte seed
 ```
 
 i.e. `sha256(program address ‖ 0x00 ‖ seed)` — `deriveProgramAddress({ programAddress,
-seed })` in `@thru/sdk`. The program owns it; its **native balance is the pot**,
-and its data (little-endian, packed, 80 bytes) is the crown:
+seed })` in `@thru/sdk`. Only the program can create an account there. The
+program owns it; its **native balance is the pot**, and its data
+(little-endian, packed, 80 bytes) is the crown:
 
 ```
-0   "GWE1"        magic + layout version
+0   "GWE2"        magic + layout version (GWE1, without best, is not read)
 4   u8   puzzle id
 5   u8   flags          bit 0: someone holds the crown; bit 1: paid out (settled)
 6   u16  reserved (0)
-8   u32  sum to beat    the champion's sum, else the opening bar
-                        (0xFFFFFFFF: no bar, any verified sum crowns)
-12  u32  fuse length    seconds (2592000 = 30 days)
+8   u32  sum to beat    this round's: the champion's sum, else its opening bar
+                        (0xFFFFFFFF: nothing to beat, any verified sum crowns)
+12  u32  fuse length    seconds, 600 .. 31536000 (10 minutes .. 365 days)
 16  u64  fuse end       block time, ns. With a champion: when the fuse burns out.
                         Before one: when the opening bar lapses (opening + fuse)
 24  u64  slot of the last change (opening, crown, payout)
-32  u32  round          escrows opened on this puzzle so far (1 = the first)
-36  u32  reserved (0)
-40  u64  total paid     over all of them
+32  u32  round          rounds opened on this puzzle so far (1 = the first)
+36  u32  best           the lowest verified sum the escrow has ever seen, over
+                        every round (0xFFFFFFFF: none yet). Never rises
+40  u64  total paid     over every round, this one included
 48  32B  champion       the solver key the pot is owed to (zero before a crown)
 ```
 
+`best` takes every sum the escrow sees: every SUBMIT while the account exists,
+in every state (open, burning, frozen, settled), and every bar machine an OPEN
+names. While a round is live its sum to beat equals `best`; once it is frozen
+or settled `best` may fall below it. The account is checked on every read:
+best ≤ sum to beat, neither 0, fuse length in range.
+
 The fuse has burnt out when someone holds the crown and block time ≥ fuse end.
-A settled escrow (bit 1) has paid out and takes no more crowns.
+A settled round (bit 1) has paid out and takes no more crowns.
+
+At creation OPEN asks the runtime to mark the account `UNCOMPRESSABLE`
+(account flag 0x04), best effort. An escrow that the runtime has compressed is
+refused by every instruction (`0x12`) rather than read with a stale `best`;
+anyone may decompress it.
 
 ### Deposits
 
 There is no deposit instruction: a deposit is an ordinary native transfer to
-the escrow address (the EOA program's TRANSFER, or the passkey manager's), from
-anyone, at any time. Deposit only into an open escrow: a transfer to a puzzle
-with no escrow, or to a settled one, waits for the next OPEN and becomes its pot.
+the escrow address (the EOA program's TRANSFER, `taEOAD2uLK1SLzPgtabFLUAx22yDlBs9DE9nZFTOESIGRr`,
+or the passkey manager's), from anyone, at any time. A transfer cannot
+create an account (creating one takes a state proof and is the owner
+program's, for a derived address), so **before the first OPEN there is
+nothing to deposit into**: a transfer to that address fails. Deposit into a
+round that is open or burning. Money sent to a lapsed round goes to whoever
+wins it or a later round; to a won round, to its champion; to a settled one,
+to the winner of the next round — the program cannot tell a deposit from any
+other transfer, so the clients refuse anything but an open or burning round.
 
 ### OPEN (0x10)
 
 ```
 u8   0x10
 u8   puzzle id
-u32  fuse length, seconds (non-zero)
-u32  bar                 the sum to strictly beat for the first crown
-                         (0xFFFFFFFF: none, any verified sum)
+u32  fuse length, seconds: 600 .. 31536000 (10 minutes .. 365 days)
+u16  state proof length (0 when the account exists)
      state proof         the escrow account's absence (proof type CREATING);
-                         only when the account does not exist yet
+                         required when the account does not exist yet
+     bar machine         codec v2 machine bytes, optional (the rest of the data)
 ```
 
-Accounts: the escrow account, read-write. Anyone may send it. The crown starts
-empty and the fuse unlit; the bar lapses one fuse length after opening. OPEN
-succeeds when the puzzle has no escrow account (creating it), or its escrow is
-settled, or its escrow is crownless with the bar lapsed — otherwise `0x09`.
-Reopening keeps the account's balance as the new pot and its round / total
-paid history. Emits `GW!E` kind 1 with the opening pot as the amount.
+Accounts: the escrow account, read-write. Anyone may send it. The **bar** is a
+machine, not a number: the program verifies it like a submission and seals it
+on the record (a `GW!2` event naming the opener as solver, no names); a bar
+that does not verify reverts as a submission would (`0x1xx` / `0x2xx`). No
+machine means no bar of the opener's own. The bar's sum joins `best`, and the
+round's **sum to beat is the new `best` = min(bar, best so far)** — so a round
+can never be won with a sum the escrow has already seen, however it was
+opened, and an opener cannot set a bar nobody could ever reach. Normally the
+bar is a copy of the puzzle's public record, which also covers a record sealed
+before the escrow existed.
+
+The crown starts empty and the fuse unlit; the bar lapses one fuse length after
+opening. OPEN succeeds when the puzzle has no escrow account (creating it), or
+its round is settled, or its round is crownless with the bar lapsed —
+otherwise `0x09`. Reopening keeps the account's balance as the new pot, and
+its best, round and total paid. Emits `GW!E` kind 1 with the opening pot as
+the amount.
 
 ### SUBMIT and the crown
 
 After sealing the `GW!2` score event, a submission whose puzzle has an escrow
-offers its sum: strictly below the sum to beat, with the escrow neither settled
-nor its fuse burnt out, it
-crowns the solver, relights the fuse to its full length and emits `GW!E` kind 2.
-Anything else leaves the escrow untouched (and need not write it — but a
-crowning submission whose escrow account is read-only reverts `0x07`, so list it
-read-write).
+offers its sum. It lowers `best` if lower, in every state. Strictly below the
+round's sum to beat, with the round neither settled nor its fuse burnt out, it
+crowns the solver, relights the fuse to its full length and emits `GW!E`
+kind 2. Anything else leaves the crown untouched. The escrow account must be
+listed read-write on every SUBMIT (`0x07` otherwise), since any sum may lower
+`best`. An account at the escrow address that the program does not own (which
+the chain does not allow to arise) is ignored: the submission is sealed, no
+crown.
 
 ### CLAIM (0x11)
 
@@ -237,7 +270,8 @@ u8   puzzle id
 Accounts: the escrow account and the champion's account, both read-write. Anyone
 may send it once the fuse has burnt out. The program pays the escrow's whole
 balance to the champion recorded in the escrow — the caller chooses nothing —
-and marks it settled. It pays once; the fuse never relights (`0x11` after).
+and marks the round settled. It pays once; the fuse never relights (`0x11`
+after).
 Emits `GW!E` kind 3 with the amount paid.
 
 ### Escrow event (`GW!E`), little-endian, packed
@@ -248,7 +282,7 @@ Emits `GW!E` kind 3 with the amount paid.
 5   u8   puzzle id
 6   u16  reserved (0)
 8   u64  amount         kind 1: the pot at opening; kind 3: paid out; else 0
-16  80B  the escrow account's data after the change
+16  80B  the escrow account's data after the change (GWE2 layout)
 ```
 
 ### Revert codes
@@ -256,10 +290,10 @@ Emits `GW!E` kind 3 with the amount paid.
 | Code | Meaning |
 |---|---|
 | `0x06` | the puzzle's escrow account is not in the transaction |
-| `0x07` | escrow account unusable: not read-write when it must be written, wrong owner, or bad data |
+| `0x07` | escrow account unusable: not read-write (SUBMIT, OPEN, CLAIM all need it so), not the program's (OPEN, CLAIM), or bad data |
 | `0x08` | reserved (unused) |
 | `0x09` | OPEN while the puzzle's escrow is still contested (crowned and unpaid, or its bar not yet lapsed) |
-| `0x0A` | bad OPEN arguments (zero fuse) |
+| `0x0A` | bad OPEN arguments: fuse outside 600 s .. 365 days |
 | `0x0B` | CLAIM on a puzzle with no escrow |
 | `0x0C` | CLAIM with nobody holding the crown |
 | `0x0D` | CLAIM while the fuse is still burning |
@@ -267,3 +301,4 @@ Emits `GW!E` kind 3 with the amount paid.
 | `0x0F` | the transfer failed |
 | `0x10` | block time unavailable |
 | `0x11` | CLAIM on an escrow that has already paid out |
+| `0x12` | the escrow account is compressed: decompress it, then retry |

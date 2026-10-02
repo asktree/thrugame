@@ -18,7 +18,7 @@ on-chain records are gone with the chain, and the live editor at
 https://greatwork.quest (built from `main`, SDK 0.3.11) cannot sign in,
 submit or show a leaderboard until the escrow build is deployed and the
 client update ships. Everything below marked ⏳ becomes ✅ with that one
-deploy (IGG-29); the code is ready on `claude/igg-28-audit`.
+deploy (IGG-29); the code is ready on `claude/igg-29-deploy-prep`.
 
 ## D·1 — Game rules engine smart contract
 
@@ -48,9 +48,9 @@ deploy (IGG-29); the code is ready on `claude/igg-28-audit`.
 | every sealed solution takes its rank | `fetchScores` + `rankScores` (first submitter of a machine owns it; lower sum wins, earlier slot breaks ties). **Gap fixed here:** the client read only the first page of events and the RPC serves 50 a page, so the board silently dropped every sealed solution after the 50th; it now reads the whole log (`listProgramEvents`, tested in `client/test.js`) | ✅ (fixed) |
 | any puzzle can lock an escrow | `OPEN` (0x10), open to anyone, one escrow per puzzle at the verifier's derived address; deposits are plain transfers (SPEC §13, FORMAT.md "Prize escrow") | ✅ code · ⏳ chain |
 | the contract itself awards it | `CLAIM` (0x11) pays the escrow's whole balance to the recorded champion, once; the caller chooses nothing | ✅ code · ⏳ chain |
-| by the strictly-better rule | a verified sum strictly below the one to beat takes the crown and relights the 30-day fuse; ties and copies change nothing; the crown freezes when the fuse burns out (`contract/gw_escrow.c`) | ✅ |
+| by the strictly-better rule | a verified sum strictly below the escrow's best (the lowest sum it has ever seen, bars included) takes the crown and relights the fuse; ties and copies change nothing; the crown freezes when the fuse burns out; a reopened escrow never lowers the bar (`contract/gw_escrow.c`) | ✅ |
 | no organizer, no judges | no authority key: opening is permissionless and grants nothing; payout is permissionless and fixed by the contract | ✅ |
-| tests | `make -C contract check` → `escrow-check`: the rules, then the real program shell on a simulated ledger (crown, ties, copies, fuse, freeze, one-time payout, reopen, wrapper path); every rule mutation-tested | ✅ |
+| tests | `make -C contract check` → `escrow-check`: the rules, then the real program shell on a simulated ledger (crown, ties, copies, best, fuse range, freeze, one-time payout, reopen, wrapper path), and the security review's attacks replayed (reopen theft, settled-pot theft, foreign and compressed accounts). `node contract/test/mutate.js` breaks each of 24 escrow rules in turn and checks the harness catches every one | ✅ |
 | editor shows it | the §05 bounty poster above the record: pot, champion, best sum, fuse countdown, "resets on SUM ≤ N", Open / Pay the champion | ✅ code · ⏳ chain |
 
 ## D·3 — Frontend client
