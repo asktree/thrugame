@@ -10,10 +10,18 @@
  *     champion included) changes nothing;
  *   - once the fuse has burnt out the crown is frozen: the champion has won,
  *     and no later submission can take the pot from them before it is paid;
- *   - anyone may then trigger the payout: the whole balance goes to the
- *     champion, the round counter advances, and the fuse relights with the
- *     champion defending — the next round's pot (later deposits) goes to
- *     whoever holds the crown when it burns out again.
+ *   - anyone may then trigger the payout, once: the whole balance goes to the
+ *     champion and the escrow is settled. The fuse never relights; a settled
+ *     escrow takes no crowns, and anything deposited after the payout waits
+ *     for whoever opens the puzzle's next escrow.
+ *
+ * Anyone may open an escrow. The opener picks the fuse length and the bar —
+ * the sum a machine must strictly beat to take the first crown (normally the
+ * puzzle's public record, so a copy of the leader cannot walk off with the
+ * pot; GW_ESCROW_NO_SUM lets any verified machine take it). The opener never
+ * names a champion. An escrow whose bar nobody has beaten within one fuse
+ * length of opening may be reopened by anyone with a new bar and fuse, its
+ * balance carried over, so an unbeatable bar cannot lock a puzzle for good.
  *
  * SDK-free and allocation-free, like gw_verify.c. Times are the chain's block
  * time in nanoseconds.
@@ -33,17 +41,20 @@
    puzzle id in the last byte */
 #define GW_ESCROW_SEED_TAG  "gw-escrow"
 
-enum { GW_ESCROW_HAS_CHAMPION = 1 };
+enum { GW_ESCROW_HAS_CHAMPION = 1, GW_ESCROW_SETTLED = 2 };
 
 typedef struct {
   uint8_t  puzzle;
-  uint8_t  flags;          /* GW_ESCROW_HAS_CHAMPION */
-  uint32_t best_sum;       /* GW_ESCROW_NO_SUM until someone holds the crown */
+  uint8_t  flags;          /* GW_ESCROW_HAS_CHAMPION, GW_ESCROW_SETTLED */
+  uint32_t best_sum;       /* the sum to beat: the champion's, else the opening bar
+                              (GW_ESCROW_NO_SUM = any verified sum) */
   uint32_t fuse_s;         /* fuse length, seconds (30 days unless opened otherwise) */
-  uint64_t fuse_end;       /* block time (ns) at which the fuse burns out; 0 = unlit */
-  uint64_t crowned_slot;   /* slot of the last crown change (or round start) */
-  uint32_t round;          /* payouts made so far */
-  uint64_t total_paid;     /* native tokens paid out over all rounds */
+  uint64_t fuse_end;       /* block time (ns): with a champion, when the fuse burns
+                              out; before one, when the opening bar lapses and
+                              the escrow may be reopened */
+  uint64_t crowned_slot;   /* slot of the last change: opening, crown or payout */
+  uint32_t round;          /* escrows opened on this puzzle so far (1 = the first) */
+  uint64_t total_paid;     /* native tokens paid out over all of them */
   uint8_t  champion[32];
 } gw_escrow_t;
 
@@ -53,9 +64,12 @@ enum {
   GW_ESC_CROWNED,          /* offer: the crown moved to the solver */
   GW_ESC_NOT_BETTER,       /* offer: sum >= best — sealed on the record, crown unchanged */
   GW_ESC_FROZEN,           /* offer: the fuse has burnt out, the crown awaits payout */
+  GW_ESC_SETTLED,          /* offer: the escrow has paid out — no crown to take */
   GW_ESC_ERR_STATE,        /* account data is not an escrow for this puzzle */
-  GW_ESC_ERR_ARGS,         /* open: zero fuse, or a champion without a sum (or vice versa) */
+  GW_ESC_ERR_ARGS,         /* open: zero fuse */
+  GW_ESC_ERR_LIVE,         /* open: this puzzle's escrow is still contested */
   GW_ESC_ERR_NO_CHAMPION,  /* claim: nobody holds the crown */
+  GW_ESC_ERR_PAID,         /* claim: already paid out */
   GW_ESC_ERR_BURNING,      /* claim: the fuse is still burning */
   GW_ESC_ERR_CLOCK,        /* block time unavailable (0) */
 };
@@ -66,13 +80,16 @@ void gw_escrow_seed(uint8_t puzzle, uint8_t seed[32]);
 void gw_escrow_store(const gw_escrow_t *e, uint8_t out[GW_ESCROW_SZ]);
 int  gw_escrow_load(const uint8_t *data, uint32_t len, uint8_t puzzle, gw_escrow_t *e);
 
-/* A new escrow. seed_sum/champion seed the crown from the public record (the
-   puzzle's current leader), lighting the fuse now; seed_sum = GW_ESCROW_NO_SUM
-   with champion = NULL leaves the crown open and the fuse unlit until the
-   first verified submission. */
-int  gw_escrow_open(gw_escrow_t *e, uint8_t puzzle, uint32_t fuse_s,
-                    uint32_t seed_sum, const uint8_t *champion,
-                    uint64_t now, uint64_t slot);
+/* Open an escrow: the crown is empty, `bar` is the sum to beat for the first
+   crown, and the bar lapses one fuse length from now. `prev` is the puzzle's
+   existing escrow, or NULL if it has none; opening over one is allowed only
+   once it is settled, or crownless with its bar lapsed (the balance stays in
+   the account and becomes this escrow's pot). */
+int  gw_escrow_open(gw_escrow_t *e, const gw_escrow_t *prev, uint8_t puzzle,
+                    uint32_t fuse_s, uint32_t bar, uint64_t now, uint64_t slot);
+
+/* May this escrow be opened over (gw_escrow_open's rule)? */
+int  gw_escrow_reopenable(const gw_escrow_t *e, uint64_t now);
 
 /* A verified submission's sum, offered for the crown. */
 int  gw_escrow_offer(gw_escrow_t *e, uint64_t sum, const uint8_t solver[32],
@@ -81,8 +98,8 @@ int  gw_escrow_offer(gw_escrow_t *e, uint64_t sum, const uint8_t solver[32],
 /* Has the fuse burnt out (a champion has won the current round)? */
 int  gw_escrow_expired(const gw_escrow_t *e, uint64_t now);
 
-/* Settle the round: *pay = the whole balance, owed to e->champion; the next
-   round starts with the champion defending. GW_ESC_OK or an error. */
+/* Settle: *pay = the whole balance, owed to e->champion, once. The escrow is
+   then settled for good. GW_ESC_OK or an error. */
 int  gw_escrow_claim(gw_escrow_t *e, uint64_t balance, uint64_t now, uint64_t slot,
                      uint64_t *pay);
 

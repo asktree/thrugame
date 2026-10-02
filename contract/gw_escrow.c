@@ -48,8 +48,10 @@ int gw_escrow_load(const uint8_t *d, uint32_t len, uint8_t puzzle, gw_escrow_t *
   e->round = get32(d + 32);
   e->total_paid = get64(d + 40);
   for (int i = 0; i < 32; i++) e->champion[i] = d[48 + i];
-  if (e->fuse_s == 0) return GW_ESC_ERR_STATE;
-  if (!(e->flags & GW_ESCROW_HAS_CHAMPION) != (e->best_sum == GW_ESCROW_NO_SUM)) return GW_ESC_ERR_STATE;
+  if (e->fuse_s == 0 || e->fuse_end == 0) return GW_ESC_ERR_STATE;
+  if (e->flags & ~(GW_ESCROW_HAS_CHAMPION | GW_ESCROW_SETTLED)) return GW_ESC_ERR_STATE;
+  if ((e->flags & GW_ESCROW_HAS_CHAMPION) && e->best_sum == GW_ESCROW_NO_SUM) return GW_ESC_ERR_STATE;
+  if ((e->flags & GW_ESCROW_SETTLED) && !(e->flags & GW_ESCROW_HAS_CHAMPION)) return GW_ESC_ERR_STATE;
   return GW_ESC_OK;
 }
 
@@ -59,37 +61,39 @@ static uint64_t light(const gw_escrow_t *e, uint64_t now) {
   return now + (uint64_t)e->fuse_s * GW_NS_PER_S;
 }
 
-int gw_escrow_open(gw_escrow_t *e, uint8_t puzzle, uint32_t fuse_s,
-                   uint32_t seed_sum, const uint8_t *champion,
-                   uint64_t now, uint64_t slot) {
+int gw_escrow_reopenable(const gw_escrow_t *e, uint64_t now) {
+  if (e->flags & GW_ESCROW_SETTLED) return 1;
+  return !(e->flags & GW_ESCROW_HAS_CHAMPION) && now >= e->fuse_end;
+}
+
+int gw_escrow_open(gw_escrow_t *e, const gw_escrow_t *prev, uint8_t puzzle,
+                   uint32_t fuse_s, uint32_t bar, uint64_t now, uint64_t slot) {
   if (now == 0) return GW_ESC_ERR_CLOCK;
   if (fuse_s == 0) return GW_ESC_ERR_ARGS;
-  if ((seed_sum == GW_ESCROW_NO_SUM) != (champion == 0)) return GW_ESC_ERR_ARGS;
+  if (prev && !gw_escrow_reopenable(prev, now)) return GW_ESC_ERR_LIVE;
+  uint32_t round = prev ? prev->round : 0;
+  uint64_t paid = prev ? prev->total_paid : 0;
   e->puzzle = puzzle;
   e->flags = 0;
-  e->best_sum = GW_ESCROW_NO_SUM;
+  e->best_sum = bar;
   e->fuse_s = fuse_s;
   e->fuse_end = 0;
   e->crowned_slot = slot;
-  e->round = 0;
-  e->total_paid = 0;
+  e->round = round + 1;
+  e->total_paid = paid;
   for (int i = 0; i < 32; i++) e->champion[i] = 0;
-  if (champion) {
-    e->flags = GW_ESCROW_HAS_CHAMPION;
-    e->best_sum = seed_sum;
-    for (int i = 0; i < 32; i++) e->champion[i] = champion[i];
-    e->fuse_end = light(e, now);
-  }
+  e->fuse_end = light(e, now);     /* the bar lapses one fuse length from now */
   return GW_ESC_OK;
 }
 
 int gw_escrow_expired(const gw_escrow_t *e, uint64_t now) {
-  return (e->flags & GW_ESCROW_HAS_CHAMPION) && e->fuse_end != 0 && now >= e->fuse_end;
+  return (e->flags & GW_ESCROW_HAS_CHAMPION) && now >= e->fuse_end;
 }
 
 int gw_escrow_offer(gw_escrow_t *e, uint64_t sum, const uint8_t solver[32],
                     uint64_t now, uint64_t slot) {
   if (now == 0) return GW_ESC_ERR_CLOCK;
+  if (e->flags & GW_ESCROW_SETTLED) return GW_ESC_SETTLED;
   if (gw_escrow_expired(e, now)) return GW_ESC_FROZEN;
   if (sum >= (uint64_t)e->best_sum) return GW_ESC_NOT_BETTER;   /* ties change nothing */
   e->flags |= GW_ESCROW_HAS_CHAMPION;
@@ -104,12 +108,12 @@ int gw_escrow_claim(gw_escrow_t *e, uint64_t balance, uint64_t now, uint64_t slo
                     uint64_t *pay) {
   *pay = 0;
   if (now == 0) return GW_ESC_ERR_CLOCK;
+  if (e->flags & GW_ESCROW_SETTLED) return GW_ESC_ERR_PAID;
   if (!(e->flags & GW_ESCROW_HAS_CHAMPION)) return GW_ESC_ERR_NO_CHAMPION;
   if (!gw_escrow_expired(e, now)) return GW_ESC_ERR_BURNING;
   *pay = balance;
-  e->round++;
+  e->flags |= GW_ESCROW_SETTLED;   /* one time: the fuse never relights */
   e->total_paid += balance;
-  e->fuse_end = light(e, now);     /* next round: the champion defends */
   e->crowned_slot = slot;
   return GW_ESC_OK;
 }

@@ -285,21 +285,25 @@ How the contract keeps it (encoding in FORMAT.md, rules in `contract/gw_escrow.c
 - **One escrow per puzzle**, an account of the rules contract at an address derived
   from the puzzle id. Its native balance is the pot: anyone deposits by an ordinary
   transfer to that address, at any time, any number of times.
-- **Opening** creates the escrow. It is the one organized act: the escrow authority
-  opens it, either seeding the crown with the puzzle's current leader from the public
-  record (best SUM and solver — the fuse lights at once) or leaving the crown open (the
-  fuse lights with the first verified submission). The fuse length is fixed at opening;
-  30 days unless stated.
+- **Opening** is open to anyone and organizes nothing. The opener picks the fuse length
+  (30 days unless stated) and the **bar**: the SUM a machine must strictly beat to take
+  the first crown, normally the puzzle's current record so a copy of the public leader
+  cannot walk off with the pot (or no bar, so any verified machine may take it). The
+  opener never names a champion: the crown starts empty and the fuse lights with the
+  first machine to beat the bar. If nobody beats the bar within one fuse length, anyone
+  may reopen the escrow with a new bar and fuse, the balance carried over — so an
+  unbeatable bar cannot lock a puzzle.
 - **The crown.** Every submission passes through its puzzle's escrow. A verified SUM
   strictly below the reigning best crowns the solver and relights the fuse to its full
   length; an equal or worse SUM is still sealed on the record but changes nothing. The
   champion may improve on their own SUM like anyone else.
 - **The fuse** is chain time (block time). The instant it burns out the crown freezes:
-  that round is won, and no later submission — however good — can take it.
-- **The payout** is permissionless: once the fuse is out, anyone may trigger it, and the
-  contract pays the escrow's entire balance to the champion, never to the caller.
-  Payout ends the round, not the escrow: the fuse relights with the champion defending,
-  and deposits that arrive from then on are the next round's pot, won the same way.
+  the escrow is won, and no later submission — however good — can take it.
+- **The payout** is permissionless and happens once: anyone may trigger it after the
+  fuse is out, and the contract pays the escrow's entire balance to the champion, never
+  to the caller. The escrow is then settled; its fuse never relights. Anyone may open a
+  new escrow on the puzzle afterwards, and anything deposited after the payout becomes
+  that escrow's pot.
 
 ## 14. Open questions
 

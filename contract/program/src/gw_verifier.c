@@ -4,8 +4,8 @@
  *
  *   SUBMIT (3)    u8 3 | u8 puzzle id | u8 name len | u8 username len |
  *                 name | username | codec v2 machine bytes
- *   OPEN   (0x10) u8 0x10 | u8 puzzle id | u32 fuse seconds | u32 seed sum |
- *                 u8[32] seed champion | state proof (the escrow's absence)
+ *   OPEN   (0x10) u8 0x10 | u8 puzzle id | u32 fuse seconds | u32 bar |
+ *                 state proof of the escrow's absence (first open only)
  *   CLAIM  (0x11) u8 0x11 | u8 puzzle id
  *
  * SUBMIT decodes the machine, rebuilds the puzzle from the embedded catalog
@@ -22,10 +22,11 @@
  * read-write, whether or not the escrow exists — otherwise a better machine
  * could be sealed past the escrow and then copied into the crown. A verified
  * sum strictly below the reigning best takes the crown and relights the fuse
- * (event GW!E). OPEN creates the escrow (the escrow authority only, seeding
- * the crown from the public record); deposits are plain native transfers to
- * the escrow address; CLAIM, open to anyone once the fuse has burnt out, pays
- * the whole balance to the champion and starts the next round.
+ * (event GW!E). OPEN, by anyone, starts an escrow with an empty crown and a
+ * bar (the sum to beat, normally the public record); it reopens the account
+ * once the last escrow has paid out or its bar lapsed unbeaten. Deposits are
+ * plain native transfers to the escrow address. CLAIM, open to anyone once
+ * the fuse has burnt out, pays the whole balance to the champion, once.
  *
  * Score event GW!2 (little-endian, packed):
  *   0  "GW!2"           magic + payload version
@@ -40,11 +41,12 @@
  * Revert codes: 0x01 bad instruction data, 0x02 unknown puzzle, 0x03 out of
  * memory, 0x04 event rejected, 0x05 no authorized solver, 0x06 the puzzle's
  * escrow account is not in the transaction, 0x07 escrow account unusable
- * (not read-write, wrong owner or bad data), 0x08 OPEN not signed by the
- * escrow authority, 0x09 escrow already open, 0x0A bad OPEN arguments, 0x0B
+ * (not read-write, wrong owner or bad data), 0x08 reserved (unused), 0x09
+ * the puzzle's escrow is still contested, 0x0A bad OPEN arguments, 0x0B
  * no escrow for this puzzle, 0x0C nobody holds the crown, 0x0D the fuse is
  * still burning, 0x0E the champion's account is not in the transaction
- * read-write, 0x0F transfer failed, 0x10 block time unavailable,
+ * read-write, 0x0F transfer failed, 0x10 block time unavailable, 0x11 the
+ * escrow has already paid out,
  * 0x100 + GW_ERR_* (invalid submission),
  * 0x200 + GW_FAULT_* (the machine faulted), 0xBADBAD engine capacity panic. */
 
@@ -60,7 +62,7 @@
 #define GW_EVENT_HDR    58UL
 #define GW_NAME_MAX     32UL
 #define GW_USER_MAX     24UL
-#define GW_OPEN_HDR     42UL
+#define GW_OPEN_HDR     10UL
 
 #define RC_BAD_IX         0x01UL
 #define RC_BAD_PUZZLE     0x02UL
@@ -69,8 +71,7 @@
 #define RC_NO_SOLVER      0x05UL
 #define RC_NO_ESCROW_ACCT 0x06UL
 #define RC_ESCROW_BAD     0x07UL
-#define RC_NOT_AUTHORITY  0x08UL
-#define RC_ESCROW_EXISTS  0x09UL
+#define RC_ESCROW_LIVE    0x09UL
 #define RC_OPEN_ARGS      0x0AUL
 #define RC_NO_ESCROW      0x0BUL
 #define RC_NO_CHAMPION    0x0CUL
@@ -78,18 +79,9 @@
 #define RC_NO_CHAMP_ACCT  0x0EUL
 #define RC_TRANSFER       0x0FUL
 #define RC_CLOCK          0x10UL
+#define RC_PAID           0x11UL
 #define RC_INVALID        0x100UL
 #define RC_FAULT          0x200UL
-
-/* Who may OPEN an escrow: the deployer / upgrade authority of the alphanet
-   programs (contract/program/DEPLOYMENTS.md), tawXEVKYFEgea8k-y-ab3f5ZkD7EHomPDBfrmJvX30wGmQ.
-   Override at build time with -DGW_ESCROW_AUTHORITY_BYTES='{ ... }'. */
-#ifndef GW_ESCROW_AUTHORITY_BYTES
-#define GW_ESCROW_AUTHORITY_BYTES { \
-  0xc1,0x71,0x15,0x29,0x81,0x44,0x81,0xe6,0xbc,0x93,0xec,0xbe,0x69,0xbd,0xdf,0xe5, \
-  0x99,0x03,0xec,0x41,0xe8,0x98,0xf0,0xc1,0x7e,0xb9,0x89,0xbd,0x7d,0xf4,0xc0,0x69 }
-#endif
-static uchar const GW_ESCROW_AUTHORITY[ 32 ] = GW_ESCROW_AUTHORITY_BYTES;
 
 void gw_panic( void ) { tsdk_revert( 0xBADBADUL ); }
 
@@ -270,33 +262,33 @@ submit( uchar const * d, ulong sz ) {
 
 static void __attribute__(( noreturn ))
 open_escrow( uchar const * d, ulong sz ) {
-  if( sz < GW_OPEN_HDR + 1UL ) tsdk_revert( RC_BAD_IX );
+  if( sz < GW_OPEN_HDR ) tsdk_revert( RC_BAD_IX );
   ulong puzzle = d[ 1 ];
   if( puzzle >= GW_NPUZZLES ) tsdk_revert( RC_BAD_PUZZLE );
-  tn_pubkey_t auth;
-  for( ulong i = 0; i < 32UL; i++ ) auth.uc[ i ] = GW_ESCROW_AUTHORITY[ i ];
-  if( !tsdk_is_account_authorized_by_pubkey( &auth ) ) tsdk_revert( RC_NOT_AUTHORITY );
-
-  uint          fuse_s   = get_u32( d + 2 );
-  uint          seed_sum = get_u32( d + 6 );
-  uchar const * champion = d + 10;
-  uchar const * proof    = d + GW_OPEN_HDR;
+  uint fuse_s = get_u32( d + 2 );
+  uint bar    = get_u32( d + 6 );
 
   uchar  seed[ 32 ];
   ushort idx = escrow_account( puzzle, seed );
-  if( tsdk_account_exists( idx ) ) tsdk_revert( RC_ESCROW_EXISTS );
+  gw_escrow_t prev;
+  int had = escrow_load( idx, puzzle, &prev );
 
   tsdk_block_ctx_t const * blk = tsdk_get_current_block_ctx( );
   gw_escrow_t e;
-  int r = gw_escrow_open( &e, (uint8_t)puzzle, fuse_s, seed_sum,
-                          seed_sum == GW_ESCROW_NO_SUM ? 0 : champion, block_time( ), blk->slot );
-  if( r != GW_ESC_OK ) tsdk_revert( RC_OPEN_ARGS );
+  int r = gw_escrow_open( &e, had ? &prev : 0, (uint8_t)puzzle, fuse_s, bar, block_time( ), blk->slot );
+  if( r == GW_ESC_ERR_LIVE ) tsdk_revert( RC_ESCROW_LIVE );
+  if( r != GW_ESC_OK )       tsdk_revert( RC_OPEN_ARGS );
 
-  if( tsys_account_create( idx, seed, proof, sz - GW_OPEN_HDR ) ) tsdk_revert( RC_ESCROW_BAD );
-  if( tsys_set_account_data_writable( idx ) )                    tsdk_revert( RC_ESCROW_BAD );
-  if( tsys_account_resize( idx, GW_ESCROW_SZ ) )                  tsdk_revert( RC_ESCROW_BAD );
-  gw_escrow_store( &e, (uint8_t *)tsdk_get_account_data_ptr( idx ) );
-  escrow_emit( &e, GW_ESCROW_EV_OPEN, 0UL );
+  if( !had ) {
+    if( sz == GW_OPEN_HDR ) tsdk_revert( RC_BAD_IX );     /* creating it needs the state proof */
+    if( tsys_account_create( idx, seed, d + GW_OPEN_HDR, sz - GW_OPEN_HDR ) ) tsdk_revert( RC_ESCROW_BAD );
+    if( tsys_set_account_data_writable( idx ) )                              tsdk_revert( RC_ESCROW_BAD );
+    if( tsys_account_resize( idx, GW_ESCROW_SZ ) )                            tsdk_revert( RC_ESCROW_BAD );
+    gw_escrow_store( &e, (uint8_t *)tsdk_get_account_data_ptr( idx ) );
+  } else {
+    escrow_save( idx, &e );
+  }
+  escrow_emit( &e, GW_ESCROW_EV_OPEN, tsdk_get_account_meta( idx )->balance );
   tsdk_return( 0UL );
 }
 
@@ -314,6 +306,7 @@ claim( uchar const * d, ulong sz ) {
   tsdk_block_ctx_t const * blk = tsdk_get_current_block_ctx( );
   ulong pay = 0UL;
   int   r   = gw_escrow_claim( &e, tsdk_get_account_meta( idx )->balance, block_time( ), blk->slot, &pay );
+  if( r == GW_ESC_ERR_PAID )        tsdk_revert( RC_PAID );
   if( r == GW_ESC_ERR_NO_CHAMPION ) tsdk_revert( RC_NO_CHAMPION );
   if( r == GW_ESC_ERR_BURNING )     tsdk_revert( RC_BURNING );
   if( r != GW_ESC_OK )              tsdk_revert( RC_ESCROW_BAD );
