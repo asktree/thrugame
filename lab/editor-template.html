@@ -257,11 +257,24 @@
   }
   .lesson .x:hover { color: var(--ink); }
   .lesson.folded p, .lesson.folded ol { display: none; }
-  .tab.locked { color: var(--ink-faint); border-color: var(--line); border-style: dashed; cursor: not-allowed; }
+  /* a locked puzzle is only a numbered slot with a small lock; its name appears when it opens */
+  .tab .num { display: none; }
+  .tab.locked { color: var(--ink-faint); border-color: var(--line); background: transparent; cursor: default; padding: 7px 10px; display: inline-flex; align-items: center; gap: 6px; }
   .tab.locked:hover { color: var(--ink-faint); }
-  .tab.locked::before { content: '\1F512\FE0E  '; font-weight: 400; }
-  .tab.solved::after { content: ' \2713'; }
-  .tabs .unlockall { margin-left: auto; padding: 5px 9px; font-size: 9.5px; }
+  .tab.locked .num { display: inline; font-weight: 400; }
+  .tab.locked .name { display: none; }
+  .tab.locked::before {
+    content: ''; width: 9px; height: 11px; background: currentColor; opacity: .8;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10'%3E%3Crect x='.5' y='4.5' width='7' height='5.5' rx='.6'/%3E%3Cpath d='M2.2 4.6V3.2a1.8 1.8 0 0 1 3.6 0v1.4' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10'%3E%3Crect x='.5' y='4.5' width='7' height='5.5' rx='.6'/%3E%3Cpath d='M2.2 4.6V3.2a1.8 1.8 0 0 1 3.6 0v1.4' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .tab.solved .name::after { content: ' \2713'; color: var(--verdigris); }
+  .tab.on.solved .name::after { color: inherit; }
+  .tabs .unlockall {
+    margin-left: auto; align-self: center; border: 0; background: none; padding: 2px 0; cursor: pointer;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; color: var(--ink-dim); border-bottom: 1px solid var(--line);
+  }
+  .tabs .unlockall:hover { color: var(--ink); border-bottom-color: var(--ink-dim); }
 
 
   dialog.howtodlg { width: min(720px, calc(100vw - 36px)); }
@@ -617,7 +630,7 @@
   // each carries a lesson above the tray. Lead Amalgam's lesson explains the whole idea;
   // the later ones say what is new. Solving a puzzle (a test that ends in Great Work!)
   // unlocks the next; "Unlock all" opens every puzzle at once. A puzzle reached by a
-  // link or an import, or one this browser already holds a draft for, is open too.
+  // link or an import is open too. The score (SUM) waits until Surrender Flare: first learn to play.
   const LESSON_INTRO = {
     amalgam: [
       '<b>Great Work!</b> is a game about building machines. Each puzzle names a product; build a machine that makes nine of them and the puzzle is solved.',
@@ -626,16 +639,18 @@
     saltedquicksilver: ['Molecules have a shape. The product glyph wants its atoms on exactly its cells, so the chain must be turned to match before it goes down. An arm can <b>pivot</b> what it holds (<kbd>e</kbd> / <kbd>r</kbd>) without moving its base.'],
     transmutedgold: ['Not every glyph bonds. <b>Projection</b> spends a quicksilver to raise a metal one rung: lead, tin, iron, copper, silver, gold. Select a glyph on the board and a card shows what it does, cell by cell.'],
     vitalsalts: ['Everything here starts as water. Chain the glyphs: calcify, animate, bond. Several arms with tapes of the same length keep in step; <span class="ui">»+</span> lets one start a beat late.'],
-    airshipfuel: ['One reagent, two kinds of atom: calcify only some of the fire. Lower SUM is better, so once it works, try fewer parts, fewer cycles or less room.'],
-    surrenderflare: ['A whole flower has to be opened, changed and closed again. <b>Unbond</b> parts atoms; think about which petal comes off and where the quicksilver comes from.'],
-    ablativecrystal: ['The last puzzle, and nobody has solved it yet. Everything you have learned is needed here.'],
+    airshipfuel: ['One reagent, two kinds of atom: calcify only some of the fire.'],
+    surrenderflare: [
+      'A whole flower has to be opened, changed and closed again. <b>Unbond</b> parts atoms; think about which petal comes off and where the quicksilver comes from.',
+      'Now that you can build a working machine, there is a score. <b>SUM</b> = gold spent on parts + cycles taken + area used, and lower is better. Once a machine works, try fewer parts, fewer cycles or less room, then <span class="ui">Submit</span> to seal it on the public record.',
+    ],
+    ablativecrystal: ['The last puzzle, and nobody has solved it yet. Everything you have learned is needed here, and the first solution sets the record.'],
   };
   const LESSON_STEPS_FIRST = [
     'Drag an <span class="ui">ARM</span> from the tray onto the board, between the reagents and <span class="ui">OUT</span>. Drag its round handle to aim and lengthen it.',
     'Drag a <span class="ui">BOND</span> glyph onto the board: lead and quicksilver resting on its two cells get bonded at the end of a cycle.',
     'Click the arm to open its <b>tape</b> below the board, then fill cells with instructions: <kbd>g</kbd> grab, <kbd>d</kbd> release, <kbd>q</kbd> / <kbd>w</kbd> turn. The tape loops forever.',
     'Press <span class="ui">▶ Test</span>. A fault stops the run and says why; <span class="ui">✎ Edit</span> to fix it. Nine products and the stamp reads <b>Great Work!</b>',
-    'Your score is <b>SUM</b> = gold spent + cycles taken + area used. Lower is better, and <span class="ui">Submit</span> seals a solved machine on the public record.',
   ];
   // a puzzle is open when it is the first, when the one before it is solved, or when the
   // player arrived at it by a link (a shared machine or a replay). Drafts open nothing:
@@ -3149,14 +3164,15 @@
   BASES.forEach((b, i) => {
     const btn = document.createElement('button');
     btn.className = 'tab' + (i === 0 ? ' on' : '');
-    btn.textContent = b.name;
+    btn.innerHTML = `<span class="num">${i + 1}</span><span class="name"></span>`;
+    btn.querySelector('.name').textContent = b.name;
     btn.addEventListener('click', () => { if (isOpen(i)) selectPuzzle(i); });
     tabs.appendChild(btn);
   });
   {
     const all = document.createElement('button');
-    all.className = 'ctl unlockall'; all.id = 'btnUnlockAll'; all.type = 'button';
-    all.textContent = 'Unlock all puzzles';
+    all.className = 'unlockall'; all.id = 'btnUnlockAll'; all.type = 'button';
+    all.textContent = 'unlock all';
     all.title = 'skip the tutorial order and open every puzzle';
     all.addEventListener('click', () => {
       unlockAll = true;
