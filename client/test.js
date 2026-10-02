@@ -6,11 +6,21 @@
 import { createHash } from 'node:crypto';
 import { Pubkey } from '@thru/sdk';
 import * as C from './gw-chain.js';
+import * as M from '@thru/programs/manager';
 
 let failures = 0;
 const check = (ok, msg) => { if (!ok) { failures++; console.log('FAIL ' + msg); } };
 const hex = (h) => Uint8Array.from(h.match(/../g).map(b => parseInt(b, 16)));
 const eq = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+// the program addresses are the manager's derivation of their seeds: a
+// `thru program create <seed>` lands exactly there (checked against the old
+// greatwork-v2 deploy, which this derivation reproduces with the old manager)
+{
+  const net = C.NETWORKS.alphanet;
+  check(M.deriveManagedProgramAddresses(net.programSeed).programAccountAddress === net.program, 'program = derive(' + net.programSeed + ')');
+  check(M.deriveManagedProgramAddresses(net.testProgramSeed).programAccountAddress === net.testProgram, 'testProgram = derive(' + net.testProgramSeed + ')');
+}
 
 // SUBMIT is version 3
 const ix = C.encodeSubmission(4, Uint8Array.of(9, 9), { name: 'ab', user: 'c' });

@@ -36,15 +36,19 @@ export const NETWORKS = {
   alphanet: {
     name: 'alphanet',
     rpc: 'https://rpc.alphanet.thru.org',
-    // contract/program/DEPLOYMENTS.md. Alphanet was reset around 2026-09-30 and
-    // these accounts no longer exist: the escrow build is deployed fresh, and
-    // its new addresses replace these two (IGG-29).
-    program: 'taaX8rNMcDjdi-V0IlFhC2ScMsN0gWXbejJdoyDOvHi8aS',
-    // the record starts here (a fresh deploy's every event is public record)
+    // contract/program/DEPLOYMENTS.md. Managed-program addresses are fixed by
+    // the seed and the manager program, so these are known before the deploy:
+    // `thru program create greatwork-v3 …` lands exactly here (client/test.js
+    // re-derives both). Alphanet was reset around 2026-09-30; the old
+    // greatwork-v2 (taaX8rNM…) is gone with it.
+    program: 'taWilrUWWu-_nAzyv3koRVoQQOnIepAGVe1tkzbnu3XNdZ',          // seed greatwork-v3
+    programSeed: 'greatwork-v3',
+    // every event of the fresh program is public record
     fromSlot: 0n,
     // a second copy of the same program for automated tests, so test runs never
     // touch the record: point a test at it with NETWORKS.alphanet.program = testProgram
-    testProgram: 'taZq-QfKiEC-7CF-iF8mbqHjC4wSU1brkik8jsgMl2bpVB',
+    testProgram: 'tar_NQqeiWnJEIhya2UBpcEpxV4UKBpbnRGf6cMpay0EiS',      // seed greatwork-test
+    testProgramSeed: 'greatwork-test',
   },
 };
 export const IX_VERSION = 3;
