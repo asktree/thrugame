@@ -8,6 +8,8 @@
 #                       program shell itself (program/src/gw_verifier.c) on a
 #                       simulated ledger, built against the host stand-in SDK
 #                       in test/mock.
+# `node test/mutate.js` breaks each escrow rule in turn in a scratch copy and
+# checks that build/escrow-check fails for every one.
 # The on-chain build lives in program/ and needs the Thru devkit.
 
 CC      ?= cc
