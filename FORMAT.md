@@ -209,10 +209,18 @@ policy such as the fuse bounds, so a later build can always read an escrow.
 The fuse has burnt out when someone holds the crown and block time ≥ fuse end.
 A settled round (bit 1) has paid out and takes no more crowns.
 
-At creation OPEN asks the runtime to mark the account `UNCOMPRESSABLE`
-(account flag 0x04), best effort. An escrow that the runtime has compressed is
-refused by every instruction (`0x12`) rather than read with a stale `best`;
-anyone may decompress it.
+**Compression.** At creation INIT / OPEN ask the runtime to mark the account
+`UNCOMPRESSABLE` (account flag 0x04), best effort — and on alphanet the
+runtime does not keep it (observed on `greatwork-test`, 2026-10-02). So an
+escrow is compressible: after a period of inactivity any third party may
+compress it. A compressed account reads, to a program, exactly like one that
+never existed (version 0, no flags), and it cannot be recreated (its creation
+proof fails). So while it is compressed SUBMIT reverts `0x13`, and INIT, OPEN
+and CLAIM cannot act on it; anyone may decompress it (`node client/escrow.js
+<puzzle> decompress`; the clients detect it and say so before sending
+anything). Nothing can be taken by compressing an escrow — its balance and
+`best` come back with it — it only pauses the puzzle. Were the runtime ever
+to show the compressed flag, every instruction refuses it with `0x12`.
 
 ### INIT (0x12)
 
@@ -276,9 +284,9 @@ the amount.
 
 ### SUBMIT and the crown
 
-Before anything else SUBMIT checks the escrow account: compressed → `0x12`
-(checked first: a compressed account may read as absent), absent → `0x13`,
-not read-write → `0x07`. After sealing the `GW!2` score event it offers the
+Before anything else SUBMIT checks the escrow account: flagged compressed →
+`0x12`, absent → `0x13` (never created — INIT it — or compressed —
+decompress it), not read-write → `0x07`. After sealing the `GW!2` score event it offers the
 sum. It lowers `best` if lower, in every state and even with no block time.
 Strictly below the round's sum to beat and every sum seen before, in an open
 round that is neither settled nor burnt out, with a block time, it crowns the
@@ -299,14 +307,23 @@ u8   puzzle id
 Accounts: the escrow account and the champion's account, both read-write. Anyone
 may send it once the fuse has burnt out. The program pays the escrow's whole
 balance to the champion recorded in the escrow — the caller chooses nothing —
-and marks the round settled; `GW!E` kind 3 with the amount paid. If the
-champion's account is listed but cannot be credited (it no longer exists, is
-ephemeral or deleted, or the runtime refuses the transfer), the round settles
-**unpaid** instead: flag bit 2, `GW!E` kind 4 with the balance kept, and the
-balance carries into the next round — a pot is never locked behind a
-champion. A compressed champion is not gone: `0x12`, decompress it and claim
-again. Missing from the transaction or read-only: `0x0E`. Either way it
-settles once; the fuse never relights (`0x11` after).
+and marks the round settled; `GW!E` kind 3 with the amount paid. A transfer
+the runtime refuses reverts (`0x0F`): the caller sets the transaction's
+compute and memory units, so a refusal says nothing about the champion.
+The champion's account, as the program sees it:
+
+- present and flagged `DELETED` (or `EPHEMERAL`, which a crown already
+  refuses): it can never be paid, so the round settles **unpaid** — flag
+  bit 2, `GW!E` kind 4 with the balance kept, which carries into the next
+  round;
+- absent: on Thru that is how a compressed account looks, and any third
+  party may compress an idle account, so the claim waits — `0x12`,
+  decompress it and claim again — until **90 days after the fuse burnt
+  out**; after that the round settles unpaid as above, so an account that is
+  really gone cannot lock the pot forever;
+- missing from the transaction or read-only: `0x0E`.
+
+Either way a round settles once; the fuse never relights (`0x11` after).
 
 ### Escrow event (`GW!E`), little-endian, packed
 
@@ -334,9 +351,9 @@ settles once; the fuse never relights (`0x11` after).
 | `0x0C` | CLAIM with nobody holding the crown |
 | `0x0D` | CLAIM while the fuse is still burning |
 | `0x0E` | the champion's account is not in the transaction read-write |
-| `0x0F` | the transfer failed |
+| `0x0F` | CLAIM's payout transfer was refused (retry, e.g. with more compute / memory units); nothing settled |
 | `0x10` | block time unavailable |
 | `0x11` | CLAIM on an escrow that has already paid out |
-| `0x12` | the escrow (or, for CLAIM, the champion's) account is compressed: decompress it, then retry |
-| `0x13` | SUBMIT while the puzzle's escrow account does not exist: send INIT first |
+| `0x12` | the escrow account is flagged compressed, or (CLAIM) the champion's account is missing or compressed, within 90 days of the fuse: decompress it, then retry |
+| `0x13` | SUBMIT while the puzzle's escrow account reads as absent: never created (send INIT) or compressed (decompress it) |
 | `0x14` | a verified sum outside 1 .. 0xFFFFFFFE |

@@ -54,6 +54,7 @@ node submit.js amalgam.AgEAAAAFABBYJEgKtmwBAAEABQIAAgEAAQIAAAEAAgA --name "Couri
 node leaderboard.js [amalgam]
 node escrow.js amalgam            # the puzzle's prize escrow: pot, champion, best, fuse
 node escrow.js init --all          # every puzzle's escrow account (once, after a deploy)
+node escrow.js amalgam decompress  # if the runtime compressed the escrow (or its champion)
 node escrow.js amalgam open --fuse 30d --bar record    # anyone may; the bar is the record's machine
 node escrow.js amalgam deposit --amount 1000           # into an open round only
 node escrow.js amalgam claim      # after the fuse: pays the champion

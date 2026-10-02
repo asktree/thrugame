@@ -63,8 +63,9 @@ organizer, no judges."*
     nothing, and reopening an escrow never lowers the bar.
   - When the fuse burns out, the crown freezes. Anyone may then trigger the
     payout, and the contract sends the whole pot to the champion, once. (If
-    the champion's account no longer exists, the pot stays for the next
-    round rather than being locked.)
+    the champion's account has been deleted, or is still missing 90 days
+    after the fuse, the pot stays for the next round rather than being
+    locked.)
 - **Demo:** an escrow is open on *Lead Amalgam* [after deploy: pot]. The
   bar is the current record, so only a better machine can take it.
 - **Known limitation:** a crowning submission is public while in flight, so
