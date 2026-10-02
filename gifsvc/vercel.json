@@ -1,10 +1,25 @@
 {
+  "github": {
+    "silent": true
+  },
   "rewrites": [
-    { "source": "/health", "destination": "/api/gif?kind=health" },
-    { "source": "/gif/:puzzle/:code.gif", "destination": "/api/gif?puzzle=:puzzle&code=:code" },
-    { "source": "/png/:puzzle/:code.png", "destination": "/api/gif?puzzle=:puzzle&code=:code&kind=png" }
+    {
+      "source": "/health",
+      "destination": "/api/gif?kind=health"
+    },
+    {
+      "source": "/gif/:puzzle/:code.gif",
+      "destination": "/api/gif?puzzle=:puzzle&code=:code"
+    },
+    {
+      "source": "/png/:puzzle/:code.png",
+      "destination": "/api/gif?puzzle=:puzzle&code=:code&kind=png"
+    }
   ],
   "functions": {
-    "api/gif.js": { "maxDuration": 60, "includeFiles": "{page,fonts}/**" }
+    "api/gif.js": {
+      "maxDuration": 60,
+      "includeFiles": "{page,fonts}/**"
+    }
   }
 }
