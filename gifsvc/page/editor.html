@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Great Work! Solution Editor</title>
+<title>Great Work!</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap">
 <style>
@@ -21,7 +21,6 @@
 
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
   h1 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: .06em; }
-  h1 small { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .22em; text-transform: uppercase; margin-left: 12px; }
   .backlink { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; color: var(--ink-dim); text-decoration: none; border-bottom: 1px solid var(--line); }
   .backlink:hover { color: var(--ink); }
 
@@ -144,7 +143,8 @@
   .chip.passkey { border-style: solid; color: var(--ink); }
   .sharebox .idctl { padding: 4px 8px; font-size: 9.5px; letter-spacing: .07em; }
 
-  .chain { border: 1px solid var(--line); border-top: 0; background: var(--parch-3); padding: 9px 14px 11px; }
+  /* the record stands apart from the play area: its own box, a clear gap above it */
+  .chain { border: 1px solid var(--line); background: var(--parch-3); padding: 9px 14px 11px; margin-top: 28px; }
   .chain-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
   .chain-title { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
   .chain-head .chain-title { margin-right: auto; }
@@ -237,61 +237,59 @@
   .glyphhelp h3 small { font-family: var(--mono); font-size: 9.5px; font-weight: 400; letter-spacing: .08em; color: var(--ink-faint); text-transform: none; }
   .glyphhelp .diagram { display: block; width: 100%; height: auto; margin-top: 6px; }
   .glyphhelp .note { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--ink-dim); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); line-height: 1.5; }
-  /* the puzzle guide: the same card, pinned top-left, with a few steps for this puzzle */
-  .guide {
-    position: absolute; top: 10px; left: 10px; width: 232px; max-width: calc(44% - 10px);
-    border: 1px solid var(--line); background: rgba(241,233,214,.9); color: var(--ink);
-    padding: 9px 12px 10px; pointer-events: none;
-  }
-  .guide h3 { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); padding-right: 22px; }
-  /* the one thing on the card that takes the pointer: its close */
-  .guide .x {
-    position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; pointer-events: auto; cursor: pointer;
-    border: 0; background: none; color: var(--ink-faint); font-family: var(--mono); font-size: 15px; line-height: 1; padding: 0;
-  }
-  .guide .x:hover { color: var(--ink); }
-  .guide ol { margin: 5px 0 0 16px; padding: 0; }
-  .guide li { font-size: 13px; line-height: 1.35; margin: 3px 0; color: var(--ink-dim); }
-  .guide li b { font-weight: 600; color: var(--ink); }
-  @media (max-width: 640px) { .glyphhelp, .guide { display: none !important; } }
+  @media (max-width: 640px) { .glyphhelp { display: none !important; } }
 
-  /* how to play: a short tutorial with screenshots, then the controls reference */
+  /* the tutorial: one lesson per puzzle, above the tray; the puzzles unlock in order */
+  .lesson { border: 1px solid var(--line); border-bottom: 0; background: var(--parch-2); padding: 11px 14px 12px; margin-top: 8px; position: relative; }
+  .lesson + .tray { margin-top: 0; }
+  .lesson h3 { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); padding-right: 26px; }
+  .lesson h3 b { color: var(--ink); font-weight: 700; }
+  .lesson p { font-size: 15px; line-height: 1.45; margin: 6px 0 0; color: var(--ink); max-width: 72ch; }
+  .lesson ol { margin: 6px 0 0 18px; padding: 0; max-width: 72ch; }
+  .lesson li { font-size: 14.5px; line-height: 1.4; margin: 3px 0; color: var(--ink-dim); }
+  .lesson b { font-weight: 600; color: var(--ink); }
+  .lesson .ui, .lesson kbd { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; }
+  .lesson .done { margin-top: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--oxblood); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .lesson .done .ctl { padding: 4px 9px; font-size: 9.5px; }
+  .lesson .x {
+    position: absolute; top: 6px; right: 8px; width: 24px; height: 24px; cursor: pointer;
+    border: 0; background: none; color: var(--ink-faint); font-family: var(--mono); font-size: 16px; line-height: 1; padding: 0;
+  }
+  .lesson .x:hover { color: var(--ink); }
+  .lesson.folded p, .lesson.folded ol { display: none; }
+  .tab.locked { color: var(--ink-faint); border-color: var(--line); border-style: dashed; cursor: not-allowed; }
+  .tab.locked:hover { color: var(--ink-faint); }
+  .tab.locked::before { content: '\1F512\FE0E  '; font-weight: 400; }
+  .tab.solved::after { content: ' \2713'; }
+  .tabs .unlockall { margin-left: auto; padding: 5px 9px; font-size: 9.5px; }
+
+
   dialog.howtodlg { width: min(720px, calc(100vw - 36px)); }
   .howtodlg .ab { padding: 18px 22px 16px; }
   .howtodlg h2 { margin-bottom: 4px; }
   .howtodlg h2[tabindex]:focus { outline: none; }
-  .howtodlg h2.ref { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line); }
   .howtodlg h3 { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 14px 0 4px; }
   .howtodlg table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.35; }
   .howtodlg td { padding: 3px 0; border-top: 1px solid var(--line-soft); vertical-align: top; }
   .howtodlg tr:first-child td { border-top: 0; }
   .howtodlg td.k { width: 30%; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; color: var(--ink-dim); padding-right: 12px; white-space: nowrap; }
   .howtodlg kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line); background: var(--parch-2); padding: 0 4px; }
-  .howtodlg .tut h3 { margin-top: 20px; }
-  .howtodlg .tut p { font-size: 15.5px; line-height: 1.45; margin: 6px 0; }
-  .howtodlg .tut b { font-weight: 600; }
-  .howtodlg .tut .ui { font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; }
-  .howtodlg .tut figure { margin: 10px 0 14px; }
-  .howtodlg .tut img { display: block; width: 100%; height: auto; border: 1px solid var(--line); background: var(--parch-2); }
-  .howtodlg .tut figcaption { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .04em; line-height: 1.5; margin-top: 5px; }
-  .howtodlg .tut table.ops { margin: 8px 0 6px; }
-  .howtodlg .tut table.ops td.k { width: 22%; font-size: 15px; color: var(--ink); letter-spacing: .08em; }
-  .howtodlg .tut table.ops td.k small { font-size: 10.5px; color: var(--ink-faint); margin-left: 6px; letter-spacing: .04em; }
-  @media (max-width: 640px) { .howtodlg .ab { padding: 14px 14px 12px; } .howtodlg .tut p { font-size: 15px; } }
+  @media (max-width: 640px) { .howtodlg .ab { padding: 14px 14px 12px; } }
 
   footer { margin-top: 22px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .08em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 </style>
 
 <div class="wrap">
   <header>
-    <h1>Great Work!<small>Solution Editor</small></h1>
+    <h1>Great Work!</h1>
     <span class="hdr-btns">
-      <button class="ctl" id="btnHowTo">How to Play</button>
+      <button class="ctl" id="btnHowTo">Controls</button>
       <button class="ctl" id="btnAbout">About</button>
     </span>
   </header>
 
   <div class="tabs" id="tabs"></div>
+  <div class="lesson" id="lesson" hidden></div>
 
   <div class="tray" id="tray">
     <span class="seg-label">ARMS</span>
@@ -315,7 +313,6 @@
   <div class="stagebox">
     <canvas id="field" width="980" height="560"></canvas>
     <div class="stamp" id="stamp"><div class="stamp-inner" id="stampInner"></div></div>
-    <aside class="guide" id="guide" hidden></aside>
     <aside class="glyphhelp" id="glyphHelp" hidden></aside>
   </div>
 
@@ -372,65 +369,7 @@
 
   <dialog class="submitdlg howtodlg" id="howtoDlg">
     <form method="dialog" class="ab">
-      <h2 tabindex="-1" autofocus>How to Play</h2>
-      <div class="sd-note">the whole game in a couple of minutes, then every control the editor answers to</div>
-      <div class="tut">
-        <h3>The goal</h3>
-        <p>Each puzzle names a product. Build a machine that makes nine of them and it counts. The board already holds the pieces you cannot do without: the product glyph, <b>OUT</b>, and one reagent glyph for each ingredient — <b>IN·Pb</b>, <b>IN·Hg</b> and so on. A reagent glyph spawns a fresh copy of its molecule whenever its cells are empty. The product glyph consumes a finished molecule laid on it just so: right atoms, right cells, right bonds. You can move and turn these glyphs, but you can never remove them.</p>
-        <figure>
-          <img src="howto/board.png" loading="lazy" alt="The tray above the board, with the reference machine for Lead Amalgam loaded: one arm, one bond glyph, the reagent glyphs IN·Pb and IN·Hg, and the product glyph OUT" width="1473" height="627">
-          <figcaption>Lead Amalgam with the reference machine loaded: the tray above, the board below. IN·Pb and IN·Hg feed one arm; OUT wants a lead bonded to a quicksilver.</figcaption>
-        </figure>
-
-        <h3>Parts</h3>
-        <p>Two kinds. <b>Arms</b> stand on a cell and reach out one, two or three cells. An arm has one gripper at its tip, or two, three or six spaced evenly around it — <span class="ui">ARM</span>, <span class="ui">DUAL</span>, <span class="ui">TRI</span> and <span class="ui">HEX</span> in the tray. <b>Glyphs</b> are markings on the floor: at the end of every cycle each one acts on the atoms resting on its cells — a bond glyph joins two atoms, an unbond glyph parts them, and so on. Every part has a price in gold. Each puzzle's tray offers only the glyphs its reagents can use, so a short tray is not a bug.</p>
-
-        <h3>Placing parts</h3>
-        <p>Drag a part from the tray onto the board. Drag it back to the tray to remove it. Click a part to select it; a selected part shows a <b>handle</b>. Drag the handle to aim an arm, drag it further out to lengthen the arm, or drag it around a glyph, reagent or product to rotate it. Drag empty board to pan, scroll to zoom. Select a glyph and a card appears at the board's top right telling you what the glyph does, cell by cell, and when it fires.</p>
-        <figure>
-          <img src="howto/arm.png" loading="lazy" alt="A selected arm on the board with the round handle at its tip" width="960" height="680">
-          <figcaption>A selected arm. The small circle past its tip is the handle: drag it to aim or lengthen the arm.</figcaption>
-        </figure>
-        <figure>
-          <img src="howto/glyphcard.png" loading="lazy" alt="The tutorial card for the bond glyph, pinned to the board's top right" width="948" height="342">
-          <figcaption>The card for the bond glyph: its cells before and after it fires, and a note on what it needs.</figcaption>
-        </figure>
-
-        <h3>Programming an arm</h3>
-        <p>Every arm runs a <b>tape</b>: a row of instructions, one per cycle. Click an arm and its tape lights up below the board; a new arm's tape is a single wait. Click a cell of the tape, then pick an instruction from the <span class="ui">SET OP</span> palette, or press its key:</p>
-        <table class="ops">
-          <tr><td class="k">G<small>grab</small></td><td>every gripper closes on whatever rests at its cell. An atom brings its whole molecule along.</td></tr>
-          <tr><td class="k">D<small>release</small></td><td>every gripper opens; the cargo stays where it is.</td></tr>
-          <tr><td class="k">↻ ↺<small>turn</small></td><td>the arm swings a sixth of a turn about its base, carrying its cargo.</td></tr>
-          <tr><td class="k">↷ ↶<small>pivot</small></td><td>the cargo rotates a sixth of a turn about the gripper; the arm itself stays put.</td></tr>
-          <tr><td class="k">·<small>wait</small></td><td>hold still for one cycle.</td></tr>
-          <tr><td class="k">↪<small>repeat</small></td><td>do everything since the last repeat once more.</td></tr>
-        </table>
-        <p>When a tape reaches its end it starts over, forever, and every arm loops on its own: two arms with tapes of different lengths drift apart, so give arms that work together the same length (<span class="ui">insert</span> adds a wait cell, <span class="ui">remove</span> takes one out). <span class="ui">»+</span> adds a <b>delay</b> block at the front of a tape. It runs once, on the first pass only, so an arm can start a beat late without changing its rhythm.</p>
-        <figure>
-          <img src="howto/tape.png" loading="lazy" alt="The tape panel with ARM a0 selected: the SET OP palette above, the arm's tape of sixteen cells below" width="1964" height="256">
-          <figcaption>The tape panel with ARM a0 selected. The cursor sits on the first cell; whatever you pick from SET OP goes there.</figcaption>
-        </figure>
-
-        <h3>Testing</h3>
-        <p>Press <span class="ui">▶ Test</span>. The verifier runs your machine one cycle at a time: <span class="ui">Pause</span> holds it, <span class="ui">Step</span> advances a single cycle, and the speed buttons set the pace (<span class="ui">MAX</span> skips the animation). Two atoms sweeping through each other, a molecule pulled two ways, an arm grabbing its own base — any of these is a <b>fault</b>. The run stops and a red stamp says what went wrong and on which cycle. Nine products, and the stamp reads <b>GREAT WORK!</b> instead. <span class="ui">✎ Edit</span> takes you back to the board.</p>
-        <figure>
-          <img src="howto/run.png" loading="lazy" alt="A test paused at cycle 4: lead atoms on the board, the arm holding one, and the HUD below reading CYCLE 4, COST 30g, AREA 7, PRODUCT 0/9" width="1470" height="710">
-          <figcaption>A test paused at cycle 4. One lead is parked on the bond glyph and the arm holds the next; the HUD counts cycles, cost, area and products.</figcaption>
-        </figure>
-        <figure>
-          <img src="howto/stamp.png" loading="lazy" alt="The GREAT WORK! stamp over the board: 9 of 9, 30g + 142c + 7a = SUM 179" width="1320" height="732">
-          <figcaption>Nine of nine. The stamp carries the score.</figcaption>
-        </figure>
-
-        <h3>Scoring</h3>
-        <p>Three numbers. <b>COST</b> is the gold you spent on parts. <b>CYCLES</b> is the cycle on which the ninth product was made. <b>AREA</b> is every cell anything ever touched, plus every glyph cell. <b>SUM = COST + CYCLES + AREA</b>, and lower is better. The leaderboard ranks by SUM alone, so spend gold to save cycles, or the other way round — whichever comes out smaller.</p>
-
-        <h3>Sharing</h3>
-        <p>A solution is a short code. <span class="ui">Copy code</span> puts yours on the clipboard; paste one into the box and press <span class="ui">Import</span> to load it. Once a test ends in GREAT WORK!, <span class="ui">Submit</span> seals the solution on-chain under your name and its own, score and all.</p>
-      </div>
-
-      <h2 class="ref">Controls</h2>
+      <h2 tabindex="-1" autofocus>Controls</h2>
       <div class="sd-note">the board, the tapes, the run — everything the editor answers to</div>
       <h3>Board</h3>
       <table>
@@ -2698,15 +2637,94 @@
     const offer = new Set(base().glyphs || []);
     document.querySelectorAll('#tray .part[data-glyph]').forEach(el => { el.hidden = !offer.has(el.dataset.glyph); });
   }
-  // the puzzle's guide, top-left of the board while editing
-  const guideClosed = new Set();   // puzzles whose guide was closed this session
-  function syncGuide() {
-    const el = $('guide');
-    const steps = base().guide || [];
-    if (mode !== 'edit' || !steps.length || guideClosed.has(key())) { el.hidden = true; return; }
-    el.innerHTML = `<h3>${base().name}</h3><button class="x" type="button" title="close this guide" aria-label="close">×</button>`
-      + `<ol>${steps.map(t => `<li>${t}</li>`).join('')}</ol>`;
-    el.querySelector('.x').addEventListener('click', () => { guideClosed.add(key()); syncGuide(); });
+  // ---------- the tutorial ----------
+  // The game teaches itself: the puzzles unlock one at a time, in catalog order, and
+  // each carries a lesson above the tray. Lead Amalgam's lesson explains the whole idea;
+  // the later ones say what is new. Solving a puzzle (a test that ends in Great Work!)
+  // unlocks the next; "Unlock all" opens every puzzle at once. A puzzle reached by a
+  // link or an import, or one this browser already holds a draft for, is open too.
+  const LESSON_INTRO = {
+    amalgam: [
+      '<b>Great Work!</b> is a game about building machines. Each puzzle names a product; build a machine that makes nine of them and the puzzle is solved.',
+      'The board already holds what you cannot do without: a reagent glyph for each ingredient (<span class="ui">IN·Pb</span>, <span class="ui">IN·Hg</span>), which spawns a fresh atom whenever it is empty, and the product glyph <span class="ui">OUT</span>, which takes a finished molecule laid on it just so. You add <b>arms</b> that carry atoms, and <b>glyphs</b> that change them.',
+    ],
+    saltedquicksilver: ['Molecules have a shape. The product glyph wants its atoms on exactly its cells, so the chain must be turned to match before it goes down. An arm can <b>pivot</b> what it holds (<kbd>e</kbd> / <kbd>r</kbd>) without moving its base.'],
+    transmutedgold: ['Not every glyph bonds. <b>Projection</b> spends a quicksilver to raise a metal one rung: lead, tin, iron, copper, silver, gold. Select a glyph on the board and a card shows what it does, cell by cell.'],
+    vitalsalts: ['Everything here starts as water. Chain the glyphs: calcify, animate, bond. Several arms with tapes of the same length keep in step; <span class="ui">»+</span> lets one start a beat late.'],
+    airshipfuel: ['One reagent, two kinds of atom: calcify only some of the fire. Lower SUM is better, so once it works, try fewer parts, fewer cycles or less room.'],
+    surrenderflare: ['A whole flower has to be opened, changed and closed again. <b>Unbond</b> parts atoms; think about which petal comes off and where the quicksilver comes from.'],
+    ablativecrystal: ['The last puzzle, and nobody has solved it yet. Everything you have learned is needed here.'],
+  };
+  const LESSON_STEPS_FIRST = [
+    'Drag an <span class="ui">ARM</span> from the tray onto the board, between the reagents and <span class="ui">OUT</span>. Drag its round handle to aim and lengthen it.',
+    'Drag a <span class="ui">BOND</span> glyph onto the board: lead and quicksilver resting on its two cells get bonded at the end of a cycle.',
+    'Click the arm to open its <b>tape</b> below the board, then fill cells with instructions: <kbd>g</kbd> grab, <kbd>d</kbd> release, <kbd>q</kbd> / <kbd>w</kbd> turn. The tape loops forever.',
+    'Press <span class="ui">▶ Test</span>. A fault stops the run and says why; <span class="ui">✎ Edit</span> to fix it. Nine products and the stamp reads <b>Great Work!</b>',
+    'Your score is <b>SUM</b> = gold spent + cycles taken + area used. Lower is better, and <span class="ui">Submit</span> seals a solved machine on the public record.',
+  ];
+  const UNLOCK_KEY = 'gw-unlocked', SOLVED_KEY = 'gw-solved', ALL_KEY = 'gw-unlock-all';
+  const readSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')); } catch (e) { return new Set(); } };
+  const writeSet = (k, set) => { try { localStorage.setItem(k, JSON.stringify([...set])); } catch (e) {} };
+  const unlocked = readSet(UNLOCK_KEY), solved = readSet(SOLVED_KEY);
+  let unlockAll = false;
+  try { unlockAll = localStorage.getItem(ALL_KEY) === '1'; } catch (e) {}
+  BASES.forEach((b, i) => { try { if (localStorage.getItem('gw-draft-' + b.key)) { unlocked.add(b.key); if (BASES[i + 1]) unlocked.add(BASES[i + 1].key); } } catch (e) {} });
+  unlocked.add(BASES[0].key);
+  const isOpen = (i) => unlockAll || unlocked.has(BASES[i].key);
+  function unlock(i) {
+    if (i < 0 || i >= BASES.length || unlocked.has(BASES[i].key)) return false;
+    unlocked.add(BASES[i].key); writeSet(UNLOCK_KEY, unlocked); syncTabs();
+    return true;
+  }
+  function markSolved() {
+    const first = !solved.has(key());
+    solved.add(key()); writeSet(SOLVED_KEY, solved);
+    const opened = unlock(pIdx + 1);
+    syncTabs();
+    if (first || opened) syncLesson();
+    return opened;
+  }
+  function syncTabs() {
+    document.querySelectorAll('#tabs .tab').forEach((t, k) => {
+      const open = isOpen(k);
+      t.classList.toggle('on', k === pIdx);
+      t.classList.toggle('locked', !open);
+      t.classList.toggle('solved', solved.has(BASES[k].key));
+      t.setAttribute('aria-disabled', open ? 'false' : 'true');
+      t.title = open ? BASES[k].blurb : 'solve ' + BASES[k - 1].name + ' to unlock';
+      t.setAttribute('aria-label', open ? BASES[k].name : BASES[k].name + ' (locked: solve ' + BASES[k - 1].name + ' to unlock)');
+    });
+    const all = $('btnUnlockAll');
+    if (all) all.hidden = BASES.every((b, k) => isOpen(k));
+  }
+  let watching = false;             // the board holds someone else's machine (a replay or #play/ link) until the player edits it
+  const lessonFolded = new Set();   // puzzles whose lesson was folded this session
+  function syncLesson() {
+    const el = $('lesson'), b = base();
+    const intro = LESSON_INTRO[b.key] || [];
+    const steps = pIdx === 0 ? LESSON_STEPS_FIRST : (b.guide || []);
+    if (!intro.length && !steps.length) { el.hidden = true; return; }
+    const folded = lessonFolded.has(b.key);
+    el.className = 'lesson' + (folded ? ' folded' : '');
+    el.innerHTML = `<h3>Puzzle ${pIdx + 1} of ${BASES.length} · <b>${b.name}</b></h3>`
+      + `<button class="x" type="button" title="${folded ? 'show' : 'fold'} this lesson" aria-label="${folded ? 'show' : 'fold'} lesson">${folded ? '+' : '−'}</button>`
+      + intro.map(t => `<p>${t}</p>`).join('')
+      + (steps.length ? `<ol>${steps.map(t => `<li>${t}</li>`).join('')}</ol>` : '');
+    if (solved.has(b.key)) {
+      const done = document.createElement('div'); done.className = 'done';
+      const next = pIdx + 1 < BASES.length ? pIdx + 1 : -1;
+      done.append(next >= 0 ? 'Solved. ' + BASES[next].name + ' is unlocked.' : 'Solved. That was the last puzzle.');
+      if (next >= 0) {
+        const go = document.createElement('button'); go.className = 'ctl'; go.type = 'button'; go.textContent = 'Next puzzle →';
+        go.addEventListener('click', () => selectPuzzle(next));
+        done.appendChild(go);
+      }
+      el.appendChild(done);
+    }
+    el.querySelector('.x').addEventListener('click', () => {
+      if (lessonFolded.has(b.key)) lessonFolded.delete(b.key); else lessonFolded.add(b.key);
+      syncLesson();
+    });
     el.hidden = false;
   }
   // the tutorial card: shown for the selected glyph, or the one being carried in from the tray
@@ -3334,7 +3352,7 @@
   // ---------- edit ops ----------
   // the lowest free number: deleting arms gives their names back
   const freshId = () => { let n = 0; while (armById('a' + n)) n++; return 'a' + n; };
-  function touched() { saveDraft(); refreshAll(); }
+  function touched() { watching = false; saveDraft(); refreshAll(); }
 
   // returns the mount AND the rotation of the frame it lands in — a shaft mount
   // inherits the parent's facing, the ground's frame is always rotation 0. Callers
@@ -3697,7 +3715,11 @@
       const m = sim.metrics();
       inner.className = 'stamp-inner';
       inner.innerHTML = `Great Work! · ${st.products} of ${st.caps.goal}<small>${m.cost}g + ${m.cycles}c + ${m.area}a = SUM ${m.sum}</small>`;
-      if (!done && /^testing/.test($('status').textContent)) setStatus('verified · SUM ' + m.sum + ' — Submit seals it on chain', 'good');
+      if (!done) {
+        const opened = watching ? false : markSolved();
+        if (/^testing/.test($('status').textContent))
+          setStatus('verified · SUM ' + m.sum + ' — Submit seals it on chain' + (opened ? ' · ' + BASES[pIdx + 1].name + ' unlocked' : ''), 'good');
+      }
       el.classList.add('show'); done = true;
     } else { el.classList.remove('show'); done = false; }
   }
@@ -3732,7 +3754,9 @@
     } catch (e) {}
     return null;
   }
-  function importCode(str) {
+  // watch: the machine is someone else's (a replay or a #play/ link): it is shown, never
+  // saved as the player's draft, and a test of it does not count as solving the puzzle
+  function importCode(str, { watch = false } = {}) {
     const dot = str.indexOf('.');
     if (dot < 0) { setStatus('codes look like <puzzle>.<data>', 'bad'); return false; }
     const k = str.slice(0, dot), data = str.slice(dot + 1).trim();
@@ -3757,8 +3781,9 @@
     const kept = JSON.parse(before).arms.length > 0 && snapshot() !== before;
     if (kept) pushUndo(before); else syncUndoButtons();
     enterEdit();
-    document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', i === pIdx));
-    fitView(); touched();
+    unlock(pIdx); syncTabs(); syncLesson();
+    fitView();
+    if (watch) { watching = true; refreshAll(); } else touched();
     if (moved) { refreshBoard(); try { history.replaceState(null, '', '#' + key()); } catch (e) {} }
     setStatus('imported ' + layout.arms.length + ' arm(s) into ' + BASES[idx].name + (kept ? ' · Undo brings your own machine back' : ''), 'good');
     return true;
@@ -3771,7 +3796,7 @@
     $('btnMode').textContent = '▶ Test';
     $('btnPlay').disabled = true; $('btnStep').disabled = true;
     $('tray').style.display = '';
-    stamp(); syncGifBtn(); syncGuide();
+    stamp(); syncGifBtn();
   }
   function enterRun() {
     const bad = validate();
@@ -3785,7 +3810,7 @@
     $('btnPlay').disabled = false; $('btnPlay').textContent = 'Pause';
     $('btnStep').disabled = false;
     $('tray').style.display = 'none';
-    syncGlyphHelp(); syncGuide();
+    syncGlyphHelp();
     buildTapes(); updateRunTapes(); hud(); stamp(); syncGifBtn(null);
     setStatus('testing — the verifier is watching every sweep');
   }
@@ -4646,6 +4671,9 @@
     clearInterval(escrowTick); escrowTick = 0;
     const st = escrowState;
     if (!escrowOn() || !st || st.puzzle !== pIdx) { box.hidden = true; return; }
+    // the prize UI shows only while there is a prize: an empty escrow leaves just the leaderboard
+    // (a compressed escrow still says so: until it is decompressed nothing, submissions included, works here)
+    if (!st.compressed && !(typeof st.balance === 'bigint' && st.balance > 0n)) { box.hidden = true; return; }
     box.hidden = false; box.innerHTML = '';
     const e = st.escrow, phase = GWChain.escrowPhase(e, GWChain.nowNs());
     const note = document.createElement('div'); note.className = 'b-note';
@@ -5086,7 +5114,7 @@
   const entryCode = (entry, puzIdx) => (BASES[puzIdx] || base()).key + '.' + CODEC.toString(entry.machine);
   function watchEntry(entry, puzIdx) {
     let ok = false;
-    try { ok = importCode(entryCode(entry, puzIdx)); }
+    try { ok = importCode(entryCode(entry, puzIdx), { watch: true }); }
     catch (e) { setStatus('could not load that solution: ' + errText(e), 'bad'); return; }
     if (!ok) return;
     if (validate()) return;                       // importCode already said what is wrong
@@ -5130,9 +5158,9 @@
 
   // ---------- puzzles ----------
   function selectPuzzle(i) {
-    pIdx = i; arrived = true;
-    syncTray();
-    document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
+    pIdx = i; arrived = true; watching = false;
+    unlock(i);
+    syncTray(); syncTabs(); syncLesson();
     layout = loadDraft() || layoutFrom({ arms: [] });
     sel = null; cursor = null; tapeSel = []; undoStack = []; redoStack = []; syncUndoButtons();
     enterEdit(); fitView(); refreshAll(); hud();
@@ -5144,16 +5172,29 @@
     const btn = document.createElement('button');
     btn.className = 'tab' + (i === 0 ? ' on' : '');
     btn.textContent = b.name;
-    btn.addEventListener('click', () => selectPuzzle(i));
+    btn.addEventListener('click', () => { if (isOpen(i)) selectPuzzle(i); });
     tabs.appendChild(btn);
   });
+  {
+    const all = document.createElement('button');
+    all.className = 'ctl unlockall'; all.id = 'btnUnlockAll'; all.type = 'button';
+    all.textContent = 'Unlock all puzzles';
+    all.title = 'skip the tutorial order and open every puzzle';
+    all.addEventListener('click', () => {
+      unlockAll = true;
+      try { localStorage.setItem(ALL_KEY, '1'); } catch (e) {}
+      syncTabs();
+    });
+    tabs.appendChild(all);
+  }
+  syncTabs();
 
   // ---------- boot ----------
   const hash = decodeURIComponent(location.hash.slice(1));
   let booted = false;
   if (hash) {
     if (hash.startsWith('play/')) {
-      booted = importCode(hash.slice(5));
+      booted = importCode(hash.slice(5), { watch: true });
       if (booted && !validate()) enterRun();
       // importCode rewrites the address to #<puzzle>; a play link should stay one
       if (booted) { try { history.replaceState(null, '', '#play/' + hash.slice(5)); } catch (e) {} }

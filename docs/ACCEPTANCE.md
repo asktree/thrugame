@@ -65,7 +65,7 @@ deploy (IGG-29); the code is ready on `claude/igg-29-deploy-prep`.
 | browse puzzles | seven puzzle tabs (Lead Amalgam … Ablative Crystal), each with its own tray, guide and reference machines | ✅ |
 | browse leaderboards | the "On-chain record" under every puzzle; `node client/leaderboard.js [puzzle]` for all of them | ✅ code · ⏳ chain |
 | watch any sealed solution replay | **Gap fixed here:** a board row's button only *loaded* the machine into edit mode (the visitor had to find ▶ Test), and doing so overwrote the player's own saved draft with no undo. Now **▶ watch** loads and replays it (status names the solution, author and sealed score), Undo brings the player's machine back, and **link** copies `greatwork.quest/#play/<code>`, which opens replaying; the CLI prints the same link. GIFs of any solution: `gif.greatwork.quest` (live, renders on demand) | ✅ (fixed) |
-| build machines in a visual editor | drag-and-drop arms and glyphs, tape editing, undo/redo, How to Play tutorial, puzzle guides | ✅ |
+| build machines in a visual editor | drag-and-drop arms and glyphs, tape editing, undo/redo, a built-in tutorial (puzzles unlock in order, a lesson per puzzle) | ✅ |
 | that submits straight to the chain | **Submit** signs with the player's passkey wallet and sends SUBMIT v3 directly; no server in between | ✅ code · ⏳ chain |
 | phone width | the record's rows overflowed at 390 px; now trimmed to rank, sum, who and actions | ✅ (fixed) |
 
