@@ -1729,7 +1729,9 @@
     } catch (e) {}
     return null;
   }
-  function importCode(str) {
+  // watch: the machine is someone else's (a replay or a #play/ link): it is shown, never
+  // saved as the player's draft, and a test of it does not count as solving the puzzle
+  function importCode(str, { watch = false } = {}) {
     const dot = str.indexOf('.');
     if (dot < 0) { setStatus('codes look like <puzzle>.<data>', 'bad'); return false; }
     const k = str.slice(0, dot), data = str.slice(dot + 1).trim();
@@ -1755,7 +1757,8 @@
     if (kept) pushUndo(before); else syncUndoButtons();
     enterEdit();
     unlock(pIdx); syncTabs(); syncLesson();
-    fitView(); touched();
+    fitView();
+    if (watch) { watching = true; refreshAll(); } else touched();
     if (moved) { refreshBoard(); try { history.replaceState(null, '', '#' + key()); } catch (e) {} }
     setStatus('imported ' + layout.arms.length + ' arm(s) into ' + BASES[idx].name + (kept ? ' · Undo brings your own machine back' : ''), 'good');
     return true;
@@ -3086,11 +3089,10 @@
   const entryCode = (entry, puzIdx) => (BASES[puzIdx] || base()).key + '.' + CODEC.toString(entry.machine);
   function watchEntry(entry, puzIdx) {
     let ok = false;
-    try { ok = importCode(entryCode(entry, puzIdx)); }
+    try { ok = importCode(entryCode(entry, puzIdx), { watch: true }); }
     catch (e) { setStatus('could not load that solution: ' + errText(e), 'bad'); return; }
     if (!ok) return;
     if (validate()) return;                       // importCode already said what is wrong
-    watching = true;
     enterRun();
     const nm = String(entry.name || '').trim(), who = String(entry.user || '').trim() || shortAddr(entry.solver);
     setStatus('replaying ' + (nm ? '“' + nm + '”' : 'a sealed solution') + ' by ' + who + ' · sealed sum ' + entry.sum
@@ -3131,7 +3133,7 @@
 
   // ---------- puzzles ----------
   function selectPuzzle(i) {
-    pIdx = i; arrived = true;
+    pIdx = i; arrived = true; watching = false;
     unlock(i);
     syncTray(); syncTabs(); syncLesson();
     layout = loadDraft() || layoutFrom({ arms: [] });
@@ -3167,8 +3169,8 @@
   let booted = false;
   if (hash) {
     if (hash.startsWith('play/')) {
-      booted = importCode(hash.slice(5));
-      if (booted && !validate()) { watching = true; enterRun(); }
+      booted = importCode(hash.slice(5), { watch: true });
+      if (booted && !validate()) enterRun();
       // importCode rewrites the address to #<puzzle>; a play link should stay one
       if (booted) { try { history.replaceState(null, '', '#play/' + hash.slice(5)); } catch (e) {} }
     } else if (hash.includes('.')) booted = importCode(hash);
