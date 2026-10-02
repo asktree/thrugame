@@ -80,7 +80,7 @@ organizer, no judges."*
 build machines in a visual editor that submits straight to the chain."*
 
 - **https://greatwork.quest** offers seven puzzles, each with its own parts
-  tray, guide and reference machines. It also has a How to Play tutorial
+  tray, guide and reference machines. It also has a built-in tutorial (puzzles unlock in order, each with a lesson)
   and a drag-and-drop editor with tape editing and undo.
 - **Submits straight to the chain.** The player signs with a passkey wallet
   (Thru's passkey manager), and the record is credited to that wallet.
