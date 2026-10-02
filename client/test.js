@@ -58,5 +58,19 @@ check(eq(C.encodeEoaTransfer(258n, 0, 2), Uint8Array.of(1, 0, 0, 0, 2, 1, 0, 0, 
 for (const code of [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 0x101, 0x201, 0xBADBAD])
   check(!/^error /.test(C.describeRevert(code)), 'revert 0x' + code.toString(16) + ' described');
 
+// the event log is read to its end, page by page (the RPC serves 50 a page by default)
+{
+  const pages = [[1, 2], [3], [4, 5]];
+  const seen = [];
+  const fake = { events: { list: async ({ page }) => {
+    const i = page && page.pageToken ? Number(page.pageToken) : 0;
+    seen.push(page && page.pageSize);
+    return { events: pages[i].map(n => ({ n })), page: i + 1 < pages.length ? { nextPageToken: String(i + 1) } : {} };
+  } } };
+  const evs = await C.listProgramEvents(fake, { program: prog });
+  check(evs.map(e => e.n).join() === '1,2,3,4,5', 'all pages read: ' + evs.map(e => e.n).join());
+  check(seen.every(n => n === C.EVENT_PAGE), 'asks for big pages');
+}
+
 if (failures) { console.log(failures + ' FAILURES'); process.exit(1); }
 console.log('client wire formats: submission v3, escrow address, GW!E, phases, OPEN/CLAIM, transfer, reverts checked');

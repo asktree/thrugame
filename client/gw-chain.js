@@ -29,7 +29,7 @@
  *     for the wallet to the verifier — the solver is the wallet, the payer is
  *     only paying, and no UI bug can credit anyone but the key that signed.
  */
-import { createThruClient, keys, Pubkey, Signature, Filter, FilterParamValue, deriveProgramAddress } from '@thru/sdk';
+import { createThruClient, keys, Pubkey, Signature, Filter, FilterParamValue, PageRequest, deriveProgramAddress } from '@thru/sdk';
 import * as PM from '@thru/programs/passkey-manager';
 
 export const NETWORKS = {
@@ -416,14 +416,29 @@ export const base64UrlToBytes = (s) => PM.base64UrlToBytes(s);
 export const bytesToBase64Url = (b) => PM.bytesToBase64Url(b);
 
 // ---- leaderboard: the program's event log ----
-export async function fetchScores(client, { program = NETWORKS.alphanet.program, puzzleId, fromSlot = NETWORKS.alphanet.fromSlot } = {}) {
+// Every event the program ever emitted, all pages: the RPC serves 50 per page
+// by default, and a leaderboard that read only the first page would silently
+// drop every sealed solution after the 50th.
+export const EVENT_PAGE = 500, EVENT_PAGES_MAX = 400;
+export async function listProgramEvents(client, { program = NETWORKS.alphanet.program } = {}) {
   const filter = new Filter({
     expression: 'event.program.value == params.address',
     params: { address: FilterParamValue.taPubkey(program) },
   });
-  const res = await client.events.list({ filter });
+  const all = [];
+  let token;
+  for (let i = 0; i < EVENT_PAGES_MAX; i++) {
+    const res = await client.events.list({ filter, page: new PageRequest(token ? { pageSize: EVENT_PAGE, pageToken: token } : { pageSize: EVENT_PAGE }) });
+    for (const ev of res.events || []) all.push(ev);
+    token = res.page && res.page.nextPageToken;
+    if (!token) return all;
+  }
+  throw new Error('the event log is longer than ' + EVENT_PAGE * EVENT_PAGES_MAX + ' events; refusing a partial leaderboard');
+}
+
+export async function fetchScores(client, { program = NETWORKS.alphanet.program, puzzleId, fromSlot = NETWORKS.alphanet.fromSlot } = {}) {
   const out = [];
-  for (const ev of res.events || []) {
+  for (const ev of await listProgramEvents(client, { program })) {
     const s = parseScoreEvent(ev.payload);
     if (!s) continue;
     if (puzzleId !== undefined && s.puzzle !== puzzleId) continue;
@@ -626,13 +641,8 @@ export async function recordSum(client, { puzzleId, program = NETWORKS.alphanet.
 
 // the escrow's history: GW!E events (opened / crowned / paid), oldest first
 export async function fetchEscrowEvents(client, { program = NETWORKS.alphanet.program, puzzleId } = {}) {
-  const filter = new Filter({
-    expression: 'event.program.value == params.address',
-    params: { address: FilterParamValue.taPubkey(program) },
-  });
-  const res = await client.events.list({ filter });
   const out = [];
-  for (const ev of res.events || []) {
+  for (const ev of await listProgramEvents(client, { program })) {
     const e = parseEscrowEvent(ev.payload);
     if (!e || (puzzleId !== undefined && e.puzzle !== puzzleId)) continue;
     e.slot = ev.slot === undefined ? null : BigInt(ev.slot);

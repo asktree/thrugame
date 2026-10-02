@@ -192,7 +192,12 @@
   table.board td.who .clip { max-width: 170px; }
   table.board td.act { width: 1%; text-align: right; padding-right: 0; white-space: nowrap; }
   table.board td.act .ctl { padding: 3px 8px; font-size: 9.5px; }
-  table.board td.act a.ctl { margin-left: 4px; }
+  table.board td.act a.ctl, table.board td.act .ctl + .ctl { margin-left: 4px; }
+  @media (max-width: 640px) {
+    table.board td.sm small, table.board td.nm { display: none; }
+    table.board td.who .clip { max-width: 96px; }
+    table.board td.act .ctl { padding: 3px 6px; }
+  }
 
   dialog.submitdlg {
     border: 1px solid var(--ink-dim); background: var(--parch); color: var(--ink); padding: 0;
@@ -2657,6 +2662,7 @@
 
   // ---------- state ----------
   let pIdx = 0;
+  let arrived = false;      // false until a puzzle (and its draft) is on the board
   let layout = { arms: [], glyphs: [], inputs: [], output: { at: [0, 0], rot: 0 } };
   let mode = 'edit';
   let sim = null;
@@ -3731,16 +3737,27 @@
     if (idx < 0) { setStatus('unknown puzzle “' + k + '”', 'bad'); return false; }
     let decoded;
     try { decoded = CODEC.decodeString(data); } catch (e) { setStatus(String(e.message || e), 'bad'); return false; }
-    const moved = pIdx !== idx;
-    pIdx = idx;
-    syncTray();
+    const moved = pIdx !== idx || !arrived;
+    arrived = true;
+    if (moved) {
+      // arrive on the puzzle as a tab click would — with its own saved draft — so
+      // the import lands on top of that draft rather than silently replacing it
+      pIdx = idx;
+      syncTray();
+      layout = loadDraft() || layoutFrom({ arms: [] });
+      undoStack = []; redoStack = [];
+    }
+    // an import is one undoable step: Undo brings back whatever was on the board
+    const before = snapshot();
     layout = layoutFrom(decoded);
-    sel = null; cursor = null; tapeSel = []; undoStack = []; redoStack = []; syncUndoButtons();
+    sel = null; cursor = null; tapeSel = [];
+    const kept = JSON.parse(before).arms.length > 0 && snapshot() !== before;
+    if (kept) pushUndo(before); else syncUndoButtons();
     enterEdit();
     document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', i === pIdx));
     fitView(); touched();
-    if (moved) refreshBoard();
-    setStatus('imported ' + layout.arms.length + ' arm(s) into ' + BASES[idx].name, 'good');
+    if (moved) { refreshBoard(); try { history.replaceState(null, '', '#' + key()); } catch (e) {} }
+    setStatus('imported ' + layout.arms.length + ' arm(s) into ' + BASES[idx].name + (kept ? ' · Undo brings your own machine back' : ''), 'good');
     return true;
   }
 
@@ -5020,10 +5037,14 @@
       who.title = r.solver + (r.slot !== null && r.slot !== undefined ? ' · slot ' + String(r.slot) : '');
 
       const act = document.createElement('td'); act.className = 'act';
-      const btn = document.createElement('button'); btn.className = 'ctl'; btn.textContent = 'load';
-      btn.title = 'open this solution in the editor';
-      btn.addEventListener('click', () => loadEntry(r, puzIdx));
+      const btn = document.createElement('button'); btn.className = 'ctl'; btn.textContent = '▶ watch';
+      btn.title = 'replay this sealed solution here — then ✎ Edit to build on it (Undo brings your own machine back)';
+      btn.addEventListener('click', () => watchEntry(r, puzIdx));
       act.appendChild(btn);
+      const ln = document.createElement('button'); ln.className = 'ctl'; ln.textContent = 'link';
+      ln.title = 'copy a link that opens this solution replaying';
+      ln.addEventListener('click', () => copyReplayLink(r, puzIdx));
+      act.appendChild(ln);
       if (GIF_SERVICE) {
         const g = document.createElement('a'); g.className = 'ctl'; g.textContent = 'gif';
         g.title = 'this solution as an animated GIF — link it anywhere';
@@ -5037,11 +5058,23 @@
     host.appendChild(table);
   }
 
-  function loadEntry(entry, puzIdx) {
-    try {
-      const k = (BASES[puzIdx] || base()).key;
-      importCode(k + '.' + CODEC.toString(entry.machine));
-    } catch (e) { setStatus('could not load that solution: ' + errText(e), 'bad'); }
+  // D·3: any sealed solution replays in the editor — the same engine the program ran
+  const entryCode = (entry, puzIdx) => (BASES[puzIdx] || base()).key + '.' + CODEC.toString(entry.machine);
+  function watchEntry(entry, puzIdx) {
+    let ok = false;
+    try { ok = importCode(entryCode(entry, puzIdx)); }
+    catch (e) { setStatus('could not load that solution: ' + errText(e), 'bad'); return; }
+    if (!ok) return;
+    if (validate()) return;                       // importCode already said what is wrong
+    enterRun();
+    const nm = String(entry.name || '').trim(), who = String(entry.user || '').trim() || shortAddr(entry.solver);
+    setStatus('replaying ' + (nm ? '“' + nm + '”' : 'a sealed solution') + ' by ' + who + ' · sealed sum ' + entry.sum
+      + ' (' + entry.cost + 'g + ' + entry.cycles + 'c + ' + entry.area + 'a)', 'good');
+  }
+  async function copyReplayLink(entry, puzIdx) {
+    const url = location.origin + location.pathname + '#play/' + entryCode(entry, puzIdx);
+    try { await navigator.clipboard.writeText(url); setStatus('replay link copied', 'good'); }
+    catch (e) { setStatus('replay link: ' + url, 'good'); }
   }
 
   // `force` re-reads a puzzle already on screen (the Refresh button, and a fresh submission);
@@ -5073,7 +5106,7 @@
 
   // ---------- puzzles ----------
   function selectPuzzle(i) {
-    pIdx = i;
+    pIdx = i; arrived = true;
     syncTray();
     document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
     layout = loadDraft() || layoutFrom({ arms: [] });
@@ -5095,7 +5128,10 @@
   const hash = decodeURIComponent(location.hash.slice(1));
   let booted = false;
   if (hash) {
-    if (hash.includes('.')) booted = importCode(hash);
+    if (hash.startsWith('play/')) {
+      booted = importCode(hash.slice(5));
+      if (booted && !validate()) enterRun();
+    } else if (hash.includes('.')) booted = importCode(hash);
     else {
       const i = BASES.findIndex(b => b.key === resolveKey(hash));
       if (i >= 0) { selectPuzzle(i); booted = true; }

@@ -13,7 +13,7 @@ the record.
 | `contract/` | The C rules engine (a line-faithful port of the oracle), the submission verifier, the prize escrow (`gw_escrow.c`, SPEC §13), the host harnesses, and under `program/` the ThruVM program shell. |
 | `client/` | `@thru/sdk` client: seal a solution on-chain, read the leaderboard, open / fund / claim a puzzle's prize escrow; bundles into the editor. |
 | `lab/` | Source of the game client (`lab/editor-template.html`, effects in `fx.js`); `node lab/build.js` inlines the engine into `demo/editor.html`. |
-| `demo/` | Built pages. `editor.html` is the game client (deployed as https://greatwork.quest); `gw-chain.js` is the chain bundle it loads; `great-work.html` is the grant proposal, kept but not deployed. |
+| `demo/` | Built pages. `editor.html` is the game client (deployed as https://greatwork.quest); `gw-chain.js` is the chain bundle it loads. (The grant proposal page, `demo/great-work.html`, was removed in 62d6cc3; `git show 62d6cc3^:demo/great-work.html` recovers it.) |
 
 ## Run the tests
 
