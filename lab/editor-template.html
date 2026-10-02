@@ -242,7 +242,7 @@
   /* the tutorial: one lesson per puzzle, above the tray; the puzzles unlock in order */
   .lesson { border: 1px solid var(--line); border-bottom: 0; background: var(--parch-2); padding: 11px 14px 12px; margin-top: 8px; position: relative; }
   .lesson + .tray { margin-top: 0; }
-  .lesson h3 { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); padding-right: 26px; }
+  .lesson h3 { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); padding-right: 110px; }
   .lesson h3 b { color: var(--ink); font-weight: 700; }
   .lesson p { font-size: 15px; line-height: 1.45; margin: 6px 0 0; color: var(--ink); max-width: 72ch; }
   .lesson ol { margin: 6px 0 0 18px; padding: 0; max-width: 72ch; }
@@ -252,8 +252,8 @@
   .lesson .done { margin-top: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--oxblood); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .lesson .done .ctl { padding: 4px 9px; font-size: 9.5px; }
   .lesson .x {
-    position: absolute; top: 6px; right: 8px; width: 24px; height: 24px; cursor: pointer;
-    border: 0; background: none; color: var(--ink-faint); font-family: var(--mono); font-size: 16px; line-height: 1; padding: 0;
+    position: absolute; top: 6px; right: 8px; height: 24px; cursor: pointer; padding: 0 8px;
+    border: 1px solid var(--line); background: none; color: var(--ink-faint); font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; line-height: 1;
   }
   .lesson .x:hover { color: var(--ink); }
   .lesson.folded p, .lesson.folded ol { display: none; }
@@ -637,27 +637,29 @@
     'Press <span class="ui">▶ Test</span>. A fault stops the run and says why; <span class="ui">✎ Edit</span> to fix it. Nine products and the stamp reads <b>Great Work!</b>',
     'Your score is <b>SUM</b> = gold spent + cycles taken + area used. Lower is better, and <span class="ui">Submit</span> seals a solved machine on the public record.',
   ];
-  const UNLOCK_KEY = 'gw-unlocked', SOLVED_KEY = 'gw-solved', ALL_KEY = 'gw-unlock-all';
+  // a puzzle is open when it is the first, when the one before it is solved, or when the
+  // player arrived at it by a link (a shared machine or a replay). Drafts open nothing:
+  // a half-built machine is not a solve.
+  const OPENED_KEY = 'gw-opened', SOLVED_KEY = 'gw-solved', ALL_KEY = 'gw-unlock-all', FOLD_KEY = 'gw-lesson-folded';
   const readSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')); } catch (e) { return new Set(); } };
   const writeSet = (k, set) => { try { localStorage.setItem(k, JSON.stringify([...set])); } catch (e) {} };
-  const unlocked = readSet(UNLOCK_KEY), solved = readSet(SOLVED_KEY);
+  const opened = readSet(OPENED_KEY), solved = readSet(SOLVED_KEY);
   let unlockAll = false;
   try { unlockAll = localStorage.getItem(ALL_KEY) === '1'; } catch (e) {}
-  BASES.forEach((b, i) => { try { if (localStorage.getItem('gw-draft-' + b.key)) { unlocked.add(b.key); if (BASES[i + 1]) unlocked.add(BASES[i + 1].key); } } catch (e) {} });
-  unlocked.add(BASES[0].key);
-  const isOpen = (i) => unlockAll || unlocked.has(BASES[i].key);
+  const isOpen = (i) => unlockAll || i === 0 || solved.has(BASES[i - 1].key) || opened.has(BASES[i].key);
   function unlock(i) {
-    if (i < 0 || i >= BASES.length || unlocked.has(BASES[i].key)) return false;
-    unlocked.add(BASES[i].key); writeSet(UNLOCK_KEY, unlocked); syncTabs();
+    if (i < 0 || i >= BASES.length || isOpen(i)) return false;
+    opened.add(BASES[i].key); writeSet(OPENED_KEY, opened); syncTabs();
     return true;
   }
   function markSolved() {
     const first = !solved.has(key());
+    const nextWasOpen = pIdx + 1 < BASES.length && isOpen(pIdx + 1);
     solved.add(key()); writeSet(SOLVED_KEY, solved);
-    const opened = unlock(pIdx + 1);
+    const newlyOpen = pIdx + 1 < BASES.length && !nextWasOpen;
     syncTabs();
-    if (first || opened) syncLesson();
-    return opened;
+    if (first || newlyOpen) syncLesson();
+    return newlyOpen;
   }
   function syncTabs() {
     document.querySelectorAll('#tabs .tab').forEach((t, k) => {
@@ -673,7 +675,7 @@
     if (all) all.hidden = BASES.every((b, k) => isOpen(k));
   }
   let watching = false;             // the board holds someone else's machine (a replay or #play/ link) until the player edits it
-  const lessonFolded = new Set();   // puzzles whose lesson was folded this session
+  const lessonFolded = readSet(FOLD_KEY);   // puzzles whose lesson the player minimized (remembered per puzzle)
   function syncLesson() {
     const el = $('lesson'), b = base();
     const intro = LESSON_INTRO[b.key] || [];
@@ -682,7 +684,7 @@
     const folded = lessonFolded.has(b.key);
     el.className = 'lesson' + (folded ? ' folded' : '');
     el.innerHTML = `<h3>Puzzle ${pIdx + 1} of ${BASES.length} · <b>${b.name}</b></h3>`
-      + `<button class="x" type="button" title="${folded ? 'show' : 'fold'} this lesson" aria-label="${folded ? 'show' : 'fold'} lesson">${folded ? '+' : '−'}</button>`
+      + `<button class="x" type="button" aria-expanded="${!folded}" aria-label="${folded ? 'show' : 'minimize'} the lesson">${folded ? '+ show lesson' : '− minimize'}</button>`
       + intro.map(t => `<p>${t}</p>`).join('')
       + (steps.length ? `<ol>${steps.map(t => `<li>${t}</li>`).join('')}</ol>` : '');
     if (solved.has(b.key)) {
@@ -698,6 +700,7 @@
     }
     el.querySelector('.x').addEventListener('click', () => {
       if (lessonFolded.has(b.key)) lessonFolded.delete(b.key); else lessonFolded.add(b.key);
+      writeSet(FOLD_KEY, lessonFolded);
       syncLesson();
     });
     el.hidden = false;
