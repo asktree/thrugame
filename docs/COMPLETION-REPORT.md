@@ -3,7 +3,7 @@ DRAFT — not sent. For Iggy to review and send to Will Yoo (Unto Labs) once
 the escrow build is deployed (IGG-29) and merged, so every link below is live.
 Deployed, smoke-tested and the demo escrow opened on 2026-10-02. Before
 sending: fill [send date], then delete this comment.
-Tracked in Linear IGG-30.
+Tracked in Ledger as IGG-30.
 -->
 
 # Great Work! — completion report
