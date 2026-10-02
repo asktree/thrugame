@@ -44,7 +44,7 @@ You build a little machine (arms plus floor markings on a hex grid) that turns a
 
 ## Prize escrow
 
-Anyone can open a pot on a puzzle, and anyone can add to it. The next machine whose SUM is strictly lower than the current best takes the crown and relights the fuse (30 days by default). When the fuse burns out, the contract pays the whole pot to the champion. Rules: `SPEC.md` §13 on the `claude/igg-29-deploy-prep` branch. In this editor build, *winnings* is just your passkey wallet's balance, and **Claim to Thru wallet** moves it to your Thru wallet.
+Any puzzle can carry a pot. Anyone can open one (**Open an escrow** in the On-chain record panel), and anyone can add THRU to an open pot. To take the crown, a machine needs a SUM strictly lower than every sum already seen on that puzzle; a copy of the record never wins. Each crown relights the fuse (30 days on the demo pot). When it burns out, anyone can press **Pay the champion** (the champion sees **Claim your prize**), and the contract pays the whole pot to the champion. Full rules: `SPEC.md` §13.
 
 ## Troubleshooting
 
