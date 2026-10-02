@@ -101,11 +101,11 @@ export function describeRevert(code) {
   if (code === 0x0C) return 'nobody holds the crown yet';
   if (code === 0x0D) return 'the fuse is still burning';
   if (code === 0x0E) return "the champion's account must be in the transaction, read-write";
-  if (code === 0x0F) return 'the payout transfer failed';
+  if (code === 0x0F) return 'the payout transfer was refused (try again with more compute / memory units); nothing was settled';
   if (code === 0x10) return 'the chain reported no block time';
   if (code === 0x11) return 'this escrow has already paid out';
-  if (code === 0x12) return "the escrow (or the champion's) account is compressed: decompress it first (anyone may), then retry";
-  if (code === 0x13) return "this puzzle's escrow account does not exist yet: send INIT first (anyone may; the client does it for you)";
+  if (code === 0x12) return "the escrow account is compressed, or the champion's account is missing or compressed: decompress it first (anyone may), then retry";
+  if (code === 0x13) return "this puzzle's escrow account reads as absent: never created (send INIT; the client does it for you) or compressed (decompress it)";
   if (code === 0x14) return 'a verified sum out of the range the escrow can hold';
   if (code === 0xBADBAD) return 'engine capacity panic';
   if (code >= 0x100 && code < 0x200) return 'rejected: ' + (ERRORS[code - 0x100] || 'error ' + (code - 0x100));
@@ -425,6 +425,8 @@ export async function submitViaWallet(client, { signIntent, walletAddress, puzzl
       instructionData: bytesToBase64(encodeInit(puzzleId, await creationProof(client, address))),
       readWriteAddresses: [address], readOnlyAddresses: [],
       stateUnits: UNITS.open.stateUnits,       // creates the 80-byte escrow account
+      // (the wallet intent API, @thru/wallet 0.4.1, takes no compute or memory
+      // units: the wallet sets those itself)
       review: { appName: 'Great Work!', programAddress: program, instruction: 'Set up the prize escrow account for ' + (puzzleName || 'this puzzle') + ' (once per puzzle; it holds nothing)' },
     });
     const bytes = typeof raw === 'string' ? base64ToBytesStd(raw) : raw;
@@ -440,7 +442,8 @@ export async function submitViaWallet(client, { signIntent, walletAddress, puzzl
     instructionData: bytesToBase64(ix),
     readWriteAddresses: [escrowAddress(puzzleId, program)],
     readOnlyAddresses: [],
-    stateUnits: 0,              // SUBMIT grows nothing (the wallet's default is 1); memory is the wallet's call
+    stateUnits: 0,              // SUBMIT grows nothing (the wallet's default is 1). Compute and memory are the
+                                // wallet's call: its intent has no field for them (SUBMIT used ~10.3M CU on chain)
     review: {
       appName: 'Great Work!',
       programAddress: program,
@@ -604,7 +607,10 @@ export async function fetchEscrow(client, { puzzleId, program = NETWORKS.alphane
   let acct = null;
   try { acct = await client.accounts.get(address); }
   catch (e) { if (!/not found|NotFound|does not exist/i.test(String(e && e.message || e))) throw e; }
-  if (!acct) return { address, exists: false, balance: 0n, escrow: null };
+  // absent: never created, or compressed (the runtime shows both alike; any
+  // third party may compress an idle account). The compression module tells
+  // them apart from the archive.
+  if (!acct) return { address, exists: false, balance: 0n, escrow: null, compressed: await isCompressed(client, address) };
   const b = acct.balance ?? (acct.meta && acct.meta.balance);
   const owner = accountOwner(acct), flags = accountFlags(acct);
   const ours = owner === null || owner === Pubkey.from(program).toThruFmt();
@@ -616,6 +622,23 @@ export async function fetchEscrow(client, { puzzleId, program = NETWORKS.alphane
     compressed: !!flags.isCompressed,
     blockTimeNs: acct.versionContext && acct.versionContext.blockTimestampNs,
   };
+}
+
+// true: archived (compressed); false: active or never existed; null: cannot tell
+export async function isCompressed(client, address) {
+  if (!client.compression || !client.compression.getAccountStatuses) return null;
+  try {
+    const [st] = await client.compression.getAccountStatuses({ accounts: [address] });
+    return st ? st.status === 'COMPRESSED' : null;
+  } catch (e) { return null; }
+}
+
+// Decompress accounts (anyone may; the key pays): the escrow before anything on its
+// puzzle, or a champion's account before its CLAIM. Returns the SDK's per-account outcome.
+export async function decompressAccounts(client, { wallet, accounts }) {
+  if (!client.compression || !client.compression.decompressAccounts) throw new Error('this SDK has no decompression');
+  const r = await client.compression.decompressAccounts({ accounts, feePayer: { publicKey: wallet.publicKey, privateKey: wallet.privateKey } });
+  return r.accounts;
 }
 
 export function checkFuse(fuseSeconds) {
@@ -660,7 +683,7 @@ async function creationProof(client, address) {
 export async function escrowReady(client, { puzzleId, program = NETWORKS.alphanet.program, init }) {
   const st = await fetchEscrow(client, { puzzleId, program });
   if (st.compressed) {
-    const err = new Error("this puzzle's escrow account " + st.address + ' is compressed: decompress it (anyone may, e.g. with the Thru CLI), then submit again');
+    const err = new Error("this puzzle's escrow account " + st.address + ' was compressed after a quiet spell: it has to be decompressed (anyone may: `node client/escrow.js <puzzle> decompress`), then submit again — nothing in it is lost');
     err.code = 0x12; throw err;
   }
   if (!st.exists && init) { await init(); return { initialized: true, address: st.address }; }
@@ -730,6 +753,12 @@ export async function claimEscrow(client, { wallet, puzzleId, program = NETWORKS
   const { address, escrow } = await fetchEscrow(client, { puzzleId, program });
   if (!escrow) throw new Error('this puzzle has no escrow');
   if (!escrow.champion) throw new Error('nobody holds the crown yet');
+  // a champion account that reads as absent was most likely compressed: the program
+  // waits (0x12) until it is decompressed, so say so before sending anything
+  if (!(await accountExists(client, escrow.champion)) && (await isCompressed(client, escrow.champion)) === true) {
+    const err = new Error("the champion's account " + escrow.champion + ' is compressed (or missing): decompress it (anyone may: `node client/escrow.js <puzzle> decompress`), then claim');
+    err.code = 0x12; throw err;
+  }
   const readWrite = [address];
   if (escrow.champion !== wallet.address) readWrite.push(escrow.champion);
   const r = await sendDirect(client, { wallet, program, instructionData: encodeClaim(puzzleId), readWrite, onUpdate });
@@ -750,7 +779,7 @@ async function depositCheck(client, puzzleId, program, force) {
   if (force) return;
   const st = await fetchEscrow(client, { puzzleId, program });
   const phase = escrowPhase(st.escrow, nowNs());
-  if (!st.exists) throw new Error('this puzzle has no escrow yet: open one first (a transfer cannot create it)');
+  if (!st.exists) throw new Error(st.compressed ? 'this escrow account is compressed: decompress it first' : 'this puzzle has no escrow yet: open one first (a transfer cannot create it)');
   if (!st.escrow) throw new Error('the escrow account is unreadable: not depositing');
   if (!canDeposit(phase)) throw new Error('this escrow round is ' + phase + ': a deposit now would not go to its winner — deposit once a round is open');
 }

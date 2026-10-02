@@ -109,7 +109,7 @@ for (const code of [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 
   const score = new Uint8Array(58 + machine.length);
   score.set([0x47, 0x57, 0x21, 0x32, 2, 0, machine.length, 0]); new DataView(score.buffer).setUint32(52, 150, true); score.set(machine, 58);
   const escrowData = (fuseEndNs) => { const d = hex(ACCT_HEX); d[4] = 2; new DataView(d.buffer).setBigUint64(16, fuseEndNs, true); return d; };
-  const fake = (accounts) => {
+  const fake = (accounts, archived = []) => {
     const calls = [];
     const exec = async function* () { yield { executionResult: { vmError: 0, consumedComputeUnits: 1 }, signature: new Uint8Array(64) }; };
     const txn = (kind, opts) => { calls.push({ kind, opts }); return { sign: async () => {}, toWire: () => new Uint8Array(200) }; };
@@ -119,6 +119,10 @@ for (const code of [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 
         create: async (opts) => txn('create', opts),
       },
       proofs: { generate: async () => ({ proof: PROOF }) },
+      compression: {
+        getAccountStatuses: async ({ accounts: list }) => list.map(a => ({ address: a, status: archived.includes(a) ? 'COMPRESSED' : accounts[a] ? 'ACTIVE' : 'DOES_NOT_EXIST' })),
+        decompressAccounts: async (opts) => { calls.push({ kind: 'decompress', opts }); return { accounts: opts.accounts.map(a => ({ address: a, status: 'restored', signatures: ['s'] })) }; },
+      },
       events: { list: async () => ({ events: [{ payload: score, slot: 5n }], page: {} }) },
       transactions: {
         buildAndSign: async (opts) => { calls.push({ kind: 'buildAndSign', opts }); return { signature: new Uint8Array(64), rawTransaction: new Uint8Array(200) }; },
@@ -160,6 +164,20 @@ for (const code of [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 
   f = fake({ [escAddr]: { ...live, meta: { owner: Pubkey.from(prog), flags: { isCompressed: true } } } });
   check(await C.submitSolution(f.client, { wallet: kp, puzzleId: 2, machineBytes: machine, program: prog }).then(() => false, (err) => err.code === 0x12 && /decompress/.test(err.message)) &&
         f.calls.length === 0, 'compressed escrow: told to decompress, nothing sent');
+  // compressed the way the runtime shows it — absent from current state, in the archive:
+  // no auto-INIT (it would fail on chain), the player is told to decompress
+  f = fake({}, [escAddr]);
+  check(await C.submitSolution(f.client, { wallet: kp, puzzleId: 2, machineBytes: machine, program: prog }).then(() => false, (err) => err.code === 0x12 && /decompress/.test(err.message)) &&
+        f.calls.length === 0, 'compressed (absent) escrow: told to decompress, no INIT sent');
+  check((await C.fetchEscrow(f.client, { puzzleId: 2, program: prog })).compressed === true, 'fetchEscrow tells compressed from never created');
+  check((await C.fetchEscrow(fake({}).client, { puzzleId: 2, program: prog })).compressed === false, '...and never created from compressed');
+  await C.decompressAccounts(f.client, { wallet: kp, accounts: [escAddr] });
+  check(f.calls[0].kind === 'decompress' && f.calls[0].opts.accounts[0] === escAddr && f.calls[0].opts.feePayer.privateKey === kp.privateKey, 'decompress: the key pays');
+  // a champion whose account was compressed: CLAIM is not sent
+  { const d = escrowData(1n); const champAddr = Pubkey.from(d.slice(48, 80)).toThruFmt();
+    f = fake({ [escAddr]: { ...ours, data: { data: d } } }, [champAddr]);
+    check(await C.claimEscrow(f.client, { wallet: kp, puzzleId: 2, program: prog }).then(() => false, (err) => err.code === 0x12) && f.calls.length === 0,
+      'compressed champion: told to decompress, no CLAIM sent'); }
   f = fake({ [escAddr]: live });
   check((await C.initEscrow(f.client, { wallet: kp, puzzleId: 2, program: prog })).created === false && f.calls.length === 0, 'INIT on an existing escrow sends nothing');
   f = fake({ [escAddr]: live });

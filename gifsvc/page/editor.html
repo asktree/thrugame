@@ -4656,9 +4656,10 @@
       box.className = 'bounty quiet';
       // an account that exists but is not a readable escrow of this program is
       // nothing the editor can open over or deposit into
-      note.textContent = phase === 'idle' ? 'No prize escrow round on this puzzle yet.'
+      note.textContent = st.compressed ? 'The escrow account was compressed after a quiet spell. Nothing is lost, but it has to be decompressed before anything — submissions included — works on this puzzle (anyone may: node client/escrow.js ' + base().key + ' decompress).'
+        : phase === 'idle' ? 'No prize escrow round on this puzzle yet.'
         : st.exists ? 'escrow account unreadable — nothing to do here' : 'No prize escrow on this puzzle.';
-      if (!st.exists || phase === 'idle') acts.appendChild(openBtn());
+      if (!st.compressed && (!st.exists || phase === 'idle')) acts.appendChild(openBtn());
       box.appendChild(note); box.appendChild(acts);
       return;
     }

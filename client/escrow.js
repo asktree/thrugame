@@ -4,6 +4,8 @@
  *   node client/escrow.js <puzzle>                       status: pot, champion, fuse
  *   node client/escrow.js <puzzle> init                  create the puzzle's escrow account (idle)
  *   node client/escrow.js init --all                     ...for every puzzle (right after a deploy)
+ *   node client/escrow.js <puzzle> decompress            restore the escrow (and its champion's
+ *                                                        account) after the runtime compressed it
  *   node client/escrow.js <puzzle> history               opened / crowned / paid events
  *   node client/escrow.js <puzzle> open [--fuse 30d] [--bar record|none|<code>]
  *   node client/escrow.js <puzzle> deposit --amount <n>  a plain transfer into an open round's pot
@@ -60,8 +62,8 @@ const all = argv.includes('--all');
 const [key, cmd = 'status'] = all && positional[0] === 'init' ? [null, 'init'] : positional;
 const puzzles = PUZ.puzzles();
 const puzzle = all ? null : puzzles.find(p => p.key === key);
-if ((!puzzle && !(all && cmd === 'init')) || !['status', 'history', 'open', 'deposit', 'claim', 'init'].includes(cmd)) {
-  console.error('usage: node client/escrow.js <puzzle> [status|history|init|open|deposit|claim] [--test] …\n       node client/escrow.js init --all [--test]\npuzzles: ' + puzzles.map(p => p.key).join(', '));
+if ((!puzzle && !(all && cmd === 'init')) || !['status', 'history', 'open', 'deposit', 'claim', 'init', 'decompress'].includes(cmd)) {
+  console.error('usage: node client/escrow.js <puzzle> [status|history|init|decompress|open|deposit|claim] [--test] …\n       node client/escrow.js init --all [--test]\npuzzles: ' + puzzles.map(p => p.key).join(', '));
   process.exit(2);
 }
 const program = argv.includes('--test') ? G.NETWORKS.alphanet.testProgram : G.NETWORKS.alphanet.program;
@@ -73,7 +75,7 @@ async function status() {
   const e = s.escrow, now = G.nowNs(), phase = G.escrowPhase(e, now);
   console.log(`${puzzle.name} — escrow ${s.address}  (program ${program})`);
   console.log(`pot      ${s.balance}`);
-  if (s.compressed) console.log('account  COMPRESSED: nothing on this puzzle (submissions included) works until someone decompresses it');
+  if (s.compressed) { console.log('account  COMPRESSED after a quiet spell: nothing on this puzzle (submissions included) works until someone decompresses it — `decompress` (anyone may; nothing is lost)'); return; }
   if (!e) { console.log(s.exists ? 'state    not a readable escrow of this program (owner ' + s.owner + ')' : 'state    no escrow account yet: nothing can be sealed or deposited; `init` (or a first submission, or open) creates it'); return; }
   if (phase === 'idle') {
     console.log(`state    idle: the account exists (best ${e.best === G.NO_SUM ? 'none yet' : 'SUM ' + e.best}), no round open; anyone may open one`);
@@ -114,7 +116,19 @@ async function main() {
   console.log(`signer  ${wallet.address}`);
   const acct = await G.ensureAccount(client, wallet);
   if (acct.created) console.log(`account created (${acct.signature})`);
-  if (cmd === 'init') {
+  if (cmd === 'decompress') {
+    const address = G.escrowAddress(puzzleId, program);
+    const todo = [];
+    if (await G.isCompressed(client, address)) todo.push(address);
+    else {
+      const s = await G.fetchEscrow(client, { puzzleId, program });
+      const champ = s.escrow && s.escrow.champion;
+      if (champ && !(await G.accountExists(client, champ)) && await G.isCompressed(client, champ)) todo.push(champ);
+    }
+    if (!todo.length) console.log('nothing to decompress (run it again after the escrow is restored, for its champion)');
+    for (const o of todo.length ? await G.decompressAccounts(client, { wallet, accounts: todo }) : [])
+      console.log(`${o.status.toUpperCase().padEnd(8)} ${o.address}${o.signatures.length ? '  txn ' + o.signatures.join(', ') : ''}`);
+  } else if (cmd === 'init') {
     for (const p of all ? puzzles : [puzzle]) {
       const r = await G.initEscrow(client, { wallet, puzzleId: p.id, program });
       console.log(`${r.created ? 'INIT    ' : 'exists  '}${p.name}: ${r.address}${r.signature ? '  txn ' + r.signature : ''}`);
