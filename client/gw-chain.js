@@ -1,10 +1,12 @@
 /*
  * GREAT WORK! — chain client (shared by the Node CLIs and the browser bundle)
  *
- * The verifier program (contract/program) takes one instruction:
- *   u8 version (2) | u8 puzzle id | u8 name len | u8 username len | name |
+ * The verifier program (contract/program) takes a submission:
+ *   u8 version (3) | u8 puzzle id | u8 name len | u8 username len | name |
  *   username | codec v2 machine bytes
- * and, only when the machine is VERIFIED, emits one GW!2 event naming the
+ * with the puzzle's prize-escrow account listed read-write (whether or not an
+ * escrow is open there — see escrowAddress), and, only when the machine is
+ * VERIFIED, emits one GW!2 event naming the
  * SOLVER — the account the chain saw authorize the call: the fee payer when it
  * signed directly, or the passkey wallet the passkey manager just validated —
  * with cost/cycles/area/sum, the machine bytes and the names, so the
@@ -12,6 +14,13 @@
  * solution can be replayed by anyone. Rejections and faults revert with a
  * code this module decodes (mirrors contract/program/src/gw_verifier.c and
  * the GW_ERR_* / GW_FAULT_* tables in contract/gw.h — keep them in sync).
+ *
+ * The prize escrow (SPEC §13, FORMAT.md "Prize escrow"): one account per
+ * puzzle at the verifier's derived address; its balance is the pot, its data
+ * the crown and `best`, the lowest sum it has seen. OPEN (anyone; a fuse
+ * length and optionally a bar: a machine, normally the record, whose sum the
+ * first crown must beat), plain transfers into an existing escrow to deposit,
+ * CLAIM (anyone, after the fuse; pays the champion).
  *
  * Two identities:
  *   - a "payer": a raw Ed25519 key kept locally. It signs and pays (fees are
@@ -22,29 +31,50 @@
  *     for the wallet to the verifier — the solver is the wallet, the payer is
  *     only paying, and no UI bug can credit anyone but the key that signed.
  */
-import { createThruClient, keys, Pubkey, Signature, Filter, FilterParamValue } from '@thru/sdk';
+import { createThruClient, keys, Pubkey, Signature, Filter, FilterParamValue, PageRequest, deriveProgramAddress, EOA_PROGRAM_ID } from '@thru/sdk';
 import * as PM from '@thru/programs/passkey-manager';
 
 export const NETWORKS = {
   alphanet: {
     name: 'alphanet',
     rpc: 'https://rpc.alphanet.thru.org',
-    program: 'taaX8rNMcDjdi-V0IlFhC2ScMsN0gWXbejJdoyDOvHi8aS',   // contract/program/DEPLOYMENTS.md
-    // the record starts here: earlier events on this address are development
-    // and test submissions from before the board went public
-    fromSlot: 6884620n,
+    // contract/program/DEPLOYMENTS.md. Managed-program addresses are fixed by
+    // the seed and the manager program, so these are known before the deploy:
+    // `thru program create greatwork-v3 …` lands exactly here (client/test.js
+    // re-derives both). Alphanet was reset around 2026-09-30; the old
+    // greatwork-v2 (taaX8rNM…) is gone with it.
+    program: 'taWilrUWWu-_nAzyv3koRVoQQOnIepAGVe1tkzbnu3XNdZ',          // seed greatwork-v3
+    programSeed: 'greatwork-v3',
+    // every event of the fresh program is public record
+    fromSlot: 0n,
     // a second copy of the same program for automated tests, so test runs never
     // touch the record: point a test at it with NETWORKS.alphanet.program = testProgram
-    testProgram: 'taZq-QfKiEC-7CF-iF8mbqHjC4wSU1brkik8jsgMl2bpVB',
+    testProgram: 'tar_NQqeiWnJEIhya2UBpcEpxV4UKBpbnRGf6cMpay0EiS',      // seed greatwork-test
+    testProgramSeed: 'greatwork-test',
   },
 };
-export const IX_VERSION = 2;
+export const IX_VERSION = 3;
 export const EVENT_MAGIC = 'GW!2';
 export const EVENT_HDR = 58;
 export const NAME_MAX = 32, USER_MAX = 24;
 export const PASSKEY_MANAGER = PM.PASSKEY_MANAGER_PROGRAM_ADDRESS;
 const COMPUTE_UNITS = 300_000_000;   // fees are subsidized on alphanet; the sim needs ~15-60M
-const TRACK_TIMEOUT_MS = 90_000;
+
+/* Resource requests for every transaction this module builds. @thru/sdk 0.4.1
+ * defaults compute, state and memory units to 0; the Thru CLI's builders
+ * (rpc/thru-base/src/txn_tools.rs) ask for 10,000 memory units, and for the
+ * 4 KiB state footprint (data + the 64-byte account meta, rounded up) of each
+ * account the transaction creates or grows — and 0 state units otherwise,
+ * since any request above 0 is refused while the chain has no active-state
+ * headroom. */
+export const MEMORY_UNITS = 10_000;
+export const stateUnitsFor = (dataBytes) => Math.ceil((dataBytes + 64) / 4096);
+export const UNITS = {
+  call:    { computeUnits: COMPUTE_UNITS, stateUnits: 0, memoryUnits: MEMORY_UNITS },   // SUBMIT, CLAIM, reopen, passkey calls, deposits
+  open:    { computeUnits: COMPUTE_UNITS, stateUnits: stateUnitsFor(80), memoryUnits: MEMORY_UNITS },   // INIT, or an OPEN that creates the 80-byte escrow
+  account: { computeUnits: 10_000, stateUnits: stateUnitsFor(0), memoryUnits: MEMORY_UNITS },   // a fresh key's own account
+  create:  { computeUnits: COMPUTE_UNITS, stateUnits: 1, memoryUnits: MEMORY_UNITS },   // passkey wallet / credential lookup (< 4 KiB each)
+};const TRACK_TIMEOUT_MS = 90_000;
 
 // contract/gw.h enum order
 export const ERRORS = [
@@ -63,6 +93,20 @@ export function describeRevert(code) {
   if (code === 0x03) return 'program out of memory';
   if (code === 0x04) return 'event rejected';
   if (code === 0x05) return 'no authorized solver (the caller vouched for nobody)';
+  if (code === 0x06) return "the puzzle's escrow account is missing from the transaction (an outdated client?)";
+  if (code === 0x07) return "escrow account unusable (not read-write, not the program's, or bad data)";
+  if (code === 0x09) return "this puzzle's escrow is still contested: it can be reopened only after it pays out, or after its bar lapses unbeaten";
+  if (code === 0x0A) return 'bad escrow arguments (the fuse must be 10 minutes to 30 days)';
+  if (code === 0x0B) return 'this puzzle has no escrow';
+  if (code === 0x0C) return 'nobody holds the crown yet';
+  if (code === 0x0D) return 'the fuse is still burning';
+  if (code === 0x0E) return "the champion's account must be in the transaction, read-write";
+  if (code === 0x0F) return 'the payout transfer was refused (try again with more compute / memory units); nothing was settled';
+  if (code === 0x10) return 'the chain reported no block time';
+  if (code === 0x11) return 'this escrow has already paid out';
+  if (code === 0x12) return "the escrow account is compressed, or the champion's account is missing or compressed: decompress it first (anyone may), then retry";
+  if (code === 0x13) return "this puzzle's escrow account reads as absent: never created (send INIT; the client does it for you) or compressed (decompress it)";
+  if (code === 0x14) return 'a verified sum out of the range the escrow can hold';
   if (code === 0xBADBAD) return 'engine capacity panic';
   if (code >= 0x100 && code < 0x200) return 'rejected: ' + (ERRORS[code - 0x100] || 'error ' + (code - 0x100));
   if (code >= 0x200 && code < 0x300) return 'faulted: ' + (FAULTS[code - 0x200] || 'fault ' + (code - 0x200));
@@ -151,7 +195,7 @@ export async function accountExists(client, publicKey) {
 // state proof of the account's absence and needs no funds (alphanet fees are 0).
 export async function ensureAccount(client, wallet, onUpdate) {
   if (await accountExists(client, wallet.publicKey)) return { created: false };
-  const txn = await client.accounts.create({ publicKey: wallet.publicKey });
+  const txn = await client.accounts.create({ publicKey: wallet.publicKey, header: { ...UNITS.account } });
   await txn.sign(wallet.privateKey);
   const last = await track(client, txn.toWire(), onUpdate);
   const r = last && last.executionResult;
@@ -193,11 +237,13 @@ export async function getSubmission(client, signature) {
 
 // submit directly: the payer signs, pays, and is the solver
 export async function submitSolution(client, { wallet, puzzleId, machineBytes, name, user, program = NETWORKS.alphanet.program, onUpdate }) {
+  await escrowReady(client, { puzzleId, program, init: () => initEscrow(client, { wallet, puzzleId, program, onUpdate }) });
   const built = await client.transactions.buildAndSign({
     feePayer: { publicKey: wallet.publicKey, privateKey: wallet.privateKey },
     program,
     instructionData: encodeSubmission(puzzleId, machineBytes, { name, user }),
-    header: { fee: 0n, computeUnits: COMPUTE_UNITS, expiryAfter: 100 },
+    accounts: { readWrite: [escrowAddress(puzzleId, program)] },
+    header: { fee: 0n, ...UNITS.call, expiryAfter: 100 },
   });
   const signature = fmtSignature(built.signature);
   const last = await track(client, built.rawTransaction, onUpdate);
@@ -234,7 +280,7 @@ export async function ensurePasskeyWallet(client, { meta, payer, onUpdate }) {
     });
     const txn = await client.transactions.build({
       feePayer: { publicKey: payer.publicKey }, program: PASSKEY_MANAGER, instructionData: ix,
-      accounts: { readWrite: ctx.readWriteAddresses, readOnly: ctx.readOnlyAddresses }, header: { fee: 0n },
+      accounts: { readWrite: ctx.readWriteAddresses, readOnly: ctx.readOnlyAddresses }, header: { fee: 0n, ...UNITS.create },
     });
     await txn.sign(payer.privateKey);
     const last = await track(client, txn.toWire(), onUpdate);
@@ -258,7 +304,7 @@ export async function ensurePasskeyWallet(client, { meta, payer, onUpdate }) {
       });
       const txn = await client.transactions.build({
         feePayer: { publicKey: payer.publicKey }, program: PASSKEY_MANAGER, instructionData: ix,
-        accounts: { readWrite: ctx.readWriteAddresses, readOnly: ctx.readOnlyAddresses }, header: { fee: 0n },
+        accounts: { readWrite: ctx.readWriteAddresses, readOnly: ctx.readOnlyAddresses }, header: { fee: 0n, ...UNITS.create },
       });
       await txn.sign(payer.privateKey);
       const last = await track(client, txn.toWire(), onUpdate);
@@ -307,7 +353,7 @@ async function passkeyValidate(client, { walletAddress, authIdx = 0, payer, read
   const txn = await client.transactions.build({
     feePayer: { publicKey: payer.publicKey }, program: PASSKEY_MANAGER, instructionData: validateIx,
     accounts: { readWrite: ctx.readWriteAddresses, readOnly: ctx.readOnlyAddresses },
-    header: { fee: 0n, computeUnits: COMPUTE_UNITS, expiryAfter: 100 },
+    header: { fee: 0n, ...UNITS.call, expiryAfter: 100 },
   });
   await txn.sign(payer.privateKey);
   const raw = txn.toWire();
@@ -322,8 +368,11 @@ export async function submitViaPasskey(client, { meta, walletAddress, authIdx = 
   if (!walletAddress) walletAddress = await passkeyWalletAddress(meta);
   const ix = encodeSubmission(puzzleId, machineBytes, { name, user });
   const verifier = Pubkey.from(program).toBytes();
+  const escrow = Pubkey.from(escrowAddress(puzzleId, program)).toBytes();
+  // INIT is permissionless: the paying key creates the escrow if the puzzle has none
+  await escrowReady(client, { puzzleId, program, init: () => initEscrow(client, { wallet: payer, puzzleId, program, onUpdate }) });
   return passkeyValidate(client, {
-    walletAddress, authIdx, payer, readOnly: [verifier], sign, onUpdate,
+    walletAddress, authIdx, payer, readWrite: [escrow], readOnly: [verifier], sign, onUpdate,
     makeTarget: (ctx) => ({ programIdx: ctx.getAccountIndex(verifier), instructionData: ix }),
   });
 }
@@ -367,13 +416,34 @@ export const passkeySeal = submitViaPasskey;   // older name
 // `signIntent(intent) -> base64 raw transaction` is the wallet's signTransaction.
 export const bytesToBase64 = (b) => PM.bytesToBase64(b);
 export async function submitViaWallet(client, { signIntent, walletAddress, puzzleId, machineBytes, name, user, puzzleName, program = NETWORKS.alphanet.program, onUpdate }) {
+  // a puzzle with no escrow account yet: the wallet signs an INIT first (one
+  // program call per transaction, so it cannot ride in the SUBMIT itself)
+  await escrowReady(client, { puzzleId, program, init: async () => {
+    const address = escrowAddress(puzzleId, program);
+    const raw = await signIntent({
+      walletAddress, programAddress: program,
+      instructionData: bytesToBase64(encodeInit(puzzleId, await creationProof(client, address))),
+      readWriteAddresses: [address], readOnlyAddresses: [],
+      stateUnits: UNITS.open.stateUnits,       // creates the 80-byte escrow account
+      // (the wallet intent API, @thru/wallet 0.4.1, takes no compute or memory
+      // units: the wallet sets those itself)
+      review: { appName: 'Great Work!', programAddress: program, instruction: 'Set up the prize escrow account for ' + (puzzleName || 'this puzzle') + ' (once per puzzle; it holds nothing)' },
+    });
+    const bytes = typeof raw === 'string' ? base64ToBytesStd(raw) : raw;
+    const last = await track(client, bytes, onUpdate);
+    const r = last && last.executionResult;
+    if (!r) throw new Error('escrow set-up timed out');
+    if (r.vmError !== 0) { const err = new Error(describeRevert(Number(r.userErrorCode))); err.code = Number(r.userErrorCode); throw err; }
+  } });
   const ix = encodeSubmission(puzzleId, machineBytes, { name, user });
   const intent = {
     walletAddress,
     programAddress: program,
     instructionData: bytesToBase64(ix),
-    readWriteAddresses: [],
+    readWriteAddresses: [escrowAddress(puzzleId, program)],
     readOnlyAddresses: [],
+    stateUnits: 0,              // SUBMIT grows nothing (the wallet's default is 1). Compute and memory are the
+                                // wallet's call: its intent has no field for them (SUBMIT used ~10.3M CU on chain)
     review: {
       appName: 'Great Work!',
       programAddress: program,
@@ -394,14 +464,29 @@ export const base64UrlToBytes = (s) => PM.base64UrlToBytes(s);
 export const bytesToBase64Url = (b) => PM.bytesToBase64Url(b);
 
 // ---- leaderboard: the program's event log ----
-export async function fetchScores(client, { program = NETWORKS.alphanet.program, puzzleId, fromSlot = NETWORKS.alphanet.fromSlot } = {}) {
+// Every event the program ever emitted, all pages: the RPC serves 50 per page
+// by default, and a leaderboard that read only the first page would silently
+// drop every sealed solution after the 50th.
+export const EVENT_PAGE = 500, EVENT_PAGES_MAX = 400;
+export async function listProgramEvents(client, { program = NETWORKS.alphanet.program } = {}) {
   const filter = new Filter({
     expression: 'event.program.value == params.address',
     params: { address: FilterParamValue.taPubkey(program) },
   });
-  const res = await client.events.list({ filter });
+  const all = [];
+  let token;
+  for (let i = 0; i < EVENT_PAGES_MAX; i++) {
+    const res = await client.events.list({ filter, page: new PageRequest(token ? { pageSize: EVENT_PAGE, pageToken: token } : { pageSize: EVENT_PAGE }) });
+    for (const ev of res.events || []) all.push(ev);
+    token = res.page && res.page.nextPageToken;
+    if (!token) return all;
+  }
+  throw new Error('the event log is longer than ' + EVENT_PAGE * EVENT_PAGES_MAX + ' events; refusing a partial leaderboard');
+}
+
+export async function fetchScores(client, { program = NETWORKS.alphanet.program, puzzleId, fromSlot = NETWORKS.alphanet.fromSlot } = {}) {
   const out = [];
-  for (const ev of res.events || []) {
+  for (const ev of await listProgramEvents(client, { program })) {
     const s = parseScoreEvent(ev.payload);
     if (!s) continue;
     if (puzzleId !== undefined && s.puzzle !== puzzleId) continue;
@@ -426,4 +511,313 @@ export function rankScores(scores) {
   }
   const cmpSlot = (a, b) => (a.slot === null || b.slot === null) ? 0 : (a.slot < b.slot ? -1 : a.slot > b.slot ? 1 : 0);
   return [...seen.values()].sort((a, b) => a.puzzle - b.puzzle || a.sum - b.sum || cmpSlot(a, b));
+}
+
+// ---- prize escrow (SPEC §13; layout in FORMAT.md, rules in contract/gw_escrow.c) ----
+export const ESCROW_MAGIC = 'GWE2', ESCROW_EVENT_MAGIC = 'GW!E';
+export const ESCROW_SZ = 80, ESCROW_EVENT_SZ = 96;
+export const NO_SUM = 0xFFFFFFFF;                   // no bar / no sum seen yet
+export const FUSE_30D = 2592000;                    // seconds
+export const FUSE_MIN = 600, FUSE_MAX = 2592000;    // what OPEN accepts: 10 minutes .. 30 days
+export const IX_OPEN = 0x10, IX_CLAIM = 0x11, IX_INIT = 0x12;
+export const ESCROW_EVENT_KINDS = { 1: 'opened', 2: 'crowned', 3: 'paid', 4: 'unpaid', 5: 'initialized' };
+export const EOA_PROGRAM = EOA_PROGRAM_ID;          // the native-transfer program (@thru/sdk)
+
+// "gw-escrow", zero padding, puzzle id in the last byte
+export function escrowSeed(puzzleId) {
+  const seed = new Uint8Array(32);
+  seed.set(utf8('gw-escrow'));
+  seed[31] = puzzleId;
+  return seed;
+}
+export function escrowAddress(puzzleId, program = NETWORKS.alphanet.program) {
+  return deriveProgramAddress({ programAddress: program, seed: escrowSeed(puzzleId) }).address;
+}
+
+// account data -> the crown; null unless it is a well-formed escrow (for `puzzleId`, if given)
+export function parseEscrow(data, puzzleId) {
+  if (!data || data.length < ESCROW_SZ) return null;
+  if (String.fromCharCode(data[0], data[1], data[2], data[3]) !== ESCROW_MAGIC) return null;
+  if (puzzleId !== undefined && data[4] !== puzzleId) return null;
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const flags = data[5];
+  const hasChampion = !!(flags & 1);
+  return {
+    puzzle: data[4],
+    hasChampion,
+    settled: !!(flags & 2),
+    unpaid: !!(flags & 4),                          // settled without a transfer: the champion's account could not receive
+    sumToBeat: dv.getUint32(8, true),               // this round: champion's sum, else its opening bar
+    fuseSeconds: dv.getUint32(12, true),
+    fuseEndNs: dv.getBigUint64(16, true),           // burns out (crowned) / bar lapses (not yet)
+    slot: dv.getBigUint64(24, true),
+    round: dv.getUint32(32, true),                  // 0: idle (INIT, never opened)
+    best: dv.getUint32(36, true),                   // lowest sum the escrow has ever seen (NO_SUM: none)
+    totalPaid: dv.getBigUint64(40, true),           // over every round, this one included
+    champion: hasChampion ? Pubkey.from(data.slice(48, 80)).toThruFmt() : null,
+  };
+}
+
+export function parseEscrowEvent(payload) {
+  if (!payload || payload.length !== ESCROW_EVENT_SZ) return null;
+  if (String.fromCharCode(payload[0], payload[1], payload[2], payload[3]) !== ESCROW_EVENT_MAGIC) return null;
+  const escrow = parseEscrow(payload.slice(16), payload[5]);
+  if (!escrow) return null;
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  return { kind: ESCROW_EVENT_KINDS[payload[4]] || 'unknown', puzzle: payload[5], amount: dv.getBigUint64(8, true), escrow };
+}
+
+/* Where an escrow stands at block time `nowNs` (BigInt ns; the local clock
+ * stands in for the chain's, so treat the edges as approximate — the program
+ * decides):
+ *   none     no escrow account: nothing can be sealed or deposited until someone
+ *            INITs (or opens) it — the client does so before a first submission
+ *   idle     the account exists (INIT) but no round has been opened: anyone may open one
+ *   open     no champion yet; the first machine beating the bar takes the crown
+ *   lapsed   no champion and the bar has lapsed: still winnable, and anyone may reopen
+ *   burning  a champion holds the crown; a strictly better sum resets the fuse
+ *   won      the fuse is out: the crown is frozen, anyone may trigger the payout
+ *   settled  paid out; anyone may open the puzzle's next escrow */
+export function escrowPhase(escrow, nowNs) {
+  if (!escrow) return 'none';
+  if (escrow.round === 0) return 'idle';
+  if (escrow.settled) return 'settled';
+  if (!escrow.hasChampion) return nowNs >= escrow.fuseEndNs ? 'lapsed' : 'open';
+  return nowNs >= escrow.fuseEndNs ? 'won' : 'burning';
+}
+export const nowNs = () => BigInt(Date.now()) * 1000000n;
+export const canReopen = (phase) => phase === 'none' || phase === 'idle' || phase === 'settled' || phase === 'lapsed';
+// a deposit only makes sense while a round is contested: before an escrow exists a
+// transfer to its address fails (it cannot create the account), and money sent to
+// a lapsed, won or settled round goes to whoever wins the round after (or, won: to
+// the champion already decided)
+export const canDeposit = (phase) => phase === 'open' || phase === 'burning';
+
+const accountFlags = (acct) => (acct && acct.meta && acct.meta.flags) || (acct && acct.flags) || {};
+const accountOwner = (acct) => {
+  const o = acct && ((acct.meta && acct.meta.owner) || acct.owner);
+  if (!o) return null;
+  try { return Pubkey.from(o.value || o).toThruFmt(); } catch (e) { return null; }
+};
+
+// { address, exists, balance, escrow (parsed, or null when absent or not a valid
+//   escrow of `program`), owner, uncompressable, compressed, blockTimeNs }
+export async function fetchEscrow(client, { puzzleId, program = NETWORKS.alphanet.program }) {
+  const address = escrowAddress(puzzleId, program);
+  let acct = null;
+  try { acct = await client.accounts.get(address); }
+  catch (e) { if (!/not found|NotFound|does not exist/i.test(String(e && e.message || e))) throw e; }
+  // absent: never created, or compressed (the runtime shows both alike; any
+  // third party may compress an idle account). The compression module tells
+  // them apart from the archive.
+  if (!acct) return { address, exists: false, balance: 0n, escrow: null, compressed: await isCompressed(client, address) };
+  const b = acct.balance ?? (acct.meta && acct.meta.balance);
+  const owner = accountOwner(acct), flags = accountFlags(acct);
+  const ours = owner === null || owner === Pubkey.from(program).toThruFmt();
+  return {
+    address, exists: true, owner,
+    balance: b === undefined || b === null ? 0n : BigInt(b),
+    escrow: ours ? parseEscrow(accountData(acct), puzzleId) : null,
+    uncompressable: !!flags.isUncompressable,
+    compressed: !!flags.isCompressed,
+    blockTimeNs: acct.versionContext && acct.versionContext.blockTimestampNs,
+  };
+}
+
+// true: archived (compressed); false: active or never existed; null: cannot tell
+export async function isCompressed(client, address) {
+  if (!client.compression || !client.compression.getAccountStatuses) return null;
+  try {
+    const [st] = await client.compression.getAccountStatuses({ accounts: [address] });
+    return st ? st.status === 'COMPRESSED' : null;
+  } catch (e) { return null; }
+}
+
+// Decompress accounts (anyone may; the key pays): the escrow before anything on its
+// puzzle, or a champion's account before its CLAIM. Returns the SDK's per-account outcome.
+export async function decompressAccounts(client, { wallet, accounts }) {
+  if (!client.compression || !client.compression.decompressAccounts) throw new Error('this SDK has no decompression');
+  const r = await client.compression.decompressAccounts({ accounts, feePayer: { publicKey: wallet.publicKey, privateKey: wallet.privateKey } });
+  return r.accounts;
+}
+
+export function checkFuse(fuseSeconds) {
+  fuseSeconds = Number(fuseSeconds);
+  if (!Number.isInteger(fuseSeconds) || fuseSeconds < FUSE_MIN || fuseSeconds > FUSE_MAX)
+    throw new Error('the fuse must be 10 minutes to 30 days (' + FUSE_MIN + '..' + FUSE_MAX + ' s)');
+  return fuseSeconds;
+}
+
+/* OPEN: u8 0x10 | u8 puzzle | u32 fuse seconds | u16 proof length | state proof
+   (first open only) | bar machine (codec v2 bytes; none = no bar). The bar is a
+   machine the program verifies and seals, never a bare number. */
+export function encodeOpen(puzzleId, { fuseSeconds = FUSE_30D, barMachine = null, proof = null } = {}) {
+  fuseSeconds = checkFuse(fuseSeconds);
+  const p = proof || new Uint8Array(), m = barMachine || new Uint8Array();
+  if (p.length > 0xFFFF) throw new Error('state proof too long');
+  const out = new Uint8Array(8 + p.length + m.length);
+  const dv = new DataView(out.buffer);
+  out[0] = IX_OPEN; out[1] = puzzleId;
+  dv.setUint32(2, fuseSeconds, true); dv.setUint16(6, p.length, true);
+  out.set(p, 8); out.set(m, 8 + p.length);
+  return out;
+}
+export const encodeClaim = (puzzleId) => Uint8Array.of(IX_CLAIM, puzzleId);
+// INIT: u8 0x12 | u8 puzzle | state proof of the escrow account's absence
+export function encodeInit(puzzleId, proof) {
+  if (!proof || !proof.length) throw new Error('INIT needs a state proof');
+  const out = new Uint8Array(2 + proof.length);
+  out[0] = IX_INIT; out[1] = puzzleId; out.set(proof, 2);
+  return out;
+}
+async function creationProof(client, address) {
+  const p = await client.proofs.generate({ address, proofType: 1 });
+  if (!p.proof || !p.proof.length) throw new Error('no state proof for the new escrow account');
+  return p.proof;
+}
+
+/* Before a SUBMIT: the program refuses one while the puzzle's escrow account is
+   absent (0x13: so its best sees every score) or compressed (0x12). Absent:
+   run `init` (anyone may create it). Compressed: say so — anyone may decompress
+   it, but that is a job for the Thru CLI or wallet, not this client. */
+export async function escrowReady(client, { puzzleId, program = NETWORKS.alphanet.program, init }) {
+  const st = await fetchEscrow(client, { puzzleId, program });
+  if (st.compressed) {
+    const err = new Error("this puzzle's escrow account " + st.address + ' was compressed after a quiet spell: it has to be decompressed (anyone may: `node client/escrow.js <puzzle> decompress`), then submit again — nothing in it is lost');
+    err.code = 0x12; throw err;
+  }
+  if (!st.exists && init) { await init(); return { initialized: true, address: st.address }; }
+  return { initialized: false, address: st.address };
+}
+
+// INIT — anyone may: creates the puzzle's escrow account, idle (no round, no pot).
+// A no-op when it already exists.
+export async function initEscrow(client, { wallet, puzzleId, program = NETWORKS.alphanet.program, onUpdate }) {
+  const address = escrowAddress(puzzleId, program);
+  if (await accountExists(client, address)) return { created: false, address };
+  const proof = await creationProof(client, address);
+  const r = await sendDirect(client, { wallet, program, instructionData: encodeInit(puzzleId, proof), readWrite: [address], units: UNITS.open, onUpdate });
+  return { ...r, created: true, address };
+}
+
+async function sendDirect(client, { wallet, program, instructionData, readWrite = [], units = UNITS.call, onUpdate }) {
+  const built = await client.transactions.buildAndSign({
+    feePayer: { publicKey: wallet.publicKey, privateKey: wallet.privateKey },
+    program, instructionData,
+    accounts: readWrite.length ? { readWrite } : undefined,
+    header: { fee: 0n, ...units, expiryAfter: 100 },
+  });
+  const signature = fmtSignature(built.signature);
+  const last = await track(client, built.rawTransaction, onUpdate);
+  const r = last && last.executionResult;
+  if (!r) throw new Error('timed out waiting for execution');
+  if (r.vmError !== 0) {
+    const code = Number(r.userErrorCode);
+    const err = new Error(describeRevert(code));
+    err.code = code; err.vmError = r.vmError; err.signature = signature;
+    throw err;
+  }
+  return { signature, computeUnits: r.consumedComputeUnits };
+}
+
+/* OPEN — anyone may: the payer key signs and pays, and gains nothing by it.
+   `bar` is 'record' (the default: the puzzle's best sealed machine, so a copy
+   of the leader cannot take the pot), 'none' (no bar of the opener's own), or
+   machine bytes. Either way the program makes the round's sum to beat
+   min(bar, best): never a sum the escrow has already seen. The first open
+   carries a state proof of the account's absence. */
+export async function openEscrow(client, { wallet, puzzleId, fuseSeconds = FUSE_30D, bar = 'record', program = NETWORKS.alphanet.program, onUpdate }) {
+  fuseSeconds = checkFuse(fuseSeconds);
+  const address = escrowAddress(puzzleId, program);
+  let barMachine = null, barSum = NO_SUM;
+  if (bar === 'record') {
+    const rec = await recordEntry(client, { puzzleId, program });
+    if (rec) { barMachine = rec.machine; barSum = rec.sum; }
+  } else if (bar instanceof Uint8Array) barMachine = bar;
+  else if (bar !== 'none' && bar !== null && bar !== undefined) throw new Error('bar: "record", "none" or machine bytes');
+  let proof = null;
+  if (!(await accountExists(client, address))) {
+    const p = await client.proofs.generate({ address, proofType: 1 });
+    if (!p.proof || !p.proof.length) throw new Error('no state proof for the new escrow account');
+    proof = p.proof;
+  }
+  const r = await sendDirect(client, {
+    wallet, program, instructionData: encodeOpen(puzzleId, { fuseSeconds, barMachine, proof }), readWrite: [address],
+    units: proof ? UNITS.open : UNITS.call, onUpdate,
+  });
+  return { ...r, address, bar: barSum };
+}
+
+// CLAIM — anyone may, once the fuse is out; the program pays the champion, never the caller
+export async function claimEscrow(client, { wallet, puzzleId, program = NETWORKS.alphanet.program, onUpdate }) {
+  const { address, escrow } = await fetchEscrow(client, { puzzleId, program });
+  if (!escrow) throw new Error('this puzzle has no escrow');
+  if (!escrow.champion) throw new Error('nobody holds the crown yet');
+  // a champion account that reads as absent was most likely compressed: the program
+  // waits (0x12) until it is decompressed, so say so before sending anything
+  if (!(await accountExists(client, escrow.champion)) && (await isCompressed(client, escrow.champion)) === true) {
+    const err = new Error("the champion's account " + escrow.champion + ' is compressed (or missing): decompress it (anyone may: `node client/escrow.js <puzzle> decompress`), then claim');
+    err.code = 0x12; throw err;
+  }
+  const readWrite = [address];
+  if (escrow.champion !== wallet.address) readWrite.push(escrow.champion);
+  const r = await sendDirect(client, { wallet, program, instructionData: encodeClaim(puzzleId), readWrite, onUpdate });
+  return { ...r, champion: escrow.champion };
+}
+
+// a deposit is a plain native transfer to the escrow address (EOA program TRANSFER:
+// u32 tag 1 | u64 amount | u16 from idx | u16 to idx, rpc/abi/type-library/tn_eoa_program.abi.yaml)
+export function encodeEoaTransfer(amount, fromIdx, toIdx) {
+  const out = new Uint8Array(16), dv = new DataView(out.buffer);
+  dv.setUint32(0, 1, true); dv.setBigUint64(4, BigInt(amount), true);
+  dv.setUint16(12, fromIdx, true); dv.setUint16(14, toIdx, true);
+  return out;
+}
+// refuse to send money anywhere but a contested round (see canDeposit); `force`
+// skips the check (the program never sees a deposit, so it cannot refuse one)
+async function depositCheck(client, puzzleId, program, force) {
+  if (force) return;
+  const st = await fetchEscrow(client, { puzzleId, program });
+  const phase = escrowPhase(st.escrow, nowNs());
+  if (!st.exists) throw new Error(st.compressed ? 'this escrow account is compressed: decompress it first' : 'this puzzle has no escrow yet: open one first (a transfer cannot create it)');
+  if (!st.escrow) throw new Error('the escrow account is unreadable: not depositing');
+  if (!canDeposit(phase)) throw new Error('this escrow round is ' + phase + ': a deposit now would not go to its winner — deposit once a round is open');
+}
+export async function depositToEscrow(client, { wallet, puzzleId, amount, program = NETWORKS.alphanet.program, force = false, onUpdate }) {
+  await depositCheck(client, puzzleId, program, force);
+  const to = escrowAddress(puzzleId, program);
+  return sendDirect(client, {
+    wallet, program: EOA_PROGRAM, readWrite: [to], onUpdate,
+    instructionData: async (ctx) => encodeEoaTransfer(amount, ctx.getAccountIndex(wallet.address), ctx.getAccountIndex(to)),
+  });
+}
+// ...or from a passkey wallet (its winnings, say), approved by the passkey
+export async function depositViaPasskey(client, { puzzleId, program = NETWORKS.alphanet.program, force = false, ...rest }) {
+  await depositCheck(client, puzzleId, program, force);
+  return passkeyTransfer(client, { ...rest, to: escrowAddress(puzzleId, program) });
+}
+
+// the puzzle's current record: its best sealed solution (lowest sum, earliest
+// first), or null if none
+export async function recordEntry(client, { puzzleId, program = NETWORKS.alphanet.program, fromSlot }) {
+  const scores = await fetchScores(client, { program, puzzleId, ...(fromSlot !== undefined ? { fromSlot } : {}) });
+  return rankScores(scores)[0] || null;
+}
+// ...and its sum (NO_SUM if none)
+export async function recordSum(client, opts) {
+  const r = await recordEntry(client, opts);
+  return r ? r.sum : NO_SUM;
+}
+
+// the escrow's history: GW!E events (opened / crowned / paid), oldest first
+export async function fetchEscrowEvents(client, { program = NETWORKS.alphanet.program, puzzleId } = {}) {
+  const out = [];
+  for (const ev of await listProgramEvents(client, { program })) {
+    const e = parseEscrowEvent(ev.payload);
+    if (!e || (puzzleId !== undefined && e.puzzle !== puzzleId)) continue;
+    e.slot = ev.slot === undefined ? null : BigInt(ev.slot);
+    e.signature = fmtSignature(ev.transactionSignature);
+    out.push(e);
+  }
+  return out;
 }

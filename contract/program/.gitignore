@@ -4,5 +4,7 @@ src/gw_q.c
 src/gw_codec.c
 src/gw_engine.c
 src/gw_verify.c
+src/gw_escrow.h
+src/gw_escrow.c
 src/puzzles.h
 src/vectors.h

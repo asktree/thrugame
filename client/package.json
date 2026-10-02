@@ -5,16 +5,17 @@
   "description": "GREAT WORK! — Thru client: seal solutions on-chain and read the leaderboard",
   "type": "module",
   "scripts": {
+    "test": "node test.js",
     "bundle": "esbuild browser.js --bundle --format=iife --minify --target=es2020 --outfile=../demo/gw-chain.js",
     "submit": "node submit.js",
     "leaderboard": "node leaderboard.js",
     "bundle:gif": "esbuild gif-entry.js --bundle --format=iife --minify --target=es2020 --outfile=../lab/vendor/gifenc.js"
   },
   "dependencies": {
-    "@thru/passkey": "^0.3.11",
-    "@thru/programs": "^0.3.11",
-    "@thru/sdk": "^0.3.11",
-    "@thru/wallet": "^0.3.11"
+    "@thru/passkey": "^0.4.1",
+    "@thru/programs": "^0.4.1",
+    "@thru/sdk": "^0.4.1",
+    "@thru/wallet": "^0.4.1"
   },
   "devDependencies": {
     "esbuild": "^0.25.4",

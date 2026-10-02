@@ -280,6 +280,73 @@ any cap overrides, and optionally a **prize escrow**:
 - If the fuse reaches zero, the contract pays the reigning champion. No organizer, no
   ceremony.
 
+How the contract keeps it (encoding in FORMAT.md, rules in `contract/gw_escrow.c`):
+
+- **One escrow per puzzle**, an account of the rules contract at an address derived
+  from the puzzle id. Its native balance is the pot: once the escrow exists, anyone
+  deposits by an ordinary transfer to that address, any number of times. Anyone may
+  create the account (INIT); **no score is sealed on a puzzle until it exists**, so the
+  escrow sees the whole record. It starts idle: no round, no pot. (Before it exists a
+  transfer to the address fails: a transfer cannot create an account.)
+- **The escrow remembers its best**: the lowest verified SUM it has ever seen — every
+  submission to the puzzle (all of which pass through it), in every state, and every
+  bar an opener names. It never rises, and it survives every payout and reopening.
+- **Opening** is open to anyone and organizes nothing. The opener picks the fuse length
+  (30 days unless stated; 10 minutes to 30 days) and, optionally, the **bar**: a
+  machine the contract verifies and seals, normally a copy of the puzzle's current
+  record. The bar is never a bare number, so nobody can open with a bar nobody could
+  reach. The first crown needs a SUM strictly below both the bar and the best: **no
+  round — the first, or one reopened with a balance carried over — can be won with a
+  SUM already sealed on the puzzle's record**, so a copy of the public leader never
+  takes a pot. The opener never names a champion: the crown starts empty and the fuse
+  lights with the first machine to beat the bar. If nobody beats it within one fuse
+  length, anyone may reopen the escrow with a new fuse, the balance carried over — the
+  bar stays where the best is.
+- **The crown.** Every submission passes through its puzzle's escrow. A verified SUM
+  strictly below every SUM the escrow has seen crowns the solver and relights the fuse
+  to its full length; an equal or worse SUM is still sealed on the record but changes
+  nothing. The champion may improve on their own SUM like anyone else. A solver whose
+  account could never be paid (an ephemeral account) is sealed but not crowned.
+- **The fuse** is chain time (block time). The instant it burns out the crown freezes:
+  the escrow is won, and no later submission — however good — can take it (though the
+  escrow's best remembers it). Without a block time the crown and fuse wait; sealing
+  and the best do not.
+- **The payout** is permissionless and happens once: anyone may trigger it after the
+  fuse is out, and the contract pays the escrow's entire balance to the champion, never
+  to the caller. The round is then settled; its fuse never relights. If the champion's
+  account is deleted, or still missing 90 days after the fuse (a compressed account
+  just waits to be decompressed until then), the round settles unpaid and the pot
+  stays for the next round instead of being locked. Anyone may open a new round on the
+  puzzle afterwards, and anything deposited after the payout becomes that round's pot —
+  still guarded by the best.
+- **What nobody can do.** No key can withdraw a pot, redirect a payout or name a
+  champion: the only way out of an escrow is the payout to a champion whose SUM was
+  below every SUM the escrow had seen. The flip side: a pot whose best is already the
+  optimum for its puzzle can never be won, and stays where it is.
+
+Known limitations:
+
+- **Front-running.** A submission is public as soon as it is broadcast. Someone who
+  sees a crowning machine in flight can copy it and get their copy ordered first; the
+  contract cannot tell the two apart and crowns whichever lands first. The fix is
+  commit–reveal (seal a hash of machine and solver first, reveal it a few slots later,
+  crown by commit order); not implemented.
+- **Block time** is the block producer's clock; the fuse is only as honest as it is.
+- **Machines known off the record.** "Already reached" means sealed on this program's
+  record. A machine published elsewhere (another program, a forum post, a failed
+  transaction) and never sealed here can still be sealed first by whoever copies it.
+- **Fuse griefing.** Anyone may open a round with the longest fuse, 30 days — the
+  documented default — so that is the slowest a payout can be made to come.
+- **Deploys.** Until a puzzle's escrow account exists nothing can be sealed on it; the
+  deploy runbook creates all of them at once, and the clients create one on demand.
+- **Compression.** The escrow asks the runtime not to compress it, but the runtime
+  does not keep that flag (observed on alphanet), so after a quiet spell any third
+  party may compress a puzzle's escrow. Then nothing on that puzzle — submissions
+  included — works until someone decompresses it, which anyone may do; the clients
+  detect it and explain. Nothing can be taken that way: the balance and the best come
+  back with the account. A champion's own account may be compressed too; the payout
+  waits for it (90 days at most, see above).
+
 ## 14. Open questions
 
 - **Pistons** (runtime-variable arm length) — likely 40g if adopted; interacts with the

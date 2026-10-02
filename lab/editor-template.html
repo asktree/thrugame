@@ -1,4 +1,5 @@
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Great Work! Solution Editor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap">
@@ -153,6 +154,26 @@
   .winbox .winline { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
   .winbox .winline b { color: var(--gold); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
   .chain-note { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .04em; padding: 2px 0; }
+  /* the prize escrow: the proposal's bounty poster, shrunk to sit above the record */
+  .bounty { border: 3px double var(--brass); background: var(--parch-2); padding: 10px 12px 9px; margin: 2px 0 9px; text-align: center; }
+  .bounty .b-head { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: var(--ink-dim); }
+  .bounty .b-pool { font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: .06em; color: var(--gold); margin: 3px 0 8px; font-variant-numeric: tabular-nums; }
+  .bounty .b-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); }
+  .bounty .b-cell { background: var(--parch-3); padding: 6px 4px 7px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .bounty .b-k { font-family: var(--mono); font-size: 8.5px; letter-spacing: .18em; color: var(--ink-faint); text-transform: uppercase; }
+  .bounty .b-v { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bounty .b-v.he { color: var(--verdigris); }
+  .bounty .b-v.won { color: var(--oxblood); }
+  .bounty .b-note { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .03em; margin-top: 7px; line-height: 1.55; }
+  .bounty .b-note a { color: var(--ink-dim); cursor: pointer; text-decoration: underline dotted; }
+  .bounty .b-acts { display: flex; gap: 8px; justify-content: center; margin-top: 7px; }
+  .bounty .b-acts:empty { display: none; }
+  .bounty .b-acts .ctl { padding: 4px 10px; font-size: 9.5px; }
+  .bounty.quiet { border: 1px dashed var(--line); background: transparent; padding: 6px 10px; display: flex; align-items: center; gap: 10px; text-align: left; }
+  .bounty.quiet .b-note { margin: 0 auto 0 0; }
+  .bounty.quiet .b-acts { margin: 0; }
+  @media (max-width: 640px) { .bounty .b-grid { grid-template-columns: 1fr 1fr; } }
+  .submitdlg select { width: 100%; font-family: var(--mono); font-size: 12px; padding: 5px 6px; border: 1px solid var(--line); background: var(--parch-2); color: var(--ink); }
   .chain-note.bad { color: var(--oxblood); }
   table.board { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
   table.board td { padding: 3px 6px; border-top: 1px solid var(--line-soft); vertical-align: middle; }
@@ -172,7 +193,12 @@
   table.board td.who .clip { max-width: 170px; }
   table.board td.act { width: 1%; text-align: right; padding-right: 0; white-space: nowrap; }
   table.board td.act .ctl { padding: 3px 8px; font-size: 9.5px; }
-  table.board td.act a.ctl { margin-left: 4px; }
+  table.board td.act a.ctl, table.board td.act .ctl + .ctl { margin-left: 4px; }
+  @media (max-width: 640px) {
+    table.board td.sm small, table.board td.nm { display: none; }
+    table.board td.who .clip { max-width: 96px; }
+    table.board td.act .ctl { padding: 3px 6px; }
+  }
 
   dialog.submitdlg {
     border: 1px solid var(--ink-dim); background: var(--parch); color: var(--ink); padding: 0;
@@ -340,6 +366,7 @@
       </span>
       <button class="ctl" id="btnScores">Refresh</button>
     </div>
+    <div class="bounty quiet" id="escrowBox" hidden></div>
     <div id="chainBody"><div class="chain-note">loading…</div></div>
   </div>
 
@@ -478,6 +505,27 @@
     </form>
   </dialog>
 
+  <dialog class="submitdlg" id="openDlg">
+    <form method="dialog">
+      <h2>Open a prize escrow</h2>
+      <div class="sd-note" id="odNote">—</div>
+      <label for="odBar">To take the first crown</label>
+      <select id="odBar"></select>
+      <label for="odFuse">Fuse</label>
+      <select id="odFuse">
+        <option value="2592000" selected>30 days (the rule)</option>
+        <option value="604800">7 days</option>
+        <option value="86400">1 day</option>
+        <option value="600">10 minutes (a demo)</option>
+      </select>
+      <div class="sd-note" style="margin-top:10px">Anyone may open one; opening gives you nothing. The contract never lets a sum it has already seen take the crown, whatever bar you pick. Once it is open, anyone may deposit by a plain transfer to its address. When the fuse burns out the contract pays the champion — once.</div>
+      <div class="sd-actions">
+        <button type="button" class="ctl" id="odCancel">Cancel</button>
+        <button type="submit" class="ctl" value="ok">Open escrow</button>
+      </div>
+    </form>
+  </dialog>
+
 </div>
 
 <!-- the chain client: window.GWChain. Absent (or blocked) it degrades to a disabled submit button. -->
@@ -590,6 +638,7 @@
 
   // ---------- state ----------
   let pIdx = 0;
+  let arrived = false;      // false until a puzzle (and its draft) is on the board
   let layout = { arms: [], glyphs: [], inputs: [], output: { at: [0, 0], rot: 0 } };
   let mode = 'edit';
   let sim = null;
@@ -1573,7 +1622,7 @@
         bar.style.width = (n * 22 + (n - 1) * 3) + 'px';
       });
     }
-    if (!arms.length) host.innerHTML += `<div class="tape-row"><span class="tape-label" style="width:auto">no arms yet — drag one from the tray onto the board</span></div>`;
+    if (!arms.length) host.innerHTML += `<div class="tape-row"><span class="tape-label" style="flex:1 1 auto;min-width:0;white-space:normal">no arms yet — drag one from the tray onto the board</span></div>`;
   }
   function updateRunTapes() {
     const t = sim.state.tick;
@@ -1617,11 +1666,13 @@
     if (st.fault) {
       inner.className = 'stamp-inner bad';
       inner.innerHTML = `Rejected · ${st.fault.kind}<small>tick ${st.fault.tick}${st.fault.detail ? ' · ' + st.fault.detail : ''}</small>`;
+      if (!done && /^testing/.test($('status').textContent)) setStatus('rejected · ' + st.fault.kind + ' on tick ' + st.fault.tick + ' — ✎ Edit to fix it', 'bad');
       el.classList.add('show'); done = true;
     } else if (st.cycles !== null) {
       const m = sim.metrics();
       inner.className = 'stamp-inner';
       inner.innerHTML = `Great Work! · ${st.products} of ${st.caps.goal}<small>${m.cost}g + ${m.cycles}c + ${m.area}a = SUM ${m.sum}</small>`;
+      if (!done && /^testing/.test($('status').textContent)) setStatus('verified · SUM ' + m.sum + ' — Submit seals it on chain', 'good');
       el.classList.add('show'); done = true;
     } else { el.classList.remove('show'); done = false; }
   }
@@ -1664,16 +1715,27 @@
     if (idx < 0) { setStatus('unknown puzzle “' + k + '”', 'bad'); return false; }
     let decoded;
     try { decoded = CODEC.decodeString(data); } catch (e) { setStatus(String(e.message || e), 'bad'); return false; }
-    const moved = pIdx !== idx;
-    pIdx = idx;
-    syncTray();
+    const moved = pIdx !== idx || !arrived;
+    arrived = true;
+    if (moved) {
+      // arrive on the puzzle as a tab click would — with its own saved draft — so
+      // the import lands on top of that draft rather than silently replacing it
+      pIdx = idx;
+      syncTray();
+      layout = loadDraft() || layoutFrom({ arms: [] });
+      undoStack = []; redoStack = [];
+    }
+    // an import is one undoable step: Undo brings back whatever was on the board
+    const before = snapshot();
     layout = layoutFrom(decoded);
-    sel = null; cursor = null; tapeSel = []; undoStack = []; redoStack = []; syncUndoButtons();
+    sel = null; cursor = null; tapeSel = [];
+    const kept = JSON.parse(before).arms.length > 0 && snapshot() !== before;
+    if (kept) pushUndo(before); else syncUndoButtons();
     enterEdit();
     document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', i === pIdx));
     fitView(); touched();
-    if (moved) refreshBoard();
-    setStatus('imported ' + layout.arms.length + ' arm(s) into ' + BASES[idx].name, 'good');
+    if (moved) { refreshBoard(); try { history.replaceState(null, '', '#' + key()); } catch (e) {} }
+    setStatus('imported ' + layout.arms.length + ' arm(s) into ' + BASES[idx].name + (kept ? ' · Undo brings your own machine back' : ''), 'good');
     return true;
   }
 
@@ -2437,16 +2499,17 @@
   }
 
   // ---------- winnings: what the passkey wallet holds, and moving it out ----------
-  // There is no prize escrow yet, so "winnings" is simply the native balance of the
-  // wallet the passkey owns. Claiming hands that balance to the player's own hosted
-  // Thru wallet, where they can off-ramp it; the local key still pays (fees are 0).
-  // An older bundle without the hosted wallet or the transfer hides the whole thing.
+  // An escrow pays its champion — the passkey wallet that took the crown — so
+  // "winnings" is the native balance of the wallet the passkey owns. Claiming hands
+  // that balance to the player's own hosted Thru wallet, where they can off-ramp it;
+  // the local key still pays (fees are 0). The line shows only once there is
+  // something to move. An older bundle without the hosted wallet or the transfer
+  // hides the whole thing.
   const claimOn = () => chainOn() && !!GWChain.wallet && !!GWChain.passkeyTransfer;
 
   function updateWinnings() {
     const box = $('winBox'); if (!box) return;
-    box.hidden = true; return;         // claiming is not offered yet: the line stays hidden
-    const show = claimOn() && !!passkeyId;
+    const show = claimOn() && !!passkeyId && (winnings > 0n || claiming);
     box.hidden = !show;
     const amt = $('winAmt'); if (amt) amt.textContent = String(winnings);
     const b = $('btnClaim');
@@ -2501,6 +2564,215 @@
       claiming = false;
       updateIdControls(); updateSubmitBtn();
       refreshWinnings();
+    }
+  }
+
+  // ---------- the prize escrow (SPEC §13): pot, champion, fuse, payout ----------
+  // One escrow per puzzle, kept by the program: its balance is the pot; a verified sum
+  // strictly below the one to beat takes the crown and relights the fuse; when the fuse
+  // burns out anyone may trigger the payout, which goes to the champion, once. Anyone
+  // may open an escrow (the local key pays and gains nothing). Read-only for a visitor
+  // until they press a button; a bundle without the escrow calls hides the box.
+  const escrowOn = () => chainOn() && !!GWChain.fetchEscrow;
+  let escrowState = null, escrowToken = 0, escrowTick = 0, escrowBusy = false, lastRows = [], rowsFor = -1;
+  const fmtLeft = (ns) => {
+    let s = Number(ns / 1000000000n); if (s < 0) s = 0;
+    const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    const p2 = (v) => String(v).padStart(2, '0');
+    return d ? d + 'd ' + p2(h) + 'h ' + p2(m) + 'm' : h ? h + 'h ' + p2(m) + 'm ' + p2(x) + 's' : m + 'm ' + p2(x) + 's';
+  };
+  const fmtFuse = (sec) => sec % 86400 === 0 ? (sec / 86400) + '-day' : sec % 3600 === 0 ? (sec / 3600) + '-hour' : sec % 60 === 0 ? (sec / 60) + '-minute' : sec + '-second';
+  const fmtPot = (b) => String(b).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  // a champion is a key; the record usually knows the name they gave
+  function championLabel(addr, sum) {
+    if (addr && addr === myAddr()) return 'you';
+    const r = lastRows.find(x => x.solver === addr && x.sum === sum) || lastRows.find(x => x.solver === addr);
+    return (r && String(r.user || '').trim()) || shortAddr(addr);
+  }
+  // the record (the board's first row: lowest sum, earliest), once this puzzle's board has loaded
+  const recordRow = () => (rowsFor === pIdx && lastRows.length) ? lastRows[0] : null;
+
+  function escrowCell(k, v, cls) {
+    const c = document.createElement('div'); c.className = 'b-cell';
+    const kk = document.createElement('span'); kk.className = 'b-k'; kk.textContent = k;
+    const vv = document.createElement('span'); vv.className = 'b-v' + (cls ? ' ' + cls : ''); vv.textContent = v;
+    vv.title = v;
+    c.appendChild(kk); c.appendChild(vv);
+    return c;
+  }
+  function escrowAct(label, title, fn, wait) {
+    const b = document.createElement('button'); b.className = 'ctl'; b.textContent = label; b.title = wait || title;
+    b.disabled = escrowBusy || submitting || pkBusy || claiming || !!wait;
+    b.addEventListener('click', fn);
+    return b;
+  }
+  function escrowAddrLink(addr) {
+    const a = document.createElement('a'); a.textContent = shortAddr(addr);
+    a.title = addr + ' — click to copy';
+    a.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(addr); setStatus('escrow address copied — ' + addr, 'good'); }
+      catch (e) { setStatus('the escrow address is ' + addr, 'good'); }
+    });
+    return a;
+  }
+
+  function drawEscrow() {
+    const box = $('escrowBox'); if (!box) return;
+    clearInterval(escrowTick); escrowTick = 0;
+    const st = escrowState;
+    if (!escrowOn() || !st || st.puzzle !== pIdx) { box.hidden = true; return; }
+    box.hidden = false; box.innerHTML = '';
+    const e = st.escrow, phase = GWChain.escrowPhase(e, GWChain.nowNs());
+    const note = document.createElement('div'); note.className = 'b-note';
+    const acts = document.createElement('div'); acts.className = 'b-acts';
+    // the bar choices come from the record: no Open until this puzzle's board has loaded
+    const openBtn = () => escrowAct(phase === 'settled' ? 'Open the next escrow' : phase === 'lapsed' ? 'Reopen' : 'Open an escrow',
+      'lock a prize on this puzzle: anyone may, and the contract alone pays it out', openEscrowDlg,
+      rowsFor === pIdx ? null : 'waiting for the on-chain record to load (Refresh if it failed)');
+
+    if (!e || phase === 'idle') {
+      box.className = 'bounty quiet';
+      // an account that exists but is not a readable escrow of this program is
+      // nothing the editor can open over or deposit into
+      note.textContent = st.compressed ? 'The escrow account was compressed after a quiet spell. Nothing is lost, but it has to be decompressed before anything — submissions included — works on this puzzle (anyone may: node client/escrow.js ' + base().key + ' decompress).'
+        : phase === 'idle' ? 'No prize escrow round on this puzzle yet.'
+        : st.exists ? 'escrow account unreadable — nothing to do here' : 'No prize escrow on this puzzle.';
+      if (!st.compressed && (!st.exists || phase === 'idle')) acts.appendChild(openBtn());
+      box.appendChild(note); box.appendChild(acts);
+      return;
+    }
+    box.className = 'bounty';
+    const head = document.createElement('div'); head.className = 'b-head';
+    head.textContent = base().name + ' — Prize Escrow' + (e.round > 1 ? ' Nº ' + e.round : '');
+    const pool = document.createElement('div'); pool.className = 'b-pool';
+    // the pot is what the account holds now; after a payout that is only what was sent since
+    pool.textContent = fmtPot(st.balance) + ' THRU';
+    if (phase === 'settled') pool.title = 'sent since the payout: it goes to whoever wins the next round';
+    const grid = document.createElement('div'); grid.className = 'b-grid';
+    const bar = e.sumToBeat === GWChain.NO_SUM ? null : e.sumToBeat;
+    const fuseCell = escrowCell('Fuse', '', phase === 'won' ? 'won' : '');
+    const fuseV = fuseCell.lastChild;
+    const tick = () => {
+      const left = e.fuseEndNs - GWChain.nowNs();
+      if (phase === 'burning' || phase === 'open') {
+        if (left <= 0n) { drawEscrow(); return; }        // crossed an edge: redraw the phase
+        fuseV.textContent = phase === 'burning' ? fmtLeft(left) : 'unlit';
+      }
+    };
+    if (phase === 'burning') {
+      grid.appendChild(escrowCell('Reigning', championLabel(e.champion, e.sumToBeat), 'he'));
+      grid.appendChild(escrowCell('Best sum', String(e.sumToBeat)));
+      grid.appendChild(fuseCell);
+      grid.appendChild(escrowCell('Resets on', 'SUM ≤ ' + (e.sumToBeat - 1)));
+      note.append('fuse resets to ' + fmtFuse(e.fuseSeconds).replace(/-(\w+)$/, ' $1s').replace(/^1 (\w+)s$/, '1 $1') + ' on any strictly better sum · at zero, the contract pays the reigning champion · deposit: send THRU to ');
+      note.appendChild(escrowAddrLink(st.address));
+    } else if (phase === 'won') {
+      grid.appendChild(escrowCell('Champion', championLabel(e.champion, e.sumToBeat), 'he'));
+      grid.appendChild(escrowCell('Best sum', String(e.sumToBeat)));
+      fuseV.textContent = 'burnt out';
+      grid.appendChild(fuseCell);
+      grid.appendChild(escrowCell('Crown', 'frozen'));
+      note.textContent = 'the fuse is out: the crown is frozen and the pot is the champion’s. Anyone may trigger the payout; the contract sends it to the champion, never to the caller.';
+      const mine = e.champion === myAddr();
+      acts.appendChild(escrowAct(mine ? 'Claim your prize' : 'Pay the champion', 'send the whole pot to the champion — the contract decides who that is', claimEscrowNow));
+    } else if (phase === 'settled') {
+      grid.appendChild(escrowCell('Won by', championLabel(e.champion, e.sumToBeat), 'he'));
+      grid.appendChild(escrowCell('Best sum', String(e.sumToBeat)));
+      fuseV.textContent = 'burnt out';
+      grid.appendChild(fuseCell);
+      grid.appendChild(escrowCell(e.round > 1 ? 'Paid, all ' + e.round + ' rounds' : 'Paid', fmtPot(e.totalPaid)));
+      note.textContent = (e.unpaid ? 'settled unpaid: the champion’s account could not receive, so the pot stayed — this round is closed.'
+        : 'paid out to the champion, once — this round is closed.')
+        + (st.balance > 0n ? ' The ' + fmtPot(st.balance) + ' THRU sent since goes to whoever wins the next round' : ' Anyone may open the next round')
+        + (e.best === GWChain.NO_SUM ? '.' : ', which only a SUM under ' + e.best + ' can take.');
+      acts.appendChild(openBtn());
+    } else {                              // open or lapsed: nobody holds the crown
+      grid.appendChild(escrowCell('Reigning', 'nobody'));
+      grid.appendChild(escrowCell('To beat', bar === null ? 'any sum' : String(bar)));
+      grid.appendChild(fuseCell);
+      grid.appendChild(escrowCell('Takes it', bar === null ? 'any verified' : 'SUM ≤ ' + (bar - 1)));
+      if (phase === 'open') {
+        note.append('the first verified machine ' + (bar === null ? '' : 'under ' + bar + ' ') + 'takes the crown and lights a ' + fmtFuse(e.fuseSeconds) + ' fuse · deposit: send THRU to ');
+        note.appendChild(escrowAddrLink(st.address));
+      } else {
+        fuseV.textContent = 'unlit';
+        note.textContent = 'nobody has beaten the bar in a full fuse length: it still takes the crown, and anyone may reopen this escrow with a new fuse. The pot carries over, and so does the bar: a reopened round still needs a SUM under ' + (bar === null ? 'the best the escrow has seen' : bar) + '.';
+        acts.appendChild(openBtn());
+      }
+    }
+    box.appendChild(head); box.appendChild(pool); box.appendChild(grid); box.appendChild(note); box.appendChild(acts);
+    tick();
+    if (phase === 'burning' || phase === 'open') escrowTick = setInterval(tick, 1000);
+  }
+
+  // read the puzzle's escrow; a stale read never overwrites a newer one
+  async function refreshEscrow() {
+    const token = ++escrowToken, want = pIdx;
+    if (!escrowOn()) { escrowState = null; drawEscrow(); return; }
+    try {
+      const st = await GWChain.fetchEscrow(chainClientOf(), { puzzleId: want });
+      if (token !== escrowToken || pIdx !== want) return;
+      escrowState = Object.assign({ puzzle: want }, st);
+    } catch (e) {
+      if (token !== escrowToken || pIdx !== want) return;
+      escrowState = null;              // the escrow is a footnote to the record: fail quiet
+    }
+    drawEscrow();
+  }
+
+  // The bar is a machine the program verifies — the record's, normally — never a
+  // bare number; and the program makes the round's sum to beat min(bar, best), so
+  // a reopened round never gets easier than the best the escrow has seen.
+  let openBar = null;
+  function openEscrowDlg() {
+    if (!escrowOn() || escrowBusy || rowsFor !== pIdx) return;
+    const dlg = $('openDlg'); if (!dlg) return;
+    const rec = recordRow(), sel = $('odBar');
+    const e = escrowState && escrowState.puzzle === pIdx ? escrowState.escrow : null;
+    const best = e && e.best !== GWChain.NO_SUM ? e.best : null;
+    const floor = (s) => best === null ? s : Math.min(s, best);
+    sel.innerHTML = '';
+    const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+    if (rec) opt('record', 'beat the record: SUM ≤ ' + (floor(rec.sum) - 1) + ' (recommended)');
+    if (best !== null) opt('none', 'beat the best this escrow has seen: SUM ≤ ' + (best - 1));
+    else opt('none', 'any verified machine' + (rec ? ' — a copy of the leader could take it' : ''));
+    openBar = rec ? rec.machine : null;
+    $('odNote').textContent = base().name + (escrowState && escrowState.puzzle === pIdx && escrowState.balance > 0n ? ' · pot already ' + fmtPot(escrowState.balance) + ' THRU' : '');
+    dlg.dataset.puzzle = String(pIdx);
+    dlg.returnValue = '';
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+  }
+  $('odCancel').addEventListener('click', () => { const d = $('openDlg'); d.close ? d.close('') : d.removeAttribute('open'); });
+  $('openDlg').addEventListener('close', () => {
+    const d = $('openDlg');
+    if (d.returnValue !== 'ok') return;
+    escrowSend('opening the escrow…', async (client, w) => {
+      const bar = $('odBar').value === 'record' && openBar ? openBar : 'none';
+      const r = await GWChain.openEscrow(client, { wallet: w, puzzleId: Number(d.dataset.puzzle), fuseSeconds: Number($('odFuse').value), bar });
+      return 'escrow opened · txn ' + String(r.signature || '').slice(0, 12) + '…';
+    });
+  });
+  function claimEscrowNow() {
+    const want = pIdx;
+    escrowSend('paying the champion…', async (client, w) => {
+      const r = await GWChain.claimEscrow(client, { wallet: w, puzzleId: want });
+      return 'paid out to ' + (r.champion === myAddr() ? 'you' : shortAddr(r.champion)) + ' · txn ' + String(r.signature || '').slice(0, 12) + '…';
+    });
+  }
+  // the local key signs and pays for escrow calls: neither OPEN nor CLAIM credits the caller
+  async function escrowSend(msg, fn) {
+    if (escrowBusy || submitting || claiming || pkBusy) return;
+    escrowBusy = true; drawEscrow(); updateSubmitBtn();
+    try {
+      setStatus(msg);
+      const client = chainClientOf(), w = await walletOf();
+      await GWChain.ensureAccount(client, w);
+      setStatus(await fn(client, w), 'good');
+    } catch (e) {
+      setStatus('escrow: ' + errText(e), 'bad');
+    } finally {
+      escrowBusy = false;
+      refreshEscrow(); refreshWinnings(); updateSubmitBtn();
     }
   }
 
@@ -2591,7 +2863,7 @@
   function updateSubmitBtn() {
     const b = $('btnSubmit'); if (!b) return;
     if (!chainOn()) { b.disabled = true; b.title = CHAIN_OFF; return; }
-    b.disabled = submitting || claiming || !submittable();
+    b.disabled = submitting || claiming || escrowBusy || !submittable();
     b.title = submitting ? 'submitting…'
       : submittable() ? 'submit this verified solution to the leaderboard'
       : !passkeyId ? 'create or use a passkey to submit'
@@ -2699,11 +2971,20 @@
       const sum = (res.sum === null || res.sum === undefined) ? localSum : res.sum;
       setStatus('submitted · sum ' + sum + ' · txn ' + String(res.signature || '').slice(0, 12) + '…', 'good');
       refreshBoard(true);
+      // a strictly better sum takes an open escrow's crown: say so once the escrow reads back
+      if (escrowOn()) {
+        const want = req.puzzleId, me = id ? id.walletAddress : w.address;
+        GWChain.fetchEscrow(client, { puzzleId: want }).then((st) => {
+          const e = st && st.escrow;
+          if (e && e.hasChampion && e.champion === me && e.sumToBeat === sum && !e.settled && pIdx === want)
+            setStatus('submitted · sum ' + sum + ' · you took the crown — the fuse is relit', 'good');
+        }).catch(() => {});
+      }
     } catch (e) {
       setStatus('not submitted: ' + errText(e), 'bad');
     } finally {
       submitting = false; updateSubmitBtn(); updateIdControls();
-      refreshWinnings();     // a submission moves nothing today, but the record may
+      refreshWinnings();
     }
   }
 
@@ -2719,6 +3000,8 @@
 
   function drawBoard(rows, puzIdx) {
     const host = $('chainBody'); if (!host) return;
+    lastRows = rows; rowsFor = puzIdx;
+    drawEscrow();                       // champion names come from the record
     if (!rows.length) { boardNote('no submitted solutions yet'); return; }
     const me = myAddr();      // the passkey wallet when signed in, else the paying key
     host.innerHTML = '';
@@ -2753,10 +3036,14 @@
       who.title = r.solver + (r.slot !== null && r.slot !== undefined ? ' · slot ' + String(r.slot) : '');
 
       const act = document.createElement('td'); act.className = 'act';
-      const btn = document.createElement('button'); btn.className = 'ctl'; btn.textContent = 'load';
-      btn.title = 'open this solution in the editor';
-      btn.addEventListener('click', () => loadEntry(r, puzIdx));
+      const btn = document.createElement('button'); btn.className = 'ctl'; btn.textContent = '▶ watch';
+      btn.title = 'replay this sealed solution here — then ✎ Edit to build on it (Undo brings your own machine back)';
+      btn.addEventListener('click', () => watchEntry(r, puzIdx));
       act.appendChild(btn);
+      const ln = document.createElement('button'); ln.className = 'ctl'; ln.textContent = 'link';
+      ln.title = 'copy a link that opens this solution replaying';
+      ln.addEventListener('click', () => copyReplayLink(r, puzIdx));
+      act.appendChild(ln);
       if (GIF_SERVICE) {
         const g = document.createElement('a'); g.className = 'ctl'; g.textContent = 'gif';
         g.title = 'this solution as an animated GIF — link it anywhere';
@@ -2770,11 +3057,23 @@
     host.appendChild(table);
   }
 
-  function loadEntry(entry, puzIdx) {
-    try {
-      const k = (BASES[puzIdx] || base()).key;
-      importCode(k + '.' + CODEC.toString(entry.machine));
-    } catch (e) { setStatus('could not load that solution: ' + errText(e), 'bad'); }
+  // D·3: any sealed solution replays in the editor — the same engine the program ran
+  const entryCode = (entry, puzIdx) => (BASES[puzIdx] || base()).key + '.' + CODEC.toString(entry.machine);
+  function watchEntry(entry, puzIdx) {
+    let ok = false;
+    try { ok = importCode(entryCode(entry, puzIdx)); }
+    catch (e) { setStatus('could not load that solution: ' + errText(e), 'bad'); return; }
+    if (!ok) return;
+    if (validate()) return;                       // importCode already said what is wrong
+    enterRun();
+    const nm = String(entry.name || '').trim(), who = String(entry.user || '').trim() || shortAddr(entry.solver);
+    setStatus('replaying ' + (nm ? '“' + nm + '”' : 'a sealed solution') + ' by ' + who + ' · sealed sum ' + entry.sum
+      + ' (' + entry.cost + 'g + ' + entry.cycles + 'c + ' + entry.area + 'a)', 'good');
+  }
+  async function copyReplayLink(entry, puzIdx) {
+    const url = location.origin + location.pathname + '#play/' + entryCode(entry, puzIdx);
+    try { await navigator.clipboard.writeText(url); setStatus('replay link copied', 'good'); }
+    catch (e) { setStatus('replay link: ' + url, 'good'); }
   }
 
   // `force` re-reads a puzzle already on screen (the Refresh button, and a fresh submission);
@@ -2785,6 +3084,9 @@
     const host = $('chainBody'); if (!host) return;
     if (!chainOn()) { boardNote(CHAIN_OFF); return; }
     if (!force && boardShown === pIdx) return;
+    lastRows = []; rowsFor = -1;
+    if (!escrowState || escrowState.puzzle !== pIdx) { escrowState = null; drawEscrow(); }
+    refreshEscrow();
     const want = pIdx, token = ++boardToken;
     boardShown = want;
     boardNote('loading…');
@@ -2803,7 +3105,7 @@
 
   // ---------- puzzles ----------
   function selectPuzzle(i) {
-    pIdx = i;
+    pIdx = i; arrived = true;
     syncTray();
     document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('on', k === i));
     layout = loadDraft() || layoutFrom({ arms: [] });
@@ -2825,7 +3127,12 @@
   const hash = decodeURIComponent(location.hash.slice(1));
   let booted = false;
   if (hash) {
-    if (hash.includes('.')) booted = importCode(hash);
+    if (hash.startsWith('play/')) {
+      booted = importCode(hash.slice(5));
+      if (booted && !validate()) enterRun();
+      // importCode rewrites the address to #<puzzle>; a play link should stay one
+      if (booted) { try { history.replaceState(null, '', '#play/' + hash.slice(5)); } catch (e) {} }
+    } else if (hash.includes('.')) booted = importCode(hash);
     else {
       const i = BASES.findIndex(b => b.key === resolveKey(hash));
       if (i >= 0) { selectPuzzle(i); booted = true; }
