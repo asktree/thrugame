@@ -41,26 +41,29 @@
 #define GW_ESCROW_NO_SUM    0xFFFFFFFFu    /* no sum yet: no bar / nothing seen */
 #define GW_ESCROW_FUSE_30D  2592000u       /* SPEC §13: a 30-day fuse, in seconds */
 #define GW_ESCROW_FUSE_MIN  600u           /* 10 minutes: the shortest fuse OPEN takes */
-#define GW_ESCROW_FUSE_MAX  31536000u      /* 365 days: the longest */
+#define GW_ESCROW_FUSE_MAX  2592000u       /* 30 days: the longest (the documented default) */
 #define GW_NS_PER_S         1000000000ull
 
 /* the escrow account's 32-byte derivation seed: "gw-escrow", zero padding,
    puzzle id in the last byte */
 #define GW_ESCROW_SEED_TAG  "gw-escrow"
 
-enum { GW_ESCROW_HAS_CHAMPION = 1, GW_ESCROW_SETTLED = 2 };
+/* flags. UNPAID: the round settled without a transfer because the champion's
+   account could not receive (the balance stays for the next round) */
+enum { GW_ESCROW_HAS_CHAMPION = 1, GW_ESCROW_SETTLED = 2, GW_ESCROW_UNPAID = 4 };
 
 typedef struct {
   uint8_t  puzzle;
-  uint8_t  flags;          /* GW_ESCROW_HAS_CHAMPION, GW_ESCROW_SETTLED */
+  uint8_t  flags;          /* GW_ESCROW_HAS_CHAMPION, GW_ESCROW_SETTLED, GW_ESCROW_UNPAID */
   uint32_t to_beat;        /* this round's sum to beat: the champion's, else the
                               opening bar (GW_ESCROW_NO_SUM = any verified sum) */
-  uint32_t fuse_s;         /* fuse length, seconds, GW_ESCROW_FUSE_MIN..MAX */
+  uint32_t fuse_s;         /* fuse length, seconds, GW_ESCROW_FUSE_MIN..MAX (0: idle) */
   uint64_t fuse_end;       /* block time (ns): with a champion, when the fuse burns
                               out; before one, when the opening bar lapses and
                               the escrow may be reopened */
   uint64_t crowned_slot;   /* slot of the last change: opening, crown or payout */
-  uint32_t round;          /* escrows opened on this puzzle so far (1 = the first) */
+  uint32_t round;          /* rounds opened on this puzzle so far: 0 = idle (created
+                              by INIT, never opened), 1 = the first */
   uint32_t best;           /* lowest verified sum this escrow has ever seen, over all
                               rounds (GW_ESCROW_NO_SUM = none); never rises */
   uint64_t total_paid;     /* native tokens paid out over all of them */
@@ -74,6 +77,10 @@ enum {
   GW_ESC_NOT_BETTER,       /* offer: sum >= to_beat — sealed on the record, crown unchanged */
   GW_ESC_FROZEN,           /* offer: the fuse has burnt out, the crown awaits payout */
   GW_ESC_SETTLED,          /* offer: the escrow has paid out — no crown to take */
+  GW_ESC_IDLE,             /* offer: no round has been opened — best noted, no crown */
+  GW_ESC_UNCROWNABLE,      /* offer: better, but the solver cannot be paid (ephemeral):
+                              best noted, crown unchanged */
+  GW_ESC_UNPAID,           /* claim: settled without a transfer, the balance stays */
   GW_ESC_ERR_STATE,        /* account data is not an escrow for this puzzle */
   GW_ESC_ERR_ARGS,         /* open: fuse out of range, or a zero bar */
   GW_ESC_ERR_LIVE,         /* open: this puzzle's escrow is still contested */
@@ -85,7 +92,14 @@ enum {
 
 void gw_escrow_seed(uint8_t puzzle, uint8_t seed[32]);
 
-/* account data <-> struct (little-endian, packed; layout in FORMAT.md) */
+/* An idle escrow, as INIT creates it: round 0, no crown, best none, nothing to
+   beat, reopenable. It exists so that `best` sees every score from the first
+   seal on. */
+void gw_escrow_init(gw_escrow_t *e, uint8_t puzzle, uint64_t slot);
+
+/* account data <-> struct (little-endian, packed; layout in FORMAT.md). Load
+   checks structure only (length, magic, puzzle, flag consistency), never
+   policy such as the fuse bounds, so a later upgrade can always read it. */
 void gw_escrow_store(const gw_escrow_t *e, uint8_t out[GW_ESCROW_SZ]);
 int  gw_escrow_load(const uint8_t *data, uint32_t len, uint8_t puzzle, gw_escrow_t *e);
 
@@ -107,21 +121,29 @@ int  gw_escrow_fuse_ok(uint32_t fuse_s);
 int  gw_escrow_reopenable(const gw_escrow_t *e, uint64_t now);
 
 /* A verified submission's sum, offered for the crown. It lowers `best` in
-   every state (settled and frozen escrows included): the caller saves the
-   escrow whenever best or the crown changed. */
+   every state (idle, frozen and settled escrows included, and with no block
+   time): the caller saves the escrow whenever best or the crown changed. It
+   crowns only a sum strictly below both the round's sum to beat and every sum
+   seen before, by a solver that `can_crown` (the shell says no for an
+   account that cannot be paid), with a block time, before the fuse is out. */
 int  gw_escrow_offer(gw_escrow_t *e, uint64_t sum, const uint8_t solver[32],
-                     uint64_t now, uint64_t slot);
+                     int can_crown, uint64_t now, uint64_t slot);
 
 /* Has the fuse burnt out (a champion has won the current round)? */
 int  gw_escrow_expired(const gw_escrow_t *e, uint64_t now);
 
-/* Settle: *pay = the whole balance, owed to e->champion, once. The escrow is
-   then settled for good. GW_ESC_OK or an error. */
-int  gw_escrow_claim(gw_escrow_t *e, uint64_t balance, uint64_t now, uint64_t slot,
-                     uint64_t *pay);
+/* Settle the round, once: GW_ESC_OK with *pay = the whole balance, owed to
+   e->champion; or, when `payable` is 0 (the champion's account cannot be
+   credited), GW_ESC_UNPAID with *pay = 0 — the round settles marked UNPAID and
+   the balance stays for the next round. Either way the fuse never relights.
+   Anything else is an error. */
+int  gw_escrow_claim(gw_escrow_t *e, uint64_t balance, int payable, uint64_t now,
+                     uint64_t slot, uint64_t *pay);
 
 /* Event payload "GW!E": kind, puzzle, amount, then the escrow as stored (GWE2). */
-enum { GW_ESCROW_EV_OPEN = 1, GW_ESCROW_EV_CROWN = 2, GW_ESCROW_EV_PAYOUT = 3 };
+enum { GW_ESCROW_EV_OPEN = 1, GW_ESCROW_EV_CROWN = 2, GW_ESCROW_EV_PAYOUT = 3,
+       GW_ESCROW_EV_UNPAID = 4,   /* settled without a transfer; amount = the balance kept */
+       GW_ESCROW_EV_INIT = 5 };
 void gw_escrow_event(const gw_escrow_t *e, uint8_t kind, uint64_t amount,
                      uint8_t out[GW_ESCROW_EVENT_SZ]);
 

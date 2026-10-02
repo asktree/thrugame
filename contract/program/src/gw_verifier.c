@@ -1,6 +1,6 @@
 /* GREAT WORK! — on-chain verifier program (ThruVM).
  *
- * Three instructions, told apart by the first byte (FORMAT.md):
+ * Four instructions, told apart by the first byte (FORMAT.md):
  *
  *   SUBMIT (3)    u8 3 | u8 puzzle id | u8 name len | u8 username len |
  *                 name | username | codec v2 machine bytes
@@ -8,6 +8,7 @@
  *                 state proof of the escrow's absence (first open only) |
  *                 codec v2 machine bytes: the bar (optional)
  *   CLAIM  (0x11) u8 0x11 | u8 puzzle id
+ *   INIT   (0x12) u8 0x12 | u8 puzzle id | state proof of the escrow's absence
  *
  * SUBMIT decodes the machine, rebuilds the puzzle from the embedded catalog
  * and the submission's board layout, runs the rules engine to its verdict,
@@ -19,13 +20,14 @@
  *
  * Prize escrow (SPEC §13, rules in ../gw_escrow.c): each puzzle has one
  * escrow account at a program-derived address (seed "gw-escrow" + puzzle id)
- * whose native balance is the pot. Every SUBMIT must carry that account,
- * read-write, whether or not the escrow exists — otherwise a better machine
- * could be sealed past the escrow and then copied into the crown. Every
+ * whose native balance is the pot. INIT (anyone) creates it idle; it must
+ * exist before any score on its puzzle is sealed, and every SUBMIT must carry
+ * it read-write — otherwise a better machine could be sealed past the escrow
+ * and then copied into the crown. Every
  * verified sum lowers the escrow's `best` (the lowest sum it has seen); one
  * strictly below the round's sum to beat takes the crown and relights the
  * fuse (event GW!E). OPEN, by anyone, starts a round with an empty crown,
- * a fuse of 10 minutes to 365 days, and optionally a bar: a machine (normally
+ * a fuse of 10 minutes to 30 days, and optionally a bar: a machine (normally
  * a copy of the public record) that is verified and sealed like a submission,
  * its sum joining best. The round's sum to beat is best, so no round — fresh
  * or reopened with a balance carried over — can be won by a sum already
@@ -33,7 +35,9 @@
  * bar lapsed unbeaten. Deposits are plain native transfers to the escrow
  * address (which must exist: a transfer cannot create it). CLAIM, open to
  * anyone once the fuse has burnt out, pays the whole balance to the champion,
- * once.
+ * once — or, if the champion's account cannot be credited, settles the round
+ * unpaid and keeps the balance for the next one. A solver whose account
+ * cannot be paid (ephemeral) is sealed but never crowned.
  *
  * Score event GW!2 (little-endian, packed):
  *   0  "GW!2"           magic + payload version
@@ -50,12 +54,14 @@
  * escrow account is not in the transaction, 0x07 escrow account unusable
  * (not read-write, wrong owner or bad data), 0x08 reserved (unused), 0x09
  * the puzzle's escrow is still contested, 0x0A bad OPEN arguments (fuse
- * outside 600 s .. 365 days), 0x0B
+ * outside 600 s .. 30 days), 0x0B
  * no escrow for this puzzle, 0x0C nobody holds the crown, 0x0D the fuse is
  * still burning, 0x0E the champion's account is not in the transaction
  * read-write, 0x0F transfer failed, 0x10 block time unavailable, 0x11 the
- * escrow has already paid out, 0x12 the escrow account is compressed
- * (decompress it first — anyone may),
+ * escrow has already paid out, 0x12 the escrow (or the champion's) account
+ * is compressed (decompress it first — anyone may), 0x13 the puzzle's escrow
+ * account does not exist yet (send INIT first), 0x14 a verified sum out of
+ * the escrow's range,
  * 0x100 + GW_ERR_* (invalid submission),
  * 0x200 + GW_FAULT_* (the machine faulted), 0xBADBAD engine capacity panic. */
 
@@ -68,6 +74,7 @@
 #define GW_IX_SUBMIT    3U
 #define GW_IX_OPEN      0x10U
 #define GW_IX_CLAIM     0x11U
+#define GW_IX_INIT      0x12U
 #define GW_EVENT_HDR    58UL
 #define GW_NAME_MAX     32UL
 #define GW_USER_MAX     24UL
@@ -90,6 +97,8 @@
 #define RC_CLOCK          0x10UL
 #define RC_PAID           0x11UL
 #define RC_COMPRESSED     0x12UL
+#define RC_NO_INIT        0x13UL
+#define RC_SUM_RANGE      0x14UL
 #define RC_INVALID        0x100UL
 #define RC_FAULT          0x200UL
 
@@ -123,12 +132,11 @@ grow_stack( ulong bytes ) {
 /* The beneficiary: fee payer when called directly, else the first account the
    calling program authorized (never the fee payer, who is then a relayer, and
    never a program account). */
-static tn_pubkey_t const *
+static ushort
 solver_of( void ) {
   tsdk_txn_t const *          txn  = tsdk_get_txn( );
-  tn_pubkey_t const *         accs = tsdk_txn_get_acct_addrs( txn );
   tsdk_shadow_stack_t const * ss   = tsdk_get_shadow_stack( );
-  if( ss->call_depth <= 1 ) return &accs[ 0 ];
+  if( ss->call_depth <= 1 ) return 0;
   ushort cnt  = tsdk_txn_account_cnt( txn );
   ushort self = tsdk_get_current_program_acc_idx( );
   for( ushort i = 1; i < cnt; i++ ) {
@@ -136,7 +144,7 @@ solver_of( void ) {
     if( !tsdk_is_account_authorized_by_idx( i ) ) continue;
     tsdk_account_meta_t const * meta = tsdk_get_account_meta( i );
     if( meta && ( meta->flags & TSDK_ACCOUNT_FLAG_PROGRAM ) ) continue;
-    return &accs[ i ];
+    return i;
   }
   tsdk_revert( RC_NO_SOLVER );
 }
@@ -183,10 +191,11 @@ escrow_account( ulong puzzle, uchar seed[ 32 ] ) {
 enum { ESC_NONE = 0, ESC_OURS = 1, ESC_FOREIGN = 2 };
 static int
 escrow_kind( ushort idx ) {
-  if( !tsdk_account_exists( idx ) ) return ESC_NONE;
-  /* a compressed escrow would read as stale: its best could be behind the
-     record. Refuse to act on it rather than skip it (anyone may decompress) */
+  /* compressed first: a compressed account may read as absent, and either way
+     its best could be behind the record. Refuse to act on it rather than skip
+     it (anyone may decompress) */
   if( tsdk_get_account_meta( idx )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );
+  if( !tsdk_account_exists( idx ) ) return ESC_NONE;
   /* only this program can create an account at its derived address, and a
      native transfer cannot create one, so this should never happen; if it
      ever did, it holds no pot of ours */
@@ -202,7 +211,7 @@ escrow_read( ushort idx, ulong puzzle, gw_escrow_t * e ) {
     tsdk_revert( RC_ESCROW_BAD );
 }
 
-/* load the puzzle's escrow for OPEN / CLAIM; 0 if it has none */
+/* load the puzzle's escrow for OPEN / CLAIM / INIT; 0 if it has none */
 static int
 escrow_load( ushort idx, ulong puzzle, gw_escrow_t * e ) {
   int kind = escrow_kind( idx );
@@ -215,6 +224,19 @@ escrow_load( ushort idx, ulong puzzle, gw_escrow_t * e ) {
 static void
 escrow_save( ushort idx, gw_escrow_t const * e ) {
   if( tsys_set_account_data_writable( idx ) ) tsdk_revert( RC_ESCROW_BAD );
+  gw_escrow_store( e, (uint8_t *)tsdk_get_account_data_ptr( idx ) );
+}
+
+/* create the escrow account at its derived address and store `e` in it */
+static void
+escrow_create( ushort idx, uchar const seed[ 32 ], uchar const * proof, ulong proof_sz, gw_escrow_t const * e ) {
+  if( !proof_sz ) tsdk_revert( RC_BAD_IX );               /* creating it needs the state proof */
+  if( tsys_account_create( idx, seed, proof, proof_sz ) ) tsdk_revert( RC_ESCROW_BAD );
+  if( tsys_set_account_data_writable( idx ) )             tsdk_revert( RC_ESCROW_BAD );
+  if( tsys_account_resize( idx, GW_ESCROW_SZ ) )           tsdk_revert( RC_ESCROW_BAD );
+  /* ask the runtime to keep the escrow out of compression. Best effort: if
+     the runtime refuses the flag, compression is still caught (RC_COMPRESSED) */
+  (void)tsys_account_set_flags( idx, (uchar)( tsdk_get_account_meta( idx )->flags | TSDK_ACCOUNT_FLAG_UNCOMPRESSABLE ) );
   gw_escrow_store( e, (uint8_t *)tsdk_get_account_data_ptr( idx ) );
 }
 
@@ -232,9 +254,19 @@ block_time( void ) {
   return now;
 }
 
+/* can this account be credited later? Not if the runtime will drop it
+   (ephemeral) or has deleted it */
+static int
+payable( ushort idx ) {
+  tsdk_account_meta_t const * meta = tsdk_get_account_meta( idx );
+  if( !tsdk_account_exists( idx ) ) return 0;
+  return !( meta->flags & ( TSDK_ACCOUNT_FLAG_EPHEMERAL | TSDK_ACCOUNT_FLAG_DELETED ) );
+}
+
 /* Verify a machine for `puzzle` and seal it on the record: one GW!2 event
-   naming the solver. Anything but a verified machine reverts. */
-static tn_pubkey_t const *
+   naming the solver. Anything but a verified machine reverts. Returns the
+   solver's index in the transaction. */
+static ushort
 seal( ulong puzzle, uchar const * machine, ulong machine_len,
       uchar const * name, ulong name_len, uchar const * user, ulong user_len,
       gw_verdict_t * v ) {
@@ -246,8 +278,11 @@ seal( ulong puzzle, uchar const * machine, ulong machine_len,
   gw_verify( &GW_PUZZLES[ puzzle ], machine, (uint32_t)machine_len, ws, v );
   if( v->err != GW_OK )                tsdk_revert( RC_INVALID + (ulong)v->err );
   if( v->status != GW_STATUS_VERIFIED ) tsdk_revert( RC_FAULT + (ulong)v->fault_kind );
+  /* a verified sum the escrow's u32 cannot hold (or 0) never reaches it */
+  if( v->sum <= 0 || v->sum >= (int64_t)GW_ESCROW_NO_SUM ) tsdk_revert( RC_SUM_RANGE );
 
-  tn_pubkey_t const * solver = solver_of( );
+  ushort              sidx   = solver_of( );
+  tn_pubkey_t const * solver = &tsdk_txn_get_acct_addrs( tsdk_get_txn( ) )[ sidx ];
   ev[ 0 ] = 'G'; ev[ 1 ] = 'W'; ev[ 2 ] = '!'; ev[ 3 ] = '2';
   ev[ 4 ] = (uchar)puzzle;
   ev[ 5 ] = 0;
@@ -263,7 +298,7 @@ seal( ulong puzzle, uchar const * machine, ulong machine_len,
   for( ulong i = 0; i < name_len;    i++ ) *w++ = name[ i ];
   for( ulong i = 0; i < user_len;    i++ ) *w++ = user[ i ];
   if( tsys_emit_event( ev, (ulong)( w - ev ) ) ) tsdk_revert( RC_EVENT );
-  return solver;
+  return sidx;
 }
 
 static void __attribute__(( noreturn ))
@@ -280,30 +315,48 @@ submit( uchar const * d, ulong sz ) {
   uchar const * machine     = user + user_len;
   ulong         machine_len = sz - 4UL - name_len - user_len;
 
-  /* the escrow account rides along read-write on every submission, existing
-     or not: every verified sum must pass through the escrow's best */
+  /* the escrow account rides along read-write on every submission, and must
+     exist (INIT): every verified sum passes through the escrow's best, from
+     the very first seal on */
   uchar  seed[ 32 ];
   ushort esc_idx = escrow_account( puzzle, seed );
   if( !tsdk_txn_is_account_idx_writable( tsdk_get_txn( ), esc_idx ) ) tsdk_revert( RC_ESCROW_BAD );
-  int has_escrow = escrow_kind( esc_idx ) == ESC_OURS;
+  int kind = escrow_kind( esc_idx );
+  if( kind == ESC_NONE ) tsdk_revert( RC_NO_INIT );
 
   gw_verdict_t v;
-  tn_pubkey_t const * solver = seal( puzzle, machine, machine_len, name, name_len, user, user_len, &v );
+  ushort sidx = seal( puzzle, machine, machine_len, name, name_len, user, user_len, &v );
 
-  /* best always remembers the sum; the crown moves only on a strictly better
-     one, and never after the fuse */
-  if( has_escrow ) {
+  /* best always remembers the sum, clock or not; the crown moves only on a
+     strictly better one, by a solver who can be paid, never after the fuse */
+  if( kind == ESC_OURS ) {
     gw_escrow_t e;
     escrow_read( esc_idx, puzzle, &e );
     uint32_t                 best0 = e.best;
     tsdk_block_ctx_t const * blk   = tsdk_get_current_block_ctx( );
-    int r = gw_escrow_offer( &e, (uint64_t)v.sum, solver->uc, block_time( ), blk->slot );
+    tn_pubkey_t const *      who   = &tsdk_txn_get_acct_addrs( tsdk_get_txn( ) )[ sidx ];
+    int r = gw_escrow_offer( &e, (uint64_t)v.sum, who->uc, payable( sidx ), blk->block_time, blk->slot );
     if( r == GW_ESC_CROWNED || e.best != best0 ) escrow_save( esc_idx, &e );
     if( r == GW_ESC_CROWNED ) escrow_emit( &e, GW_ESCROW_EV_CROWN, 0UL );
   }
 
   /* return 0: a wrapper such as the passkey manager treats any other exit
      code as failure. The sum travels in the event. */
+  tsdk_return( 0UL );
+}
+
+static void __attribute__(( noreturn ))
+init_escrow( uchar const * d, ulong sz ) {
+  if( sz < 2UL ) tsdk_revert( RC_BAD_IX );
+  ulong puzzle = d[ 1 ];
+  if( puzzle >= GW_NPUZZLES ) tsdk_revert( RC_BAD_PUZZLE );
+  uchar  seed[ 32 ];
+  ushort idx = escrow_account( puzzle, seed );
+  gw_escrow_t e;
+  if( escrow_load( idx, puzzle, &e ) ) tsdk_return( 0UL );   /* already there: nothing to do */
+  gw_escrow_init( &e, (uint8_t)puzzle, tsdk_get_current_block_ctx( )->slot );
+  escrow_create( idx, seed, d + 2, sz - 2UL, &e );
+  escrow_emit( &e, GW_ESCROW_EV_INIT, tsdk_get_account_meta( idx )->balance );
   tsdk_return( 0UL );
 }
 
@@ -334,7 +387,7 @@ open_escrow( uchar const * d, ulong sz ) {
   if( machine_len ) {
     gw_verdict_t v;
     seal( puzzle, machine, machine_len, 0, 0UL, 0, 0UL, &v );
-    bar = (uint)v.sum;
+    bar = (uint)v.sum;                                   /* in range: seal checked */
   }
 
   tsdk_block_ctx_t const * blk = tsdk_get_current_block_ctx( );
@@ -343,17 +396,8 @@ open_escrow( uchar const * d, ulong sz ) {
   if( r == GW_ESC_ERR_LIVE ) tsdk_revert( RC_ESCROW_LIVE );
   if( r != GW_ESC_OK )       tsdk_revert( RC_OPEN_ARGS );
 
-  if( !had ) {
-    if( tsys_account_create( idx, seed, proof, proof_sz ) ) tsdk_revert( RC_ESCROW_BAD );
-    if( tsys_set_account_data_writable( idx ) )             tsdk_revert( RC_ESCROW_BAD );
-    if( tsys_account_resize( idx, GW_ESCROW_SZ ) )           tsdk_revert( RC_ESCROW_BAD );
-    /* ask the runtime to keep the escrow out of compression. Best effort: if
-       the runtime refuses the flag, compression is still caught (RC_COMPRESSED) */
-    (void)tsys_account_set_flags( idx, (uchar)( tsdk_get_account_meta( idx )->flags | TSDK_ACCOUNT_FLAG_UNCOMPRESSABLE ) );
-    gw_escrow_store( &e, (uint8_t *)tsdk_get_account_data_ptr( idx ) );
-  } else {
-    escrow_save( idx, &e );
-  }
+  if( !had ) escrow_create( idx, seed, proof, proof_sz, &e );
+  else       escrow_save( idx, &e );
   escrow_emit( &e, GW_ESCROW_EV_OPEN, tsdk_get_account_meta( idx )->balance );
   tsdk_return( 0UL );
 }
@@ -369,22 +413,37 @@ claim( uchar const * d, ulong sz ) {
   gw_escrow_t e;
   if( !escrow_load( idx, puzzle, &e ) ) tsdk_revert( RC_NO_ESCROW );
 
-  tsdk_block_ctx_t const * blk = tsdk_get_current_block_ctx( );
+  /* the payee is fixed by the escrow, never by the caller: the champion's own
+     account must simply be present, read-write. If it is there but cannot be
+     credited (gone, ephemeral, deleted) the round settles unpaid and the
+     balance stays for the next round — a pot is never locked behind it. A
+     compressed champion is not gone: decompress it and claim again. */
+  long champ = -1L;
+  if( e.flags & GW_ESCROW_HAS_CHAMPION ) {
+    champ = find_account( e.champion );
+    if( champ < 0 || !tsdk_txn_is_account_idx_writable( tsdk_get_txn( ), (ushort)champ ) ) tsdk_revert( RC_NO_CHAMP_ACCT );
+    if( tsdk_get_account_meta( (ushort)champ )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );
+  }
+
+  tsdk_block_ctx_t const * blk     = tsdk_get_current_block_ctx( );
+  ulong                    balance = tsdk_get_account_meta( idx )->balance;
+  ulong                    now     = block_time( );
+  gw_escrow_t              before  = e;
   ulong pay = 0UL;
-  int   r   = gw_escrow_claim( &e, tsdk_get_account_meta( idx )->balance, block_time( ), blk->slot, &pay );
+  int   r   = gw_escrow_claim( &e, balance, champ >= 0 && payable( (ushort)champ ), now, blk->slot, &pay );
   if( r == GW_ESC_ERR_PAID )        tsdk_revert( RC_PAID );
   if( r == GW_ESC_ERR_NO_CHAMPION ) tsdk_revert( RC_NO_CHAMPION );
   if( r == GW_ESC_ERR_BURNING )     tsdk_revert( RC_BURNING );
-  if( r != GW_ESC_OK )              tsdk_revert( RC_ESCROW_BAD );
+  if( r != GW_ESC_OK && r != GW_ESC_UNPAID ) tsdk_revert( RC_ESCROW_BAD );
 
-  /* the payee is fixed by the escrow, never by the caller: the champion's own
-     account must simply be present, read-write, for the transfer to land */
-  long champ = find_account( e.champion );
-  if( champ < 0 || !tsdk_txn_is_account_idx_writable( tsdk_get_txn( ), (ushort)champ ) ) tsdk_revert( RC_NO_CHAMP_ACCT );
-
+  /* a transfer the runtime refuses moves nothing: settle unpaid instead */
+  if( r == GW_ESC_OK && pay && tsys_account_transfer( idx, (ulong)champ, pay ) ) {
+    e = before;
+    r = gw_escrow_claim( &e, balance, 0, now, blk->slot, &pay );
+  }
   escrow_save( idx, &e );
-  if( pay && tsys_account_transfer( idx, (ulong)champ, pay ) ) tsdk_revert( RC_TRANSFER );
-  escrow_emit( &e, GW_ESCROW_EV_PAYOUT, pay );
+  if( r == GW_ESC_UNPAID ) escrow_emit( &e, GW_ESCROW_EV_UNPAID, balance );
+  else                     escrow_emit( &e, GW_ESCROW_EV_PAYOUT, pay );
   tsdk_return( 0UL );
 }
 
@@ -396,6 +455,7 @@ start( void const * instruction_data, ulong instruction_data_sz ) {
     case GW_IX_SUBMIT: submit( d, instruction_data_sz );
     case GW_IX_OPEN:   open_escrow( d, instruction_data_sz );
     case GW_IX_CLAIM:  claim( d, instruction_data_sz );
+    case GW_IX_INIT:   init_escrow( d, instruction_data_sz );
     default:           tsdk_revert( RC_BAD_IX );
   }
 }

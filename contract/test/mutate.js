@@ -11,7 +11,11 @@
  *
  * Not listed: OPEN's early fuse and contested-escrow exits in the shell. They
  * only spare the verifier's compute; gw_escrow_open re-checks both, so
- * removing them changes no outcome (equivalent mutants). */
+ * removing them changes no outcome (equivalent mutants); likewise the rules'
+ * explicit "an idle escrow is reopenable" (its fuse end 0 has always lapsed).
+ * Nor the shell's
+ * verified-sum range check (0 < sum < 0xFFFFFFFF): no machine in the vectors
+ * reaches it, and the rules module ignores such a sum anyway. */
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -22,7 +26,8 @@ const SRC = path.resolve(__dirname, '..');
 const RULES = 'gw_escrow.c', SHELL = 'program/src/gw_verifier.c';
 
 const MUTANTS = [
-  ['ties crown', RULES, 'sum >= (uint64_t)e->to_beat', 'sum > (uint64_t)e->to_beat'],
+  ['ties crown', RULES, 'sum >= (uint64_t)seen)', 'sum > (uint64_t)seen)'],
+  ['a sum already seen (uncrowned) can crown', RULES, ' || sum >= (uint64_t)seen', ''],
   ['best forgets sums', RULES, 'if (sum < (uint64_t)e->best) e->best = (uint32_t)sum;', ''],
   ['a settled escrow takes crowns', RULES, 'if (e->flags & GW_ESCROW_SETTLED) return GW_ESC_SETTLED;', ''],
   ['the crown does not freeze', RULES, 'if (gw_escrow_expired(e, now)) return GW_ESC_FROZEN;', ''],
@@ -38,14 +43,31 @@ const MUTANTS = [
   ['it pays twice', RULES, 'if (e->flags & GW_ESCROW_SETTLED) return GW_ESC_ERR_PAID;', ''],
   ['it pays while the fuse burns', RULES, 'if (!gw_escrow_expired(e, now)) return GW_ESC_ERR_BURNING;', ''],
   ['it pays with nobody crowned', RULES, 'if (!(e->flags & GW_ESCROW_HAS_CHAMPION)) return GW_ESC_ERR_NO_CHAMPION;', ''],
-  ['load trusts best above the sum to beat', RULES, ' || e->best > e->to_beat', ''],
-  ['SUBMIT takes the escrow read-only', SHELL, 'if( !tsdk_txn_is_account_idx_writable( tsdk_get_txn( ), esc_idx ) ) tsdk_revert( RC_ESCROW_BAD );', ''],
+  ['load enforces fuse policy', RULES, 'if (e->flags & ~(GW_ESCROW_HAS_CHAMPION | GW_ESCROW_SETTLED | GW_ESCROW_UNPAID)) return GW_ESC_ERR_STATE;',
+    'if (e->flags & ~(GW_ESCROW_HAS_CHAMPION | GW_ESCROW_SETTLED | GW_ESCROW_UNPAID)) return GW_ESC_ERR_STATE;\n  if (e->fuse_s < GW_ESCROW_FUSE_MIN) return GW_ESC_ERR_STATE;'],
+  ['load accepts unpaid without settled', RULES, 'if ((e->flags & GW_ESCROW_UNPAID) && !(e->flags & GW_ESCROW_SETTLED)) return GW_ESC_ERR_STATE;', ''],
+  ['an idle escrow crowns', RULES, 'if (e->round == 0) return GW_ESC_IDLE;', ''],
+  ['an unpayable solver is crowned', RULES, 'if (!can_crown) return GW_ESC_UNCROWNABLE;', ''],
+  ['an unpaid round is not marked', RULES, 'e->flags |= GW_ESCROW_UNPAID;', ''],
+  ['a fuse can wrap past the end of time', RULES, 'return now > UINT64_MAX - len ? UINT64_MAX : now + len;', 'return now + len;'],
+  ['a fuse may run a year', 'gw_escrow.h', '#define GW_ESCROW_FUSE_MAX  2592000u', '#define GW_ESCROW_FUSE_MAX  31536000u'],
+  ['best waits for a clock', RULES, '  if (sum < (uint64_t)e->best) e->best = (uint32_t)sum;  /* remembered in every state, clock or not */\n  if (e->round == 0) return GW_ESC_IDLE;',
+    '  if (e->round == 0) { if (sum < (uint64_t)e->best) e->best = (uint32_t)sum; return GW_ESC_IDLE; }\n  if (now && sum < (uint64_t)e->best) e->best = (uint32_t)sum;'],  ['SUBMIT takes the escrow read-only', SHELL, 'if( !tsdk_txn_is_account_idx_writable( tsdk_get_txn( ), esc_idx ) ) tsdk_revert( RC_ESCROW_BAD );', ''],
   ['SUBMIT does not save a lower best', SHELL, 'if( r == GW_ESC_CROWNED || e.best != best0 ) escrow_save', 'if( r == GW_ESC_CROWNED ) escrow_save'],
+  ['SUBMIT seals before INIT', SHELL, 'if( kind == ESC_NONE ) tsdk_revert( RC_NO_INIT );', ''],
+  ['a compressed escrow that reads as absent slips through', SHELL,
+    '  if( tsdk_get_account_meta( idx )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );\n  if( !tsdk_account_exists( idx ) ) return ESC_NONE;',
+    '  if( !tsdk_account_exists( idx ) ) return ESC_NONE;\n  if( tsdk_get_account_meta( idx )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );'],
+  ['SUBMIT needs a clock', SHELL, 'payable( sidx ), blk->block_time,', 'payable( sidx ), block_time( ),'],
+  ['an ephemeral solver counts as payable', SHELL, '!( meta->flags & ( TSDK_ACCOUNT_FLAG_EPHEMERAL | TSDK_ACCOUNT_FLAG_DELETED ) )', '1'],
+  ['a refused payout transfer reverts the claim', SHELL, 'e = before;\n    r = gw_escrow_claim( &e, balance, 0, now, blk->slot, &pay );', 'tsdk_revert( RC_TRANSFER );'],
+  ['a compressed champion is paid nothing', SHELL, 'if( tsdk_get_account_meta( (ushort)champ )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );', ''],
+  ['INIT over an existing escrow', SHELL, 'if( escrow_load( idx, puzzle, &e ) ) tsdk_return( 0UL );', 'if( 0 && escrow_load( idx, puzzle, &e ) ) tsdk_return( 0UL );'],
   ['SUBMIT skips a compressed escrow', SHELL, 'if( tsdk_get_account_meta( idx )->flags & TSDK_ACCOUNT_FLAG_COMPRESSED ) tsdk_revert( RC_COMPRESSED );', ''],
   ['a foreign account blocks sealing', SHELL, 'if( !tsdk_is_account_owned_by_current_program( idx ) ) return ESC_FOREIGN;', 'if( !tsdk_is_account_owned_by_current_program( idx ) ) tsdk_revert( RC_ESCROW_BAD );'],
   ['OPEN ignores the bar machine', SHELL, 'bar = (uint)v.sum;', 'bar = GW_ESCROW_NO_SUM;'],
-  ['CLAIM pays the caller', SHELL, 'long champ = find_account( e.champion );', 'long champ = 0;'],
-  ['CLAIM does not record the payout', SHELL, '  escrow_save( idx, &e );\n  if( pay &&', '  if( pay &&'],
+  ['CLAIM pays the caller', SHELL, 'champ = find_account( e.champion );', 'champ = 0;'],
+  ['CLAIM does not record the payout', SHELL, '  escrow_save( idx, &e );\n  if( r == GW_ESC_UNPAID )', '  if( r == GW_ESC_UNPAID )'],
 ];
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-mutate-'));
