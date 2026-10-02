@@ -2627,12 +2627,13 @@
       'lock a prize on this puzzle: anyone may, and the contract alone pays it out', openEscrowDlg,
       rowsFor === pIdx ? null : 'waiting for the on-chain record to load (Refresh if it failed)');
 
-    if (!e) {
+    if (!e || phase === 'idle') {
       box.className = 'bounty quiet';
       // an account that exists but is not a readable escrow of this program is
       // nothing the editor can open over or deposit into
-      note.textContent = st.exists ? 'escrow account unreadable — nothing to do here' : 'No prize escrow on this puzzle.';
-      if (!st.exists) acts.appendChild(openBtn());
+      note.textContent = phase === 'idle' ? 'No prize escrow round on this puzzle yet.'
+        : st.exists ? 'escrow account unreadable — nothing to do here' : 'No prize escrow on this puzzle.';
+      if (!st.exists || phase === 'idle') acts.appendChild(openBtn());
       box.appendChild(note); box.appendChild(acts);
       return;
     }
@@ -2676,7 +2677,8 @@
       fuseV.textContent = 'burnt out';
       grid.appendChild(fuseCell);
       grid.appendChild(escrowCell(e.round > 1 ? 'Paid, all ' + e.round + ' rounds' : 'Paid', fmtPot(e.totalPaid)));
-      note.textContent = 'paid out to the champion, once — this round is closed.'
+      note.textContent = (e.unpaid ? 'settled unpaid: the champion’s account could not receive, so the pot stayed — this round is closed.'
+        : 'paid out to the champion, once — this round is closed.')
         + (st.balance > 0n ? ' The ' + fmtPot(st.balance) + ' THRU sent since goes to whoever wins the next round' : ' Anyone may open the next round')
         + (e.best === GWChain.NO_SUM ? '.' : ', which only a SUM under ' + e.best + ' can take.');
       acts.appendChild(openBtn());

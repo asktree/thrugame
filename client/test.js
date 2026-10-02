@@ -50,6 +50,7 @@ check(paid && paid.kind === 'paid' && paid.amount === 12345n && paid.escrow.sett
 check(paid && paid.escrow.best === 150 && paid.escrow.sumToBeat === 163, 'best remembers the frozen-out 150');
 check(C.parseEscrowEvent(new Uint8Array(96)) === null && C.parseScoreEvent(hex('4757214502')) === null, 'junk is not an event');
 check(C.parseEscrow(hex(ACCT_HEX), 4) === null, 'escrow for another puzzle');
+{ const d = hex(ACCT_HEX); d[5] = 7; const u = C.parseEscrow(d, 5); check(u && u.settled && u.unpaid, 'settled-unpaid flag'); }
 check(C.parseEscrow(hex('4757453105' + ACCT_HEX.slice(10)), 5) === null, 'the old GWE1 layout is not read');
 
 // phases
@@ -59,6 +60,7 @@ check(C.escrowPhase(e, t - 1n) === 'burning' && C.escrowPhase(e, t) === 'won', '
 check(C.escrowPhase(paid.escrow, t) === 'settled', 'phase settled');
 const fresh = { ...e, hasChampion: false, champion: null };
 check(C.escrowPhase(fresh, t - 1n) === 'open' && C.escrowPhase(fresh, t) === 'lapsed', 'phase open -> lapsed');
+check(C.escrowPhase({ ...fresh, round: 0 }, t) === 'idle' && C.canReopen('idle') && !C.canDeposit('idle'), 'phase idle (INIT, no round)');
 check(C.canReopen('none') && C.canReopen('settled') && C.canReopen('lapsed') && !C.canReopen('open') && !C.canReopen('burning') && !C.canReopen('won'), 'reopen rule');
 check(C.canDeposit('open') && C.canDeposit('burning') && !['none', 'lapsed', 'won', 'settled'].some(C.canDeposit), 'deposit only into a contested round');
 
@@ -68,8 +70,9 @@ check(eq(C.encodeOpen(2, { proof: Uint8Array.of(7, 8), barMachine: Uint8Array.of
 const refused = (f) => { try { f(); return false; } catch (err) { return true; } };
 check(refused(() => C.encodeOpen(0, { fuseSeconds: 0 })), 'zero fuse refused client-side');
 check(refused(() => C.encodeOpen(0, { fuseSeconds: 599 })) && !refused(() => C.encodeOpen(0, { fuseSeconds: 600 })), '10-minute minimum');
-check(refused(() => C.encodeOpen(0, { fuseSeconds: 31536001 })) && !refused(() => C.encodeOpen(0, { fuseSeconds: 31536000 })), '365-day maximum');
-check(C.FUSE_MIN === 600 && C.FUSE_MAX === 365 * 86400, 'fuse bounds mirror gw_escrow.h');
+check(refused(() => C.encodeOpen(0, { fuseSeconds: 2592001 })) && !refused(() => C.encodeOpen(0, { fuseSeconds: 2592000 })), '30-day maximum');
+check(C.FUSE_MIN === 600 && C.FUSE_MAX === 30 * 86400, 'fuse bounds mirror gw_escrow.h');
+check(eq(C.encodeInit(4, Uint8Array.of(7, 8)), Uint8Array.of(0x12, 4, 7, 8)) && refused(() => C.encodeInit(4, new Uint8Array())), 'INIT layout, proof required');
 check(eq(C.encodeClaim(3), Uint8Array.of(0x11, 3)), 'claim layout');
 check(eq(C.encodeEoaTransfer(258n, 0, 2), Uint8Array.of(1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0)), 'EOA transfer layout');
 
@@ -78,7 +81,7 @@ check(C.EOA_PROGRAM === EOA_PROGRAM_ID && EOA_PROGRAM_ID === 'taEOAD2uLK1SLzPgta
 check(!Pubkey.from(C.EOA_PROGRAM).toBytes().every(b => b === 0), 'EOA program is not the zero key');
 
 // every revert code the program can raise has words
-for (const code of [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 0x101, 0x201, 0xBADBAD])
+for (const code of [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 0x101, 0x201, 0xBADBAD])
   check(!/^error /.test(C.describeRevert(code)), 'revert 0x' + code.toString(16) + ' described');
 
 // the event log is read to its end, page by page (the RPC serves 50 a page by default)
@@ -144,10 +147,21 @@ for (const code of [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 
   check(await C.openEscrow(f.client, { wallet: kp, puzzleId: 2, fuseSeconds: 60, program: prog }).then(() => false, () => true), 'a 60 s fuse never leaves the client');
 
   // SUBMIT, CLAIM, deposits
+  const live = { ...ours, data: { data: escrowData(C.nowNs() + 10n ** 15n) } };
+  f = fake({ [escAddr]: live });
+  await C.submitSolution(f.client, { wallet: kp, puzzleId: 2, machineBytes: machine, program: prog });
+  check(f.calls.length === 1 && units(f.calls[0].opts.header) === '0/10000', 'SUBMIT (local key): ' + units(f.calls[0].opts.header));
+  // a puzzle whose escrow account does not exist yet: INIT first (1 state unit), then SUBMIT
   f = fake({});
   await C.submitSolution(f.client, { wallet: kp, puzzleId: 2, machineBytes: machine, program: prog });
-  check(units(f.calls[0].opts.header) === '0/10000', 'SUBMIT (local key): ' + units(f.calls[0].opts.header));
-  const live = { ...ours, data: { data: escrowData(C.nowNs() + 10n ** 15n) } };
+  check(f.calls.length === 2 && f.calls[0].opts.instructionData[0] === 0x12 && units(f.calls[0].opts.header) === '1/10000' &&
+        f.calls[1].opts.instructionData[0] === 3 && units(f.calls[1].opts.header) === '0/10000', 'SUBMIT with no escrow: INIT first, then SUBMIT');
+  // a compressed escrow: refused before anything is broadcast
+  f = fake({ [escAddr]: { ...live, meta: { owner: Pubkey.from(prog), flags: { isCompressed: true } } } });
+  check(await C.submitSolution(f.client, { wallet: kp, puzzleId: 2, machineBytes: machine, program: prog }).then(() => false, (err) => err.code === 0x12 && /decompress/.test(err.message)) &&
+        f.calls.length === 0, 'compressed escrow: told to decompress, nothing sent');
+  f = fake({ [escAddr]: live });
+  check((await C.initEscrow(f.client, { wallet: kp, puzzleId: 2, program: prog })).created === false && f.calls.length === 0, 'INIT on an existing escrow sends nothing');
   f = fake({ [escAddr]: live });
   await C.claimEscrow(f.client, { wallet: kp, puzzleId: 2, program: prog });
   check(units(f.calls[0].opts.header) === '0/10000', 'CLAIM: ' + units(f.calls[0].opts.header));
@@ -171,16 +185,20 @@ for (const code of [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 
   await C.ensurePasskeyWallet(f.client, { meta, payer: kp });
   check(f.calls.length === 2 && f.calls.every(c => c.kind === 'build' && units(c.opts.header) === '1/10000'), 'passkey wallet + lookup: 1 state unit each');
   const walletAddress = await C.passkeyWalletAddress(meta);
-  f = fake({ [walletAddress]: {} });
+  f = fake({ [walletAddress]: {} });            // no escrow yet: the payer INITs it first
   const assertion = { signatureR: new Uint8Array(32).fill(1), signatureS: new Uint8Array(32).fill(1), authenticatorData: new Uint8Array(37), clientDataJSON: new Uint8Array(8) };
   await C.submitViaPasskey(f.client, { walletAddress, payer: kp, puzzleId: 2, machineBytes: machine, sign: async () => assertion, program: prog });
-  check(units(f.calls[0].opts.header) === '0/10000', 'SUBMIT via passkey: ' + units(f.calls[0].opts.header));
+  check(f.calls.length === 2 && f.calls[0].opts.instructionData[0] === 0x12 && units(f.calls[0].opts.header) === '1/10000', 'passkey SUBMIT, no escrow: the payer INITs it');
+  check(units(f.calls[1].opts.header) === '0/10000', 'SUBMIT via passkey: ' + units(f.calls[1].opts.header));
 
   // hosted wallet: the wallet owns the header, the intent says SUBMIT grows nothing
-  let intent = null;
-  await C.submitViaWallet(fake({}).client, { signIntent: async (x) => { intent = x; return new Uint8Array(200); }, walletAddress, puzzleId: 2, machineBytes: machine, program: prog });
+  const intents = [];
+  await C.submitViaWallet(fake({}).client, { signIntent: async (x) => { intents.push(x); return new Uint8Array(200); }, walletAddress, puzzleId: 2, machineBytes: machine, program: prog });
+  const b64 = (x) => Uint8Array.from(Buffer.from(x, 'base64'));
+  check(intents.length === 2 && b64(intents[0].instructionData)[0] === 0x12 && intents[0].stateUnits === 1, 'hosted wallet, no escrow: an INIT intent first, 1 state unit');
+  const intent = intents[1];
   check(intent && intent.stateUnits === 0 && intent.readWriteAddresses[0] === escAddr, 'hosted wallet intent: 0 state units, escrow read-write');
 }
 
 if (failures) { console.log(failures + ' FAILURES'); process.exit(1); }
-console.log('client wire formats: submission v3, escrow address, GW!E (GWE2, best), phases, OPEN (fuse range, bar machine)/CLAIM, EOA transfer, resource units, reverts checked');
+console.log('client wire formats: submission v3, escrow address, GW!E (GWE2, best), phases, OPEN (fuse range, bar machine)/CLAIM/INIT, auto-INIT before SUBMIT, compressed refusal, EOA transfer, resource units, reverts checked');
