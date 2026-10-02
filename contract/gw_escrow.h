@@ -120,7 +120,7 @@ int  gw_escrow_expired(const gw_escrow_t *e, uint64_t now);
 int  gw_escrow_claim(gw_escrow_t *e, uint64_t balance, uint64_t now, uint64_t slot,
                      uint64_t *pay);
 
-/* Event payload "GWE1": kind, puzzle, amount, then the escrow as stored. */
+/* Event payload "GW!E": kind, puzzle, amount, then the escrow as stored (GWE2). */
 enum { GW_ESCROW_EV_OPEN = 1, GW_ESCROW_EV_CROWN = 2, GW_ESCROW_EV_PAYOUT = 3 };
 void gw_escrow_event(const gw_escrow_t *e, uint8_t kind, uint64_t amount,
                      uint8_t out[GW_ESCROW_EVENT_SZ]);

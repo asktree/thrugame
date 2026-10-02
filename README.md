@@ -24,6 +24,7 @@ node engine/gen-vectors.js        # freeze the oracle's behavior into contract/t
 make -C contract check            # C engine + verifier vs. the frozen vectors, then the
                                   # prize escrow: its rules and the program shell on a
                                   # simulated ledger
+node contract/test/mutate.js      # every escrow rule must be caught when broken
 ```
 
 Regenerate the vectors after any engine or example change; the C harness must
@@ -51,9 +52,9 @@ point a test at it so test runs never land on the public record.
 cd client && npm install
 node submit.js amalgam.AgEAAAAFABBYJEgKtmwBAAEABQIAAgEAAQIAAAEAAgA --name "Courier" --user you
 node leaderboard.js [amalgam]
-node escrow.js amalgam            # the puzzle's prize escrow: pot, champion, fuse
-node escrow.js amalgam open --fuse 30d --bar record    # anyone may
-node escrow.js amalgam deposit --amount 1000
+node escrow.js amalgam            # the puzzle's prize escrow: pot, champion, best, fuse
+node escrow.js amalgam open --fuse 30d --bar record    # anyone may; the bar is the record's machine
+node escrow.js amalgam deposit --amount 1000           # into an open round only
 node escrow.js amalgam claim      # after the fuse: pays the champion
 npm test                          # offline checks of the client's wire formats
 npm run bundle                    # refresh demo/gw-chain.js after changing gw-chain.js
