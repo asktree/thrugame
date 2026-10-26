@@ -33,6 +33,6 @@ for (const s of ranked) {
   console.log(`  #${rank}  sum ${String(s.sum).padStart(4)}  = ${String(s.cost).padStart(3)}g + ${String(s.cycles).padStart(3)}c + ${String(s.area).padStart(2)}a   ${(s.name || '(unnamed)').padEnd(22)} ${who}   slot ${s.slot}`);
   if (only) {
     const code = `${only.key}.${CODEC.toString(s.machine)}`;
-    console.log(`       ${code}\n       watch: ${EDITOR}#play/${code}`);
+    console.log(`       ${code}\n       load:  ${EDITOR}#play/${code}`);
   }
 }
