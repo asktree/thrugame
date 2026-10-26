@@ -237,6 +237,17 @@
   .glyphhelp h3 small { font-family: var(--mono); font-size: 9.5px; font-weight: 400; letter-spacing: .08em; color: var(--ink-faint); text-transform: none; }
   .glyphhelp .diagram { display: block; width: 100%; height: auto; margin-top: 6px; }
   .glyphhelp .note { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--ink-dim); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); line-height: 1.5; }
+  /* the same card for a selected arm: what each tape cell does */
+  .glyphhelp .ops { display: grid; grid-template-columns: 47px 22px 1fr; gap: 3px 6px; align-items: center; margin-top: 7px; }
+  .glyphhelp .ops .cells { display: flex; gap: 3px; }
+  .glyphhelp .ops .cell { font-family: var(--mono); font-size: 12px; line-height: 1; padding: 3px 0; width: 22px; box-sizing: border-box; text-align: center;
+    border: 1px solid var(--line); color: var(--ink-dim); background: var(--parch-2); }
+  .glyphhelp .ops .cell.delay { opacity: .6; border-style: dashed; }
+  .glyphhelp .ops .cell.pad { opacity: .5; border-style: dotted; }
+  .glyphhelp .ops kbd { font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); white-space: nowrap; }
+  .glyphhelp .ops .what { font-family: var(--mono); font-size: 9.5px; letter-spacing: .03em; color: var(--ink); line-height: 1.35; }
+  .glyphhelp .ops .what b { font-weight: 700; }
+  .glyphhelp .note .bad { color: var(--oxblood); }
   @media (max-width: 640px) { .glyphhelp { display: none !important; } }
 
   /* the tutorial: one lesson per puzzle, above the tray; the puzzles unlock in order */
@@ -538,6 +549,15 @@
     disposals:   { title: 'Disposal',      before: { atoms: ['Pb'] },                  after: { atoms: [null] },
                    note: 'only a released, unbonded atom on the centre is destroyed · held atoms are safe' },
   };
+  // the tape card for a selected arm: each cell it can hold, its key, and what it does
+  const TAPE_HELP = [
+    [['G'], 'g', '<b>grab</b> the atom below'],
+    [['D'], 'd', '<b>release</b> it'],
+    [['+', '-'], 'q w', '<b>turn</b> the arm'],
+    [['P', 'Q'], 'e r', '<b>pivot</b> what it holds'],
+    [['W'], 't', '<b>wait</b> one beat'],
+    [['R'], 'y', '<b>repeat</b> back to the last ↪'],
+  ];
   // the cells an asymmetric glyph treats differently, marked on the board and in the card:
   // 1 = an inner hexagon (the cell that receives), 2 = the same with a centre dot
   const GLYPH_MARK = { duplicators: { 1: 1 }, projectors: { 1: 1 }, purifiers: { 2: 1 }, animismus: { 2: 1, 3: 2 } };
@@ -722,13 +742,22 @@
     });
     el.hidden = false;
   }
-  // the tutorial card: shown for the selected glyph, or the one being carried in from the tray
+  // the tutorial card: shown for the selected glyph, or the one being carried in from the
+  // tray; a selected arm gets the tape card instead
   function syncGlyphHelp() {
     const el = $('glyphHelp');
     let type = null;
     if (mode === 'edit') {
       if (drag && drag.kind === 'new' && drag.part.glyph) type = drag.part.glyph;
       else if (sel && sel.kind === 'glyph' && layout.glyphs[sel.i]) type = layout.glyphs[sel.i].type;
+    }
+    const arm = mode === 'edit' && !type && sel && sel.kind === 'arm' ? armById(sel.id) : null;
+    if (arm) {
+      const tip = isTipParent(arm.id);
+      const key = 'arm:' + arm.id + ':' + tip + ':' + tapeCap();
+      if (el.dataset.type !== key) { el.dataset.type = key; el.innerHTML = tapeCard(arm, tip); }
+      el.hidden = false;
+      return;
     }
     const h = type && GLYPH_HELP[type];
     if (!h) { el.hidden = true; el.dataset.type = ''; return; }
@@ -737,6 +766,16 @@
       el.innerHTML = `<h3 class="${type === 'bonders' ? 'bond' : ''}">${h.title}<small>${GW.GLYPH_PRICE[type]}g</small></h3>` + glyphDiagram(type, h);
     }
     el.hidden = false;
+  }
+  function tapeCard(arm, tip) {
+    const row = (cells, cls, k, what) => `<span class="cells">${cells.map(c => `<span class="cell ${cls}">${c}</span>`).join('')}</span>`
+      + `<kbd>${k}</kbd><span class="what">${what}</span>`;
+    const rows = TAPE_HELP.map(([ops, k, what]) => row(ops.map(op => GLYPH[op]), '', k, what)).join('')
+      + row(['»'], 'delay', '»+', '<b>delay</b> the first pass')
+      + row(['·'], 'pad', '', '<b>pad</b> to the longest tape');
+    const tipNote = tip ? `<br><span class="bad">${TIP_NOTE}</span>` : '';
+    return `<h3>Arm ${arm.id} · tape<small>${tapeCap()} cells max</small></h3><div class="ops">${rows}</div>`
+      + `<div class="note">one cell per beat · the tape loops forever${tipNote}</div>`;
   }
   // before → after, drawn the way the board draws them: the glyph's hexes, atoms in
   // their element colours, bonds as ink strokes
