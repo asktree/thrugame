@@ -5109,7 +5109,7 @@
       who.title = r.solver + (r.slot !== null && r.slot !== undefined ? ' · slot ' + String(r.slot) : '');
 
       const act = document.createElement('td'); act.className = 'act';
-      const btn = document.createElement('button'); btn.className = 'ctl'; btn.textContent = '▶ watch';
+      const btn = document.createElement('button'); btn.className = 'ctl'; btn.textContent = '▶ load';
       btn.title = 'replay this sealed solution here — then ✎ Edit to build on it (Undo brings your own machine back)';
       btn.addEventListener('click', () => watchEntry(r, puzIdx));
       act.appendChild(btn);
