@@ -3,7 +3,7 @@
 Renders a solution code to an animated GIF on demand, so every leaderboard entry
 has a stable image link and nothing is ever uploaded.
 
-    GET /gif/<puzzle>/<code>.gif   the run, 480px wide, at the game's 2x speed, 33 fps
+    GET /gif/<puzzle>/<code>.gif   the run, 480px wide, at the game's 1x speed, 25 fps
     GET /png/<puzzle>/<code>.png   the last frame
 
 The renderer is the editor page itself (`page/editor.html`, written by

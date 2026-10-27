@@ -29,8 +29,9 @@ function init() {
   }
 }
 
-// the service's own pacing: the game's 2x tick, 33 frames a second, a whole run
-const PACE = { tickMs: 140, frameMs: 30, maxFrames: 1500 };
+// the service's own pacing: the game's 1x tick, 25 frames a second, a whole run
+// (2250 frames is the same 320 ticks the old 2x pace covered in 1500)
+const PACE = { tickMs: 280, frameMs: 40, maxFrames: 2250 };
 
 export async function render(code, pace) {
   init();

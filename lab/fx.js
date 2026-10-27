@@ -56,12 +56,12 @@
 
   // which pass each effect draws in: 'under' sits beneath the atoms, 'over' above them
   const LAYER = {
-    pulse: 'under', ring: 'under', inpulse: 'under', shock: 'over',
+    pulse: 'under', ring: 'under', inpulse: 'under', shock: 'over', bondshock: 'over',
     bond: 'over', debond: 'over', travel: 'over', ghost: 'over', product: 'over',
   };
   // lifetimes, in ticks
   const LIFE = {
-    pulse: 2.2, shock: 1.6, bond: 1.15, debond: 0.95, ring: 1.25, travel: 0.9,
+    pulse: 2.2, shock: 1.6, bondshock: 1.7, bond: 1.15, debond: 0.95, ring: 1.25, travel: 0.9,
     ghost: 1.1, grow: 0.85, tint: 1.1, product: 1.7, inpulse: 0.85,
   };
   const CAP = 80;               // hard ceiling on live effects; oldest is dropped first
@@ -138,6 +138,7 @@
           case 'bond':
             glyphPulse(cells, COL.brass, at);
             push({ kind: 'bond', born: at, dur: dur(LIFE.bond), ids: [e.a, e.b], cells: cells });
+            push({ kind: 'bondshock', born: at, dur: dur(LIFE.bondshock), ids: [e.a, e.b], cells: cells });
             break;
           case 'debond':
             glyphPulse(cells, COL.ox, at);
@@ -445,7 +446,7 @@
           for (const cell of fx.cells) {
             const p = env.Pc(cell);
             env.hex(p[0], p[1], R);
-            c.strokeStyle = rgba(fx.col, 0.8 * a); c.lineWidth = s * 0.07 * (1 - 0.6 * u); c.stroke();
+            c.strokeStyle = rgba(fx.col, 0.27 * a); c.lineWidth = s * 0.07 * (1 - 0.6 * u); c.stroke();
           }
           break;
         }
@@ -485,6 +486,21 @@
           rg.addColorStop(0.5, rgba(COL.brass, 0.35 * a));
           rg.addColorStop(1, rgba(COL.brass, 0));
           c.beginPath(); c.arc(mx, my, r, 0, TAU); c.fillStyle = rg; c.fill();
+          break;
+        }
+        case 'bondshock': {
+          // the weld's own shockwave: two rings thrown out from the new bond's midpoint,
+          // riding with the atoms if they are carried off
+          const p1 = at(fx, 0, atomPx), p2 = at(fx, 1, atomPx);
+          const mx = (p1[0] + p2[0]) / 2, my = (p1[1] + p2[1]) / 2;
+          for (const [lag, k] of [[0, 1], [0.18, 0.55]]) {
+            const v = clamp01((u - lag) / (1 - lag));
+            if (v <= 0) continue;
+            const a = (1 - v) * (1 - v) * k;
+            c.beginPath(); c.arc(mx, my, s * (0.3 + 2.1 * eOut(v)), 0, TAU);
+            c.strokeStyle = rgba(COL.hot, 0.95 * a); c.lineWidth = s * 0.13 * (1 - 0.7 * v); c.stroke();
+            c.strokeStyle = rgba(COL.brass, 0.7 * a); c.lineWidth = s * 0.05 * (1 - 0.7 * v); c.stroke();
+          }
           break;
         }
         case 'debond': {
