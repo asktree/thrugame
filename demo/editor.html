@@ -3007,7 +3007,7 @@
   // a puzzle is open when it is the first, when the one before it is solved, or when the
   // player arrived at it by a link (a shared machine or a replay). Drafts open nothing:
   // a half-built machine is not a solve.
-  const OPENED_KEY = 'gw-opened', SOLVED_KEY = 'gw-solved', ALL_KEY = 'gw-unlock-all', FOLD_KEY = 'gw-lesson-folded';
+  const OPENED_KEY = 'gw-opened', SOLVED_KEY = 'gw-solved', ALL_KEY = 'gw-unlock-all', SHOWN_KEY = 'gw-lesson-shown';
   const readSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')); } catch (e) { return new Set(); } };
   const writeSet = (k, set) => { try { localStorage.setItem(k, JSON.stringify([...set])); } catch (e) {} };
   const opened = readSet(OPENED_KEY), solved = readSet(SOLVED_KEY);
@@ -3043,13 +3043,13 @@
     if (all) all.hidden = BASES.every((b, k) => isOpen(k));
   }
   let watching = false;             // the board holds someone else's machine (a replay or #play/ link) until the player edits it
-  const lessonFolded = readSet(FOLD_KEY);   // puzzles whose lesson the player minimized (remembered per puzzle)
+  const lessonShown = readSet(SHOWN_KEY);   // lessons start minimized; these the player opened (remembered per puzzle)
   function syncLesson() {
     const el = $('lesson'), b = base();
     const intro = LESSON_INTRO[b.key] || [];
     const steps = pIdx === 0 ? LESSON_STEPS_FIRST : (b.guide || []);
     if (!intro.length && !steps.length) { el.hidden = true; return; }
-    const folded = lessonFolded.has(b.key);
+    const folded = !lessonShown.has(b.key);
     el.className = 'lesson' + (folded ? ' folded' : '');
     el.innerHTML = `<h3>Puzzle ${pIdx + 1} of ${BASES.length} · <b>${b.name}</b></h3>`
       + `<button class="x" type="button" aria-expanded="${!folded}" aria-label="${folded ? 'show' : 'minimize'} the lesson">${folded ? '+ show lesson' : '− minimize'}</button>`
@@ -3067,8 +3067,8 @@
       el.appendChild(done);
     }
     el.querySelector('.x').addEventListener('click', () => {
-      if (lessonFolded.has(b.key)) lessonFolded.delete(b.key); else lessonFolded.add(b.key);
-      writeSet(FOLD_KEY, lessonFolded);
+      if (lessonShown.has(b.key)) lessonShown.delete(b.key); else lessonShown.add(b.key);
+      writeSet(SHOWN_KEY, lessonShown);
       syncLesson();
     });
     el.hidden = false;
