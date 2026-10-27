@@ -3933,7 +3933,7 @@
     g.fillText(txt, x, y); g.restore();
   }
   // reagent input: an engraved dashed ring cut into the board, its element struck faintly inside
-  function paintInput(g, V, inp, label) {
+  function paintInput(g, V, inp, label, letters = true) {
     const S = V.S, cells = inp.shape.cells.map(c => add(inp.at, c)), P = cells.map(V.P);
     g.save(); g.lineCap = 'butt';
     for (const [i, j] of inp.shape.bonds || []) {
@@ -3952,6 +3952,7 @@
       g.strokeStyle = 'rgba(255,250,232,0.9)'; circ(g, x + 0.7, y + 0.7, S * 0.66); g.stroke();
       g.strokeStyle = 'rgba(70,56,34,0.62)'; circ(g, x, y, S * 0.66); g.stroke();
       g.setLineDash([]);
+      if (!letters) return;
       g.font = `600 ${Math.round(S * 0.46)}px 'EB Garamond', serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillStyle = 'rgba(255,250,232,0.8)'; g.fillText(inp.shape.elems[i], x + 0.7, y + 0.7 + S * 0.02);
       g.fillStyle = 'rgba(42,35,24,0.36)'; g.fillText(inp.shape.elems[i], x, y + S * 0.02);
@@ -3960,7 +3961,7 @@
     if (label) monoText(g, 'IN · ' + inp.shape.elems[0], P[0][0], P[0][1] + S * 1.0, 9, 'rgba(107,95,73,0.95)');
   }
   // product output: a verdigris socket the exact shape of the target molecule
-  function paintOutput(g, V, out, label) {
+  function paintOutput(g, V, out, label, letters = true) {
     const S = V.S, cells = out.shape.cells.map(c => add(out.at, c)), P = cells.map(V.P);
     const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
     const bx = Math.min(...xs) - S * 1.4, by = Math.min(...ys) - S * 1.4;
@@ -3984,6 +3985,7 @@
     P.forEach(([x, y], i) => {
       g.setLineDash([S * 0.12, S * 0.08]); g.strokeStyle = 'rgba(51,112,94,0.75)'; g.lineWidth = Math.max(1.1, S * 0.035);
       circ(g, x, y, S * 0.6); g.stroke(); g.setLineDash([]);
+      if (!letters) return;
       g.font = `600 ${Math.round(S * 0.46)}px 'EB Garamond', serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillStyle = 'rgba(51,112,94,0.62)'; g.fillText(out.shape.elems[i], x, y + S * 0.02);
     });
@@ -4291,10 +4293,10 @@
   const STATIC = new WeakMap(), GRIDS = new WeakMap();
   const mkView = () => MK.makeView(view.s, view.ox, view.oy);
   const baseSeed = (c) => c[0] * 7 + c[1] * 13;
-  function staticLayer() {
+  function staticLayer(letters) {
     const ground = layout.arms.filter(a => a.mount && a.mount.ground).map(a => a.mount.ground);
     const vk = [CW, CH, dpr, view.s, view.ox, view.oy].join(',');
-    const key = vk + '|' + pIdx + '|' + JSON.stringify([layout.glyphs, layout.inputs, layout.output, ground]);
+    const key = vk + '|' + pIdx + '|' + letters + '|' + JSON.stringify([layout.glyphs, layout.inputs, layout.output, ground]);
     const surf = ctx.canvas;
     const e = STATIC.get(surf);
     if (e && e.key === key) return e.c;
@@ -4317,17 +4319,19 @@
     for (const gl of layout.glyphs) if (gl.type !== 'bonders') MK.glyphLabel(g, gl.type, gl.rot || 0, gl.at, V);
     for (const inp of layout.inputs) {
       const sh = base().reagentShapes[inp.ri];
-      MK.paintInput(g, V, { at: [0, 0], shape: { cells: inputCells(inp), elems: sh.elems, bonds: sh.bonds } }, true);
+      MK.paintInput(g, V, { at: [0, 0], shape: { cells: inputCells(inp), elems: sh.elems, bonds: sh.bonds } }, true, letters);
     }
     const ps = base().productShape;
-    MK.paintOutput(g, V, { at: [0, 0], shape: { cells: outputCells(), elems: ps.elems, bonds: ps.bonds } }, true);
+    MK.paintOutput(g, V, { at: [0, 0], shape: { cells: outputCells(), elems: ps.elems, bonds: ps.bonds } }, true, letters);
     for (const c0 of ground) { const [x, y] = Pc(c0); MK.blit(g, MK.baseSprite(view.s, baseSeed(c0)), x, y); }
     STATIC.set(surf, { key, c });
     return c;
   }
-  function drawGrid() {
+  // letters: the reagent and product cells name their elements (edit mode shows
+  // half-faded atoms there instead)
+  function drawGrid(letters = true) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(staticLayer(), 0, 0);
+    ctx.drawImage(staticLayer(letters), 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     MK.setDpr(dpr);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -4434,8 +4438,27 @@
     return [ax + r * Math.cos(th), ay + r * Math.sin(th), ax, ay];
   }
 
+  // while editing, each reagent and the product show the atoms they stand for, half-faded
+  function ghostMolecule(cells, elems, bonds) {
+    const P2 = cells.map(c => Pc(c));
+    ctx.save(); ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2; ctx.lineCap = 'round';
+    for (const [i, j] of bonds || []) { ctx.beginPath(); ctx.moveTo(...P2[i]); ctx.lineTo(...P2[j]); ctx.stroke(); }
+    ctx.restore();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    P2.forEach(([x, y], i) => {
+      const E = ELEMS[elems[i]] || { fill: '#999', label: '#2A2318' };
+      FX.atomBody(x, y, view.s * 0.35 * PITCH, E.fill, 0.5);
+      ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = E.label;
+      ctx.font = `600 ${Math.round(view.s * 0.5)}px 'EB Garamond', serif`;
+      ctx.fillText(elems[i], x, y + 0.5); ctx.restore();
+    });
+  }
+
   function drawEdit() {
-    drawGrid();
+    drawGrid(false);
+    for (const inp of layout.inputs) { const sh = base().reagentShapes[inp.ri]; ghostMolecule(inputCells(inp), sh.elems, sh.bonds); }
+    { const ps = base().productShape; ghostMolecule(outputCells(), ps.elems, ps.bonds); }
     if (sel && sel.kind === 'glyph' && layout.glyphs[sel.i]) outlineCells(glyphFootprint(layout.glyphs[sel.i]), '#A0762B', 2.2);
     if (sel && sel.kind === 'input' && layout.inputs[sel.i]) selectRing(inputCells(layout.inputs[sel.i]), 'rgba(42,35,24,0.9)');
     if (sel && sel.kind === 'output') selectRing(outputCells(), '#33705E');
