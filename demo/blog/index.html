@@ -118,7 +118,7 @@
   <p>So this is all to say that I think the game is in a bit of a sweet spot right now in terms of human vs LLM performance and will serve as an interesting watermark over time.</p>
 
   <h2>Development</h2>
-  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. <em>Opus Magnum</em> already has multiple implementations of solution verifiers people have made in (<a href="https://github.com/ianh/omsim">for example</a>) Python, for the purpose of maintaining automated solution leaderboards. It was very easy to simply tell Claude to implement this in C -- he could even port over the same test cases. Implementing my changes -- the recursive arms -- was also one-shottable by Claude.</p>
+  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. <em>Opus Magnum</em> already has multiple implementations of solution verifiers people have made in (<a href="https://github.com/ianh/omsim">for example</a>) C, for the purpose of maintaining automated solution leaderboards. It was very easy to simply tell Claude to integrate these into a C-based smart contract. Implementing my changes -- the recursive arms -- was also one-shottable by Claude.</p>
 
   <p>I am a pretty seasoned smart contract engineer and I know exactly how to build something like this, but this knowledge did not feel particularly necessary since Claude knew exactly how to build something like this also. I had some opinions about how to architect the smart contract that I think are correct but honestly don't really matter.</p>
 
@@ -134,7 +134,7 @@
 
   <hr>
   <div class="footnotes">
-    <p id="fn1"><a href="#ref1">1</a>: Historical note: It may seem absurd today, but the usefulness of the smart contract paradigm introduced by Ethereum was contested. Because of Bitcoin's surprisingly versatile op-codes, it was argued that smart contracts were unnecessary. As such, there was a lot of research around what, if anything, you could only make using smart contracts. So it was actually significant in the research community when some researchers from showed that, while building Poker on Bitcoin was possible, it was impractically crappy, whereas with smart contracts it could actually work (<a href="https://arxiv.org/abs/1701.06726">paper here</a>).</p>
+    <p id="fn1"><a href="#ref1">1</a>: Historical note: It may seem absurd today, but the usefulness of the smart contract paradigm introduced by Ethereum was contested. Because of Bitcoin's surprisingly versatile op-codes, it was argued that smart contracts were unnecessary. As such, there was a lot of research around what, if anything, you could only make using smart contracts. So it was actually significant in the research community when some researchers showed that, while building Poker on Bitcoin was possible, it was impractically crappy, whereas with smart contracts it could actually work (<a href="https://arxiv.org/abs/1701.06726">paper here</a>).</p>
   </div>
 </main>
 </body>
