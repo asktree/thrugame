@@ -95,8 +95,28 @@
 
   <p>I named the game Great Work, the English translation of "Magnum Opus", for which Opus Magnum is named. Then I added an exclamation mark so that it reads as a congratulations, because it made me laugh. Great work!</p>
 
+  <h3>Contest design</h3>
+  <p>I did some thinking about how to handle contests.<br>
+  The first option I considered is something similar to how they do tournaments already: you get a day or so to come up with your best solution for a new puzzle and get points based on your ranking against other players. But I had some issues with this approach:</p>
+  <ol>
+    <li>What if it doesn't get much interest, and then the winners have kind of mediocre solutions? That would just be sad.</li>
+    <li>Nobody would be sharing any solutions until the very end, so there would be no collaboration, no community, and no communal drama, just a few people doing some private homework and then eventually seeing whether they won. Lame!</li>
+    <li>There is a sort of bystander effect. Maybe you are pretty good at the game, but you don't think you're the best, surely somebody else will do better, so it's probably not worth your time.</li>
+  </ol>
+
+  <p>Instead I came up with this design, which I think is pretty compelling:<br>
+  Once anyone submits the first valid solution, a 1 month countdown starts. If it reaches the end, the prize is paid out to them. If somebody submits a <em>better</em> solution, they become the new frontrunner and the 1 month countdown resets, paying out to them instead upon completion, and so on, until an entire month passes without anyone beating the current best solution.<br>
+  I like this for several reasons:</p>
+  <ol>
+    <li>There is collaboration even though it's competitive! You stand to gain very little from keeping solutions to yourself for very long. Maybe there is some risk that if you publish an improvement too soon, somebody will immediately piggy back off of your hard work with a slight improvement that you'd have seen yourself if you waited a bit longer. On the other hand, by withholding, you're giving others time to find your solution themselves, and that seems like the bigger risk.</li>
+    <li>It defeats the bystander effect. Since you can see the current leader, you know what you're up against, you can mess around and know instantly upon finding a better solution. Instant gratification!</li>
+    <li>It's dramatic! You can have tense moments as the clock counts down, people rally to overthrow the frontrunner. And there's no limit to how many times this can happen or how long the drama can go on. For each contest you get to watch an entire narrative arc of hope and despair play out. I think that's great.</li>
+  </ol>
+
+  <p>I'm quite excited to see some contests play out and I think it could be a lot of fun.</p>
+
   <h2>Development</h2>
-  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do.</p>
+  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. Opus Magnum already has multiple implementations of solution verifiers people have made in (for example) Python, for the purpose of maintaining automated solution</p>
 
   <p class="tbc">[to be continued]</p>
 
