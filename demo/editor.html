@@ -412,7 +412,7 @@
       <h3>Tapes</h3>
       <table>
         <tr><td class="k">click a cell</td><td>put the cursor there; the SET OP palette or its key writes that cell.</td></tr>
-        <tr><td class="k"><kbd>g</kbd> <kbd>d</kbd></td><td>grab · release</td></tr>
+        <tr><td class="k"><kbd>g</kbd> <kbd>d</kbd></td><td>grab · drop</td></tr>
         <tr><td class="k"><kbd>q</kbd> <kbd>w</kbd></td><td>turn clockwise · turn counter-clockwise</td></tr>
         <tr><td class="k"><kbd>e</kbd> <kbd>r</kbd></td><td>pivot clockwise · pivot counter-clockwise (the cargo turns about the gripper)</td></tr>
         <tr><td class="k"><kbd>t</kbd> <kbd>y</kbd></td><td>wait · repeat the run since the last repeat</td></tr>
@@ -2630,7 +2630,7 @@
   // the tape card for a selected arm: each cell it can hold, its key, and what it does
   const TAPE_HELP = [
     [['G'], 'g', '<b>grab</b> the atom below'],
-    [['D'], 'd', '<b>release</b> it'],
+    [['D'], 'd', '<b>drop</b> it'],
     [['+', '-'], 'q w', '<b>turn</b> the arm'],
     [['P', 'Q'], 'e r', '<b>pivot</b> what it holds'],
     [['W'], 't', '<b>wait</b> one beat'],
@@ -2640,16 +2640,18 @@
   // 1 = an inner hexagon (the cell that receives), 2 = the same with a centre dot
   const GLYPH_MARK = { duplicators: { 1: 1 }, projectors: { 1: 1 }, purifiers: { 2: 1 }, animismus: { 2: 1, 3: 2 } };
   const GLYPH = { G: 'G', D: 'D', '+': '↻', '-': '↺', P: '↷', Q: '↶', W: '·', R: '↪' };
-  // turns and pivots are drawn, not typed: a turn sweeps the arm around its base (the hub),
-  // a pivot spins the held pair in place; the counterclockwise ones are the mirror images
-  const OP_LINE = 'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"';
-  const OP_TURN = `<circle cx="8" cy="8" r="2" fill="currentColor"/><path ${OP_LINE} d="M7.03 13.51 A5.6 5.6 0 1 1 13.41 6.55"/>`
-    + `<path fill="currentColor" d="M14.15 9.31 L15.22 5.26 L11.2 6.34 Z"/>`;
-  const OP_PIVOT = `<path ${OP_LINE} stroke-width="1.3" d="M5 11 L11 5"/><circle cx="5" cy="11" r="2" fill="currentColor"/><circle cx="11" cy="5" r="2" fill="currentColor"/>`
-    + `<path ${OP_LINE} d="M1.7 9.11 A6.4 6.4 0 0 1 6.34 1.82"/><path fill="currentColor" d="M8.89 1.13 L5.15 0.15 L6.15 3.86 Z"/>`
-    + `<path ${OP_LINE} d="M14.3 6.89 A6.4 6.4 0 0 1 9.66 14.18"/><path fill="currentColor" d="M7.11 14.87 L10.85 15.85 L9.85 12.14 Z"/>`;
+  // grab, drop, turn and pivot are drawn, not typed: grab and drop are upload / download
+  // arrows, a turn is the arm sweeping around its base, a pivot is the claw turning in
+  // place; the counterclockwise ones are the mirror images
+  const OP_LINE = 'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
+  const OP_GRAB = `<path ${OP_LINE} d="M2.5 14.5 H13.5 M8 11.5 V2.5 M4.5 6 L8 2.5 L11.5 6"/>`;
+  const OP_DROP = `<path ${OP_LINE} d="M2.5 14.5 H13.5 M8 1.5 V10.5 M4.5 7 L8 10.5 L11.5 7"/>`;
+  const OP_TURN = `<path ${OP_LINE} stroke-width="1.8" d="M3.6 12.4 L8.4 6.6"/><circle cx="3.6" cy="12.4" r="2.1" fill="currentColor"/><circle cx="8.7" cy="6.2" r="1.5" fill="currentColor"/>`
+    + `<path ${OP_LINE} d="M11.2 3.6 A9.6 9.6 0 0 1 13.11 13.74"/><path fill="currentColor" d="M12.74 16.35 L15.11 13.29 L11.31 12.76 Z"/>`;
+  const OP_PIVOT = `<circle cx="8" cy="10" r="1.6" ${OP_LINE} stroke-width="1.3"/><path ${OP_LINE} stroke-width="1.5" d="M9.82 11.05 L11.74 13.61 M6.18 11.05 L3 11.43 M8 7.9 L9.26 4.95"/>`
+    + `<path ${OP_LINE} d="M1.42 7.01 A7 7 0 0 1 14.34 6.44"/><path fill="currentColor" d="M15.46 8.83 L15.78 4.98 L12.3 6.6 Z"/>`;
   const opSvg = (inner, ccw) => `<svg class="op" viewBox="0 0 16 16" aria-hidden="true">${ccw ? `<g transform="translate(16 0) scale(-1 1)">${inner}</g>` : inner}</svg>`;
-  const OP_SVG = { '+': opSvg(OP_TURN), '-': opSvg(OP_TURN, true), P: opSvg(OP_PIVOT), Q: opSvg(OP_PIVOT, true) };
+  const OP_SVG = { G: opSvg(OP_GRAB), D: opSvg(OP_DROP), '+': opSvg(OP_TURN), '-': opSvg(OP_TURN, true), P: opSvg(OP_PIVOT), Q: opSvg(OP_PIVOT, true) };
   // a tape op as markup: the drawn glyph where there is one, else its character
   const opGlyph = (op) => OP_SVG[op] || GLYPH[op] || op || '';
   const PITCH = Math.sqrt(3);
@@ -2760,7 +2762,7 @@
   const LESSON_STEPS_FIRST = [
     'Drag an <span class="ui">ARM</span> from the tray onto the board, between the reagents and <span class="ui">OUT</span>. Drag its round handle to aim and lengthen it.',
     'Drag a <span class="ui">BOND</span> glyph onto the board: lead and quicksilver resting on its two cells get bonded at the end of a cycle.',
-    'Click the arm to open its <b>tape</b> below the board, then fill cells with instructions: <kbd>g</kbd> grab, <kbd>d</kbd> release, <kbd>q</kbd> / <kbd>w</kbd> turn. The tape loops forever.',
+    'Click the arm to open its <b>tape</b> below the board, then fill cells with instructions: <kbd>g</kbd> grab, <kbd>d</kbd> drop, <kbd>q</kbd> / <kbd>w</kbd> turn. The tape loops forever.',
     'Press <span class="ui">▶ Test</span>. A fault stops the run and says why; <span class="ui">✎ Edit</span> to fix it. Nine products and the stamp reads <b>Great Work!</b>',
   ];
   // a puzzle is open when it is the first, when the one before it is solved, or when the
@@ -3698,7 +3700,7 @@
       for (const op of ['G', 'D', '+', '-', 'P', 'Q', 'W', 'R']) {
         const b = document.createElement('button');
         b.innerHTML = opGlyph(op) + ' <span style="opacity:.45;font-size:9px">' + OP_KEYS[op] + '</span>';
-        b.title = { G: 'grab', D: 'release', '+': 'turn cw', '-': 'turn ccw', P: 'pivot cw', Q: 'pivot ccw', W: 'wait',
+        b.title = { G: 'grab', D: 'drop', '+': 'turn cw', '-': 'turn ccw', P: 'pivot cw', Q: 'pivot ccw', W: 'wait',
           R: 'repeat the run since the last repeat' }[op]
           + ' — key ' + OP_KEYS[op];
         b.addEventListener('click', () => setOp(op));
