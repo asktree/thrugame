@@ -91,7 +91,7 @@
 
   <p>I wanted to make something that <em>Opus Magnum</em> players would enjoy. My main approach was to basically replicate the game except tweak a few parameters so that, for the same puzzles, optimal solutions in <em>Great Work!</em> are different from the normal game yet familiar (I did this by changing gold costs a bit, and tweaking the number of products you have to create - thus increasing the weight of how much speed matters relative to the other factors).</p>
 
-  <p>Lastly, I heard on an <em>Opus Magnum</em> stream that in an early alpha version of the game, arms could be attached to other arms. I thought that sounded pretty interesting so I put it in the game, and removed the two other ways of achieving linear motion (tracks and pistons) in an effort to make it be more relevant. I am not good enough at the game to know how much or how little this change will matter but I hope that people enjoy it.</p>
+  <p>Lastly, I heard on an <em>Opus Magnum</em> stream that in an early alpha version of the game, arms could be attached to other arms. I thought that sounded pretty interesting so I put it in the game, and removed the two existing ways of achieving linear motion (tracks and pistons) in an effort to make my change more relevant. I am not good enough at the game to know how much or how little this change will matter but I hope that people enjoy it.</p>
 
   <p>I named the game <em>Great Work</em>, the English translation of "Magnum Opus", for which <em>Opus Magnum</em> is named. Then I added an exclamation mark so that it reads as a congratulations, because it made me laugh. Great work!</p>
 
@@ -115,10 +115,21 @@
 
   <p>I'm quite excited to see some contests play out and I think it could be a lot of fun.</p>
 
+  <h3>A note about AI</h3>
+  <p>I think as of writing, humans are still generally better at <em>Opus Magnum</em> than publicly available frontier AI models. My own testing with Opus 5.5 and Fable generally generated worse results than human players. I expect AI use is already advantageous (especially when it comes to finding marginal improvements on existing solutions) and it wouldn't surprise me if LLMs could fully autonomously beat humans at every puzzle in a few months from now.</p>
+
+  <p>So this is all to say that I think the game is in a bit of a sweet spot right now in terms of human vs LLM performance and will serve as an interesting watermark over time.</p>
+
   <h2>Development</h2>
   <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. <em>Opus Magnum</em> already has multiple implementations of solution verifiers people have made in (for example) Python, for the purpose of maintaining automated solution leaderboards. It was very easy to simply tell Claude to implement this in C -- he could even port over the same test cases. Implementing my changes -- the recursive arms -- was also one-shottable by Claude.</p>
 
-  <p>I decided that the solution verifier and the contest escrow should be different contracts.</p>
+  <p>I am a pretty seasoned smart contract engineer and I know exactly how to build something like this, but this knowledge did not feel particularly necessary since Claude knew exactly how to build something like this also. I had some opinions about how to architect the smart contract that I think are correct but honestly don't really matter.</p>
+
+  <p>Claude was also able to vibecode the frontend. It has a certain minimalist charm but you'll probably notice that <em>Opus Magnum</em> is much prettier. I had to do a lot of UX iteration and I think the game still feels a bit awkward.</p>
+
+  <p>Claude had no difficulty integrating Thru's frontend packages for interacting with the chain, which, as an aside, I think are <em>very</em> well designed. I think using passkeys for wallets is a great idea and gives you a best-in-class security layer for free, while also greatly reducing friction for users.</p>
+
+  <p>I also had Claude build a service that serves GIFs of solutions which succeeded on his second try, all I had to do was tell him the first try was broken. Again, I had opinions about how to architect this, but Claude came up with a (probably) better architecture I hadn't even thought of (using serverless functions, and instead of having a storage bucket for the gifs, just leverage the serverless function provider's cache).</p>
 
   <p>Where Claude is weakest is tutorializing the game. And this is something I feel conflicted about myself. I think making an <em>Opus Magnum</em> experience with lots of handholding would be a lot of work, and not have very much to do with what I find interesting about this project. I also think it eliminates some of the mystique, you know? You can always load solutions from the leaderboard to reverse engineer how the game works.</p>
 
@@ -126,7 +137,7 @@
 
   <hr>
   <div class="footnotes">
-    <p id="fn1"><a href="#ref1">1</a>: Historical note: It may seem absurd today, but the usefulness of the smart contract paradigm introduced by Ethereum was contested. Because of Bitcoin's surprisingly versatile op-codes, it was argued that smart contracts were unnecessary. As such, there was a lot of research around what, if anything, you could only make using smart contracts. So it was actually significant in the research community when some researchers from ((UIC? insert here and also link the paper)) showed you could build Poker using smart contracts but couldn't do it on Bitcoin.</p>
+    <p id="fn1"><a href="#ref1">1</a>: Historical note: It may seem absurd today, but the usefulness of the smart contract paradigm introduced by Ethereum was contested. Because of Bitcoin's surprisingly versatile op-codes, it was argued that smart contracts were unnecessary. As such, there was a lot of research around what, if anything, you could only make using smart contracts. So it was actually significant in the research community when some researchers from showed that, while building Poker on Bitcoin was possible, it was impractically crappy, whereas with smart contracts it could actually work (<a href="https://arxiv.org/abs/1701.06726">paper here</a>).</p>
   </div>
 </main>
 </body>
