@@ -19,7 +19,7 @@
   const ATOM_R = 0.35 * PITCH;                 // board units — the sim's own collision radius
   const COL = {
     brass: [160, 118, 43], gold: [138, 106, 30], ox: [140, 59, 46],
-    verd: [51, 112, 94], ink: [42, 35, 24], flare: [255, 244, 214],
+    verd: [51, 112, 94], ink: [42, 35, 24], flare: [255, 244, 214], hot: [255, 186, 84],
   };
   const rgba = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
   const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
@@ -56,12 +56,12 @@
 
   // which pass each effect draws in: 'under' sits beneath the atoms, 'over' above them
   const LAYER = {
-    pulse: 'under', ring: 'under', inpulse: 'under',
+    pulse: 'under', ring: 'under', inpulse: 'under', shock: 'over',
     bond: 'over', debond: 'over', travel: 'over', ghost: 'over', product: 'over',
   };
   // lifetimes, in ticks
   const LIFE = {
-    pulse: 0.95, bond: 1.15, debond: 0.95, ring: 1.25, travel: 0.9,
+    pulse: 2.2, shock: 1.6, bond: 1.15, debond: 0.95, ring: 1.25, travel: 0.9,
     ghost: 1.1, grow: 0.85, tint: 1.1, product: 1.7, inpulse: 0.85,
   };
   const CAP = 80;               // hard ceiling on live effects; oldest is dropped first
@@ -84,6 +84,7 @@
     const doom = new Map();     // atomId -> {style, to, born}  — how an atom is about to die
     const birth = new Map();    // atomId -> {style, born}      — how one is about to appear
     const grips = new Map();    // armId:grip -> smoothed claw closure, 0..1
+    const heat = new Map();     // glyph cells key -> {cells, col, lvl, born}: embers that cool
     let evIdx = 0, enabled = true, motion = true, stepMs = 140, seeded = false, fault = null;
 
     // the clock: wall time on the page; a recording hands in its own, so effects
@@ -98,7 +99,7 @@
     // ---------- lifecycle ----------
     function reset(st) {
       list.length = 0;
-      prev.clear(); tint.clear(); grow.clear(); doom.clear(); birth.clear(); grips.clear();
+      prev.clear(); tint.clear(); grow.clear(); doom.clear(); birth.clear(); grips.clear(); heat.clear();
       evIdx = st ? st.events.length : 0;
       seeded = false; fault = null;
     }
@@ -115,6 +116,7 @@
       const stale = 8 * stepMs + 2000;
       for (const [id, d] of doom) if (t - d.born > stale) doom.delete(id);
       for (const [id, b] of birth) if (t - b.born > stale) birth.delete(id);
+      for (const [k, h] of heat) if (heatAt(h, t) < 0.02) heat.delete(k);
     }
 
     // ---------- event harvesting ----------
@@ -190,9 +192,37 @@
       if (st.fault && !fault) armFault(st);
     }
 
+    // a glyph firing: a flash under the cargo, a shockwave over it, and heat that lingers —
+    // a glyph that fires every few ticks never cools, so a busy one glows
     function glyphPulse(cells, col, at) {
       if (!cells || !cells.length) return;
       push({ kind: 'pulse', born: at, dur: dur(LIFE.pulse), cells: cells, col: col });
+      push({ kind: 'shock', born: at, dur: dur(LIFE.shock), cells: cells, col: col });
+      const k = cells.map(c => c[0] + ',' + c[1]).join(';'), h = heat.get(k);
+      const lvl = Math.min(1, (h ? heatAt(h, at) : 0) + 0.55);
+      heat.set(k, { cells: cells, col: col, lvl: lvl, born: at, prior: h ? heatAt(h, at) : 0 });
+    }
+    // heat cools exponentially over a few ticks; before its flash lands it holds what it had
+    const cool = () => { const d = stepMs * 4.5; return d < 400 ? 400 : d > 2600 ? 2600 : d; };
+    function heatAt(h, t) {
+      if (t < h.born) return h.prior;
+      return h.lvl * Math.exp(-(t - h.born) / cool());
+    }
+    function paintHeat(c, s, t) {
+      for (const h of heat.values()) {
+        const v = heatAt(h, t);
+        if (v < 0.02) continue;
+        const ember = [Math.min(255, h.col[0] + 90), Math.min(255, h.col[1] + 40), h.col[2]];
+        for (const cell of h.cells) {
+          const p = env.Pc(cell), R = s * PITCH / 2 * 1.08;
+          const g = c.createRadialGradient(p[0], p[1], 0, p[0], p[1], R * 1.25);
+          g.addColorStop(0, rgba(COL.flare, 0.55 * v));
+          g.addColorStop(0.45, rgba(ember, 0.42 * v));
+          g.addColorStop(1, rgba(ember, 0));
+          env.hex(p[0], p[1], R * 1.25); c.fillStyle = g; c.fill();
+          env.hex(p[0], p[1], R); c.strokeStyle = rgba(ember, 0.85 * v); c.lineWidth = 1 + 2.2 * v; c.stroke();
+        }
+      }
     }
 
     // The fault's detail string is the engine's, verbatim: "atom 7 × base a0 @ f=5/12",
@@ -360,6 +390,7 @@
       const c = env.ctx, t = now(), s = env.s();
       c.save();
       c.lineCap = 'round';
+      if (layer === 'under' && enabled) paintHeat(c, s, t);
       for (let i = 0; i < list.length; i++) {
         const fx = list[i];
         if (LAYER[fx.kind] !== layer) continue;
@@ -388,12 +419,33 @@
     function paint(c, s, fx, u, atomPx) {
       switch (fx.kind) {
         case 'pulse': {
-          const a = clamp01(tri(u));
+          // the flash: a white-hot core bleeding into the glyph's colour, and the
+          // glyph's own linkage lit up between its cells
+          const a = clamp01(tri(u)), R = s * PITCH / 2 * 1.08;
+          for (let i = 1; i < fx.cells.length; i++) {
+            const p1 = env.Pc(fx.cells[i - 1]), p2 = env.Pc(fx.cells[i]);
+            c.beginPath(); c.moveTo(p1[0], p1[1]); c.lineTo(p2[0], p2[1]);
+            c.strokeStyle = rgba(COL.hot, 0.9 * a); c.lineWidth = s * 0.16 * (0.5 + a); c.stroke();
+          }
           for (const cell of fx.cells) {
             const p = env.Pc(cell);
-            env.hex(p[0], p[1], s * PITCH / 2 * (1.08 + 0.05 * eOut(u)));
-            c.fillStyle = rgba(fx.col, 0.26 * a); c.fill();
-            c.strokeStyle = rgba(fx.col, 0.75 * a); c.lineWidth = 1.1 + 1.4 * a; c.stroke();
+            const g = c.createRadialGradient(p[0], p[1], 0, p[0], p[1], R * 1.7);
+            g.addColorStop(0, rgba(COL.hot, 0.95 * a));
+            g.addColorStop(0.35, rgba(fx.col, 0.6 * a));
+            g.addColorStop(1, rgba(fx.col, 0));
+            c.beginPath(); c.arc(p[0], p[1], R * 1.7, 0, TAU); c.fillStyle = g; c.fill();
+            env.hex(p[0], p[1], R * (1 + 0.06 * eOut(u)));
+            c.strokeStyle = rgba(fx.col, 0.95 * a); c.lineWidth = 1.5 + 2.5 * a; c.stroke();
+          }
+          break;
+        }
+        case 'shock': {
+          // a hexagonal shockwave leaving each cell, drawn over the cargo so it always shows
+          const a = (1 - u) * (1 - u), R = s * PITCH / 2 * (1.08 + 0.75 * eOut(u));
+          for (const cell of fx.cells) {
+            const p = env.Pc(cell);
+            env.hex(p[0], p[1], R);
+            c.strokeStyle = rgba(fx.col, 0.8 * a); c.lineWidth = s * 0.07 * (1 - 0.6 * u); c.stroke();
           }
           break;
         }
@@ -576,7 +628,7 @@
 
     function debug() {
       return {
-        effects: list.length, cap: CAP, tint: tint.size, grow: grow.size,
+        effects: list.length, cap: CAP, heat: heat.size, tint: tint.size, grow: grow.size,
         doom: doom.size, birth: birth.size, prev: prev.size, grips: grips.size,
         evIdx: evIdx, fault: fault ? fault.objs.length : 0, faultObjs: fault ? fault.objs.slice() : [], enabled: enabled,
         live: list.map(f => ({ k: f.kind, age: Math.round(now() - f.born), dur: Math.round(f.dur) })),
