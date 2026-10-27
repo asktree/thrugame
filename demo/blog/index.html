@@ -78,22 +78,22 @@
   <p>So I think there's a kernel of something interesting there. Players can trust that if they invest time and energy into the game, the game's infrastructure won't later go away. It's marginal -- games can die even if they are technically still playable -- but it is still kind of interesting to me.</p>
 
   <h2>Great Work!</h2>
-  <p>I was very taken with <a href="https://www.youtube.com/watch?v=W_Ekun0WDIk">this video about Opus Magnum tournaments</a>. It seems like I am not the only one, as the game has seen a resurgence in popularity as a result.</p>
+  <p>I was very taken with <a href="https://www.youtube.com/watch?v=W_Ekun0WDIk">this video about <em>Opus Magnum</em> tournaments</a>. It seems like I am not the only one, as the game has seen a resurgence in popularity as a result.</p>
 
   <p><strong>Honestly, at this point you need to watch the first 7 minutes of the video to have context for the rest of this post.</strong> Video is a higher bandwidth medium than text and there is nothing I can write that would convey the same information as quickly and beautifully as this video.</p>
 
-  <p>All done? Okay: I think something like an Opus Magnum tournament is a great fit for a blockchain game!</p>
+  <p>All done? Okay: I think something like an <em>Opus Magnum</em> tournament is a great fit for a blockchain game!</p>
   <ol>
     <li>Optimization puzzles have a sort of timeless quality that compliments the eternality of an immutable on-chain game. It can never be known if we've really found the optimal solution, discoveries continue to be made, etcetera. Elegant!</li>
     <li>For competitive play, you just need a trusted verification layer and a leaderboard. A smart contract can do both very naturally. Convenient!</li>
     <li>You could have cash prizes that people could trust will get disbursed even if the contest runs for a long time, which would be really hard to do without a blockchain. Exciting!</li>
   </ol>
 
-  <p>I wanted to make something that Opus Magnum players would enjoy. My main approach was to basically replicate the game except tweak a few parameters so that, for the same puzzles, optimal solutions in Great Work! are different from the normal game yet familiar (I did this by changing gold costs a bit, and tweaking the number of products you have to create - thus increasing the weight of how much speed matters relative to the other factors).</p>
+  <p>I wanted to make something that <em>Opus Magnum</em> players would enjoy. My main approach was to basically replicate the game except tweak a few parameters so that, for the same puzzles, optimal solutions in <em>Great Work!</em> are different from the normal game yet familiar (I did this by changing gold costs a bit, and tweaking the number of products you have to create - thus increasing the weight of how much speed matters relative to the other factors).</p>
 
-  <p>Lastly, I heard on an Opus Magnum stream that in an early alpha version of the game, arms could be attached to other arms. I thought that sounded pretty interesting so I put it in the game, and removed the two other ways of achieving linear motion (tracks and pistons) in an effort to make it be more relevant. I am not good enough at the game to know how much or how little this change will matter but I hope that people enjoy it.</p>
+  <p>Lastly, I heard on an <em>Opus Magnum</em> stream that in an early alpha version of the game, arms could be attached to other arms. I thought that sounded pretty interesting so I put it in the game, and removed the two other ways of achieving linear motion (tracks and pistons) in an effort to make it be more relevant. I am not good enough at the game to know how much or how little this change will matter but I hope that people enjoy it.</p>
 
-  <p>I named the game Great Work, the English translation of "Magnum Opus", for which Opus Magnum is named. Then I added an exclamation mark so that it reads as a congratulations, because it made me laugh. Great work!</p>
+  <p>I named the game <em>Great Work</em>, the English translation of "Magnum Opus", for which <em>Opus Magnum</em> is named. Then I added an exclamation mark so that it reads as a congratulations, because it made me laugh. Great work!</p>
 
   <h3>Contest design</h3>
   <p>I did some thinking about how to handle contests.<br>
@@ -116,11 +116,11 @@
   <p>I'm quite excited to see some contests play out and I think it could be a lot of fun.</p>
 
   <h2>Development</h2>
-  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. Opus Magnum already has multiple implementations of solution verifiers people have made in (for example) Python, for the purpose of maintaining automated solution leaderboards. It was very easy to simply tell Claude to implement this in C -- he could even port over the same test cases. Implementing my changes -- the recursive arms -- was also one-shottable by Claude.</p>
+  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. <em>Opus Magnum</em> already has multiple implementations of solution verifiers people have made in (for example) Python, for the purpose of maintaining automated solution leaderboards. It was very easy to simply tell Claude to implement this in C -- he could even port over the same test cases. Implementing my changes -- the recursive arms -- was also one-shottable by Claude.</p>
 
   <p>I decided that the solution verifier and the contest escrow should be different contracts.</p>
 
-  <p>Where Claude is weakest is tutorializing the game. And this is something I feel conflicted about myself. I think making an Opus Magnum experience with lots of handholding would be a lot of work, and not have very much to do with what I find interesting about this project. I also think it eliminates some of the mystique, you know? You can always load solutions from the leaderboard to reverse engineer how the game works.</p>
+  <p>Where Claude is weakest is tutorializing the game. And this is something I feel conflicted about myself. I think making an <em>Opus Magnum</em> experience with lots of handholding would be a lot of work, and not have very much to do with what I find interesting about this project. I also think it eliminates some of the mystique, you know? You can always load solutions from the leaderboard to reverse engineer how the game works.</p>
 
   <p class="tbc">[to be continued]</p>
 
