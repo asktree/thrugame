@@ -346,9 +346,9 @@
     <button class="ctl" id="btnPlay" disabled>Pause</button>
     <button class="ctl" id="btnStep" disabled>Step</button>
     <div class="speed" role="group" aria-label="speed">
-      <button class="ctl" data-ms="560">0.25×</button>
-      <button class="ctl" data-ms="280">0.5×</button>
-      <button class="ctl on" data-ms="140">1×</button>
+      <button class="ctl" data-ms="560">0.5×</button>
+      <button class="ctl on" data-ms="280">1×</button>
+      <button class="ctl" data-ms="140">2×</button>
       <button class="ctl" data-ms="0">MAX</button>
     </div>
     <button class="ctl" id="btnUndo" title="ctrl-z">Undo</button>
@@ -634,7 +634,7 @@
   let cursor = null;                   // tape cursor {armId, pos}
   let tapeSel = [];                    // box-selected tape cells [{armId, pos}] — pos is the authored index
   let hoverCell = null, mousePx = null;
-  let running = false, stepMs = 140, phase = 1, done = false, frameDt = 16;
+  let running = false, stepMs = 280, phase = 1, done = false, frameDt = 16;
   let drag = null;
   let undoStack = [], redoStack = [], dragSnap = null;
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2269,7 +2269,7 @@
   // The recording never touches the on-screen run: it builds its OWN sim from the
   // current layout and paints it onto an offscreen canvas through renderPlaymat().
   const GIF_W = 480;              // Discord's inline width; height follows the board
-  const GIF_TICK_MS = 140;        // playback at 1x — the editor's default stepMs
+  const GIF_TICK_MS = 140;        // playback at 2x: a GIF wants to be brisk
   const GIF_FRAME_MS = 50;        // 20 fps
   const GIF_MAX_FRAMES = 240;     // 12 seconds of playback, then we stop wherever we are
   const GIF_HOLD_MS = 1000;       // the last frame lingers so a loop reads as an ending
