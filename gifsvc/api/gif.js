@@ -52,11 +52,18 @@ export async function render(code, pace) {
         if (!c || c.width !== w || c.height !== h) { c = createCanvas(w, h); canvases.set(el, c); }
         return c;
       };
+      // the page paints sprites on its own canvases and blits them: the native
+      // context only knows native canvases, so hand it the one behind the element
+      const native = (img) => (img instanceof window.HTMLCanvasElement ? backing(img) : img);
       // pixels cross from the Node realm into the page's: hand them over as the
       // page's own typed array, or the encoder's instanceof checks refuse them
       HC.getContext = function () {
         const ctx = backing(this).getContext('2d');
         if (!ctx.__gwWrapped) {
+          const draw = ctx.drawImage.bind(ctx);
+          ctx.drawImage = (img, ...a) => draw(native(img), ...a);
+          const pattern = ctx.createPattern.bind(ctx);
+          ctx.createPattern = (img, rep) => pattern(native(img), rep);
           const orig = ctx.getImageData.bind(ctx);
           ctx.getImageData = (...a) => {
             const d = orig(...a);
