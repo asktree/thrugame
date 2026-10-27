@@ -29,6 +29,8 @@ jobs:
           cp demo/editor.html _site/index.html
           cp demo/editor.html _site/editor.html
           cp demo/gw-chain.js _site/gw-chain.js
+          mkdir _site/blog
+          cp demo/blog/index.html _site/blog/index.html
       - uses: actions/configure-pages@v5
         with:
           enablement: true
