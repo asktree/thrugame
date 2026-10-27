@@ -20,10 +20,9 @@
   body { margin: 0; background: var(--parch); color: var(--ink); font-family: var(--body); font-size: 20px; line-height: 1.6; }
   main { max-width: 680px; margin: 0 auto; padding: 40px 16px 80px; }
   .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 48px; }
-  .backlink, .draft { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim); }
+  .backlink { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim); }
   .backlink { text-decoration: none; border-bottom: 1px solid var(--line); }
   .backlink:hover { color: var(--ink); }
-  .draft { color: var(--oxblood); border: 1px solid var(--oxblood); padding: 2px 8px; transform: rotate(-3deg); }
   header { text-align: center; margin-bottom: 56px; }
   header h1 { font-family: var(--display); font-weight: 700; font-size: clamp(32px, 7vw, 48px); letter-spacing: .06em; line-height: 1.15; margin: 0 0 12px; color: var(--gold); }
   header .rule { width: 80px; height: 1px; background: var(--line); margin: 20px auto 0; }
@@ -36,14 +35,12 @@
   sup a { text-decoration: none; font-family: var(--mono); font-size: .7em; }
   hr { border: 0; border-top: 1px solid var(--line); margin: 56px 0 24px; }
   .footnotes { font-size: 17px; color: var(--ink-dim); }
-  .tbc { font-style: italic; color: var(--ink-faint); }
 </style>
 </head>
 <body>
 <main>
   <div class="top">
     <a class="backlink" href="/">&larr; greatwork.quest</a>
-    <span class="draft">Draft</span>
   </div>
 
   <header>
@@ -121,7 +118,7 @@
   <p>So this is all to say that I think the game is in a bit of a sweet spot right now in terms of human vs LLM performance and will serve as an interesting watermark over time.</p>
 
   <h2>Development</h2>
-  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. <em>Opus Magnum</em> already has multiple implementations of solution verifiers people have made in (for example) Python, for the purpose of maintaining automated solution leaderboards. It was very easy to simply tell Claude to implement this in C -- he could even port over the same test cases. Implementing my changes -- the recursive arms -- was also one-shottable by Claude.</p>
+  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. <em>Opus Magnum</em> already has multiple implementations of solution verifiers people have made in (<a href="https://github.com/ianh/omsim">for example</a>) Python, for the purpose of maintaining automated solution leaderboards. It was very easy to simply tell Claude to implement this in C -- he could even port over the same test cases. Implementing my changes -- the recursive arms -- was also one-shottable by Claude.</p>
 
   <p>I am a pretty seasoned smart contract engineer and I know exactly how to build something like this, but this knowledge did not feel particularly necessary since Claude knew exactly how to build something like this also. I had some opinions about how to architect the smart contract that I think are correct but honestly don't really matter.</p>
 
@@ -133,7 +130,7 @@
 
   <p>Where Claude is weakest is tutorializing the game. And this is something I feel conflicted about myself. I think making an <em>Opus Magnum</em> experience with lots of handholding would be a lot of work, and not have very much to do with what I find interesting about this project. I also think it eliminates some of the mystique, you know? You can always load solutions from the leaderboard to reverse engineer how the game works.</p>
 
-  <p class="tbc">[to be continued]</p>
+  <p>Anyway, that's pretty much it. Please head over to <a href="https://greatwork.quest">https://greatwork.quest</a> and I hope you enjoy doing some great work!</p>
 
   <hr>
   <div class="footnotes">
