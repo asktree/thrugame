@@ -1,6 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Great Work!</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap">
 <style>
@@ -991,196 +992,1070 @@
     ctx.closePath();
   }
 
-  // ---------- drawing ----------
-  function drawGrid() {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#EAE0C9'; ctx.fillRect(0, 0, CW, CH);
-    FX.mat(CW, CH);
-    ctx.strokeStyle = 'rgba(160,140,95,0.17)'; ctx.lineWidth = 1;
-    const c0 = cellAt(0, 0), c1 = cellAt(CW, CH);
-    const qMin = Math.min(c0[0], c1[0]) - 8, qMax = Math.max(c0[0], c1[0]) + 8;
-    const rMin = Math.min(c0[1], c1[1]) - 4, rMax = Math.max(c0[1], c1[1]) + 4;
-    for (let q = qMin; q <= qMax; q++) for (let r = rMin; r <= rMax; r++) {
-      const [x, y] = Pc([q, r]);
-      if (x < -40 || x > CW + 40 || y < -40 || y > CH + 40) continue;
-      hexPath(x, y, view.s * PITCH / 2 * 1.11); ctx.stroke();
+    // ===================================================================================
+    // MACHINED — the board's material renderer: wood-and-steel arms under one lamp (upper
+    // left), glyphs as metal plates inlaid flush in the board. Everything static is painted
+    // once into sprites / a cached layer; the per-frame work is blits and a few flat shapes.
+    // Ported from the "Arms · Machined II" study; GLYPH_PARAMS are the tuned defaults.
+    // ===================================================================================
+    const MK = (() => {
+    let DPR = 1;
+  const PITCH = Math.sqrt(3), TAU = Math.PI * 2, D60 = Math.PI / 3;
+  const ATOM_R = 0.35 * PITCH, RING_R = 0.665, RING_W = 0.09, BASE_R = 0.52;
+  const L2 = [-Math.SQRT1_2, -Math.SQRT1_2];                      // toward the lamp, on the board
+  const L3 = (() => { const v = [-0.5, -0.56, 0.66], n = Math.hypot(...v); return v.map(x => x / n); })();
+  const FAMILY = { bond: 'brass', calcify: 'brass', duplicate: 'brass', project: 'brass', purify: 'brass', animismus: 'brass', unbond: 'ox', disposal: 'ox' };
+  const GLYPH_LABEL_MK = { bond: 'BOND', unbond: 'UNBOND', calcify: 'CALCIFY', duplicate: 'DUPE', project: 'PROJECT', purify: 'PURIFY', animismus: 'ANIMA', disposal: 'DISPOSE' };
+  const BRASS_ALB = [206, 166, 88], STEEL_ALB = [150, 147, 140];
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const clamp01 = t => t < 0 ? 0 : t > 1 ? 1 : t;
+  const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const eOut = t => 1 - (1 - t) * (1 - t);
+  const eIn = t => t * t;
+  const eBack = t => { const c = 1.70158, u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
+  const tri = t => (t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82);
+  const hex2rgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const mix = (a, b, t) => { const A = hex2rgb(a), B = hex2rgb(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`; };
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+  const GRIPOFF = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+  const eqc = (a, b) => a[0] === b[0] && a[1] === b[1];
+  const mod6 = k => ((k % 6) + 6) % 6;
+  // cells of a glyph, as the game lays them out (glyphCells in editor-template)
+  function glyphCells(type, at, rot) {
+    const k = rot || 0;
+    if (type === 'calcify' || type === 'disposal') return [at];
+    const c = [at, add(at, DIRS[k])];
+    if (type === 'purify' || type === 'animismus') c.push(add(at, DIRS[mod6(k + 1)]));
+    if (type === 'animismus') c.push(add(at, DIRS[mod6(k + 5)]));
+    return c;
+  }
+  function glyphFootprint(type, at, rot) {
+    if (type === 'disposal') return [at, ...DIRS.map(d => add(at, d))];
+    return glyphCells(type, at, rot);
+  }
+  // marked cells: 1 = inner hexagon (receives), 2 = inner hexagon with a dot
+  const GLYPH_MARK = { duplicate: { 1: 1 }, project: { 1: 1 }, purify: { 2: 1 }, animismus: { 2: 1, 3: 2 } };
+  function offscreen(w, h, scale) {
+    scale = scale || DPR;
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.ceil(w * scale)); c.height = Math.max(1, Math.ceil(h * scale));
+    const g = c.getContext('2d'); g.setTransform(scale, 0, 0, scale, 0, 0);
+    return { c, g, w, h };
+  }
+  function hexVerts(x, y, r, rot) {
+    const v = [];
+    for (let i = 0; i < 6; i++) { const a = D60 * i + Math.PI / 6 + (rot || 0); v.push([x + r * Math.cos(a), y + r * Math.sin(a)]); }
+    return v;
+  }
+  function poly(g, v) { g.beginPath(); v.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); }
+  function hexPath(g, x, y, r, rot) { poly(g, hexVerts(x, y, r, rot)); }
+  function circ(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, TAU); }
+  function makeView(S, ox, oy) {
+    return { S, ox, oy, P: c => [ox + S * PITCH * (c[0] + c[1] / 2), oy + S * 1.5 * c[1]] };
+  }
+  // a sprite is drawn once, at device resolution, then only ever blitted
+  const SPR = new Map();
+  function spr(key, w, h, draw) {
+    key += '@' + DPR;
+    let s = SPR.get(key);
+    if (!s) { const o = offscreen(w, h); o.g.translate(w / 2, h / 2); draw(o.g); s = { c: o.c, w, h }; SPR.set(key, s); }
+    return s;
+  }
+  function blit(g, s, x, y, k) { k = k || 1; g.drawImage(s.c, x - s.w * k / 2, y - s.h * k / 2, s.w * k, s.h * k); }
+
+  // ---------- materials ----------
+  // a lit cylinder's cross-section as a gradient in the part's own frame: diffuse + a
+  // specular stripe from the lamp, quantised to 96 headings and kept forever
+  const GRADS = new Map();
+  function tubeGrad(g, w, ang, alb, key) {
+    let qa = Math.round(ang / (TAU / 96)); qa = ((qa % 96) + 96) % 96;
+    const k = key + ':' + w.toFixed(2) + ':' + qa;
+    let gr = GRADS.get(k); if (gr) return gr;
+    const a = qa * TAU / 96, ly = L3[0] * -Math.sin(a) + L3[1] * Math.cos(a), lz = L3[2];
+    let hy = ly, hz = lz + 1; const hn = Math.hypot(hy, hz); hy /= hn; hz /= hn;
+    gr = g.createLinearGradient(0, -w / 2, 0, w / 2);
+    for (let i = 0; i <= 12; i++) {
+      const s = -0.97 + 1.94 * i / 12, nz = Math.sqrt(Math.max(0, 1 - s * s));
+      const dif = Math.max(0, s * ly + nz * lz), spec = Math.pow(Math.max(0, s * hy + nz * hz), 26);
+      const c = alb.map(v => Math.min(255, Math.round(v * (0.28 + 0.86 * dif) + 240 * 0.85 * spec)));
+      gr.addColorStop(i / 12, `rgb(${c[0]},${c[1]},${c[2]})`);
     }
+    GRADS.set(k, gr); return gr;
+  }
+
+  // ---------- sprites ----------
+  function ringSprite(S) {
+    const Rr = S * RING_R, w = S * RING_W;
+    return spr('ring:' + S, 2 * (Rr + w * 2), 2 * (Rr + w * 2), g => {
+      g.lineCap = 'round';
+      g.strokeStyle = '#26241F'; g.lineWidth = w; circ(g, 0, 0, Rr); g.stroke();
+      g.strokeStyle = '#5A574F'; g.lineWidth = w * 0.64; circ(g, 0, 0, Rr); g.stroke();
+      const la = Math.atan2(L2[1], L2[0]);
+      g.strokeStyle = 'rgba(240,236,222,0.9)'; g.lineWidth = w * 0.22;
+      g.beginPath(); g.arc(0, 0, Rr - w * 0.1, la - 1.0, la + 1.0); g.stroke();
+      g.strokeStyle = 'rgba(15,14,12,0.5)'; g.lineWidth = w * 0.22;
+      g.beginPath(); g.arc(0, 0, Rr + w * 0.14, la + Math.PI - 1.1, la + Math.PI + 1.1); g.stroke();
+    });
+  }
+  function pinSprite(S, r) {
+    const pr = S * r;
+    return spr(`pin:${S}:${r}`, pr * 2 + 3, pr * 2 + 3, g => {
+      const pg = g.createRadialGradient(-pr * 0.4, -pr * 0.4, pr * 0.1, 0, 0, pr);
+      pg.addColorStop(0, '#FFF2C0'); pg.addColorStop(0.5, '#C9A24A'); pg.addColorStop(1, '#6E5016');
+      circ(g, 0, 0, pr); g.fillStyle = pg; g.fill();
+      g.strokeStyle = '#3A2A08'; g.lineWidth = Math.max(0.5, S * 0.012); g.stroke();
+    });
+  }
+  function hubBodySprite(S) {
+    const R = S * 0.31;
+    return spr('hub:' + S, R * 2 + 4, R * 2 + 4, g => {
+      const og = g.createLinearGradient(-R, -R, R, R);
+      og.addColorStop(0, '#B4B0A4'); og.addColorStop(0.45, '#6A675F'); og.addColorStop(1, '#2C2A25');
+      circ(g, 0, 0, R); g.fillStyle = og; g.fill();
+      g.strokeStyle = '#1C1A16'; g.lineWidth = Math.max(0.8, S * 0.025); g.stroke();
+    });
+  }
+  function domeSprite(S) {
+    const r = S * 0.2;
+    return spr('dome:' + S, r * 2 + 4, r * 2 + 4, g => {
+      const cg = g.createRadialGradient(-r * 0.4, -r * 0.45, r * 0.05, 0, 0, r);
+      cg.addColorStop(0, '#FFF4C8'); cg.addColorStop(0.35, '#D8B45C'); cg.addColorStop(1, '#6E5016');
+      circ(g, 0, 0, r); g.fillStyle = cg; g.fill();
+      g.strokeStyle = '#4A360C'; g.lineWidth = Math.max(0.7, S * 0.02); g.stroke();
+    });
+  }
+  // a soft round light: white-hot core into a colour, into nothing. Scale-free, blitted at any size.
+  function paintBoard(g, W, H, V) {
+    const S = V.S;
+    g.fillStyle = '#EAE0C9'; g.fillRect(0, 0, W, H);
+    const dx = S * PITCH, dy = S * 1.5;
+    const r0 = Math.floor(-V.oy / dy) - 1, r1 = Math.ceil((H - V.oy) / dy) + 1;
+    for (let rr = r0; rr <= r1; rr++) {
+      const q0 = Math.floor(-V.ox / dx - rr / 2) - 1, q1 = Math.ceil((W - V.ox) / dx - rr / 2) + 1;
+      for (let q = q0; q <= q1; q++) {
+        const [x, y] = V.P([q, rr]);
+        const rg = g.createRadialGradient(x - S * 0.3, y - S * 0.35, S * 0.05, x, y, S * 1.05);
+        rg.addColorStop(0, 'rgba(255,250,232,0.11)'); rg.addColorStop(0.6, 'rgba(255,250,232,0.015)'); rg.addColorStop(1, 'rgba(90,70,36,0.022)');
+        hexPath(g, x, y, S); g.fillStyle = rg; g.fill();
+        g.strokeStyle = 'rgba(150,128,84,0.13)'; g.lineWidth = 1; g.stroke();
+      }
+    }
+    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+    vg.addColorStop(0, 'rgba(60,44,20,0)'); vg.addColorStop(1, 'rgba(60,44,20,0.13)');
+    g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  }
+
+  // the arm's ground plate: chamfered brass hex, never turns. Painted once with a real blur.
+  // the arm's ground block: raised, sitting ON the board (glyphs are set INTO it), never turns.
+  // Its edge is its own chamfer and the drop shadow — no outline. Painted once, never per frame.
+  const BASES = {
+    wood:      { name: 'Oak',       face: '#7E6A55', side: '#6E5C49', lite: '#A39079', dark: '#3A3026', grain: 'rgba(52,40,28,', fleck: 'rgba(224,210,186,', kind: 'grain' },
+    'wood-dark': { name: 'Walnut',  face: '#5C4B3C', side: '#4F4033', lite: '#857463', dark: '#241D17', grain: 'rgba(28,20,13,', fleck: 'rgba(200,180,156,', kind: 'grain' },
+    iron:      { name: 'Cast iron', face: '#5A5752', side: '#4C4945', lite: '#A3A098', dark: '#1D1C1A', grain: 'rgba(20,19,17,', fleck: 'rgba(220,216,206,', kind: 'cast' },
+  };
+  let BASE_STYLE = 'wood';
+  function paintBasePlate(g, x, y, S, seed) {
+    let M = BASES[BASE_STYLE] || BASES.wood;
+    if (BASE_STYLE === 'wood' && GP.woodTone.toLowerCase() !== BASES.wood.face.toLowerCase()) {
+      const f = GP.woodTone;
+      M = Object.assign({}, M, { face: f, side: mix(f, '#000000', 0.13), lite: mix(f, '#ffffff', 0.28), dark: mix(f, '#000000', 0.55) });
+      M.side = '#' + M.side.match(/\d+/g).map(v => (+v).toString(16).padStart(2, '0')).join('');
+      M.lite = '#' + M.lite.match(/\d+/g).map(v => (+v).toString(16).padStart(2, '0')).join('');
+      M.dark = '#' + M.dark.match(/\d+/g).map(v => (+v).toString(16).padStart(2, '0')).join('');
+    }
+    const r = S * GP.baseSize, ri = r * 0.84;
+    const vo = hexVerts(x, y, r), vi = hexVerts(x, y, ri);
+    let sd = (seed || 1) * 2654435761 >>> 0;
+    const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
+    g.save();
+    g.shadowColor = 'rgba(40,30,14,0.42)'; g.shadowBlur = 0.3 * S * DPR; g.shadowOffsetX = 0.08 * S * DPR; g.shadowOffsetY = 0.12 * S * DPR;
+    poly(g, vo); g.fillStyle = M.side; g.fill();
+    g.restore();
+    // chamfer facets, each lit by its normal against the lamp (continuous in the normal)
+    for (let i = 0; i < 6; i++) {
+      const a = vo[i], b = vo[(i + 1) % 6], c = vi[(i + 1) % 6], d = vi[i];
+      const mx = (a[0] + b[0]) / 2 - x, my = (a[1] + b[1]) / 2 - y, n = Math.hypot(mx, my);
+      const lit = (mx / n) * L2[0] + (my / n) * L2[1];
+      poly(g, [a, b, c, d]); g.fillStyle = lit > 0 ? mix(M.side, M.lite, Math.min(1, lit * 0.6 * GP.baseChamfer)) : mix(M.side, M.dark, Math.min(1, -lit * 0.55 * GP.baseChamfer)); g.fill();
+    }
+    // the top face
+    const fg = g.createLinearGradient(x - ri, y - ri, x + ri, y + ri);
+    fg.addColorStop(0, mix(M.face, M.lite, 0.25)); fg.addColorStop(0.6, M.face); fg.addColorStop(1, mix(M.face, M.dark, 0.25));
+    poly(g, vi); g.fillStyle = fg; g.fill();
+    g.save(); poly(g, vi); g.clip();
+    if (M.kind === 'grain') {
+      // side grain running along the block, gently wavy, with a few lighter ray flecks
+      const ga = 0.18 + (rnd() - 0.5) * 0.25, ux = Math.cos(ga), uy = Math.sin(ga), nx = -uy, ny = ux;
+      const nG = Math.round(24 * GP.grainFineness), sp = 0.044 / GP.grainFineness;
+      for (let k = -nG; k <= nG; k++) {
+        const off = k * ri * sp + (rnd() - 0.5) * ri * 0.02, amp = ri * (0.01 + rnd() * 0.025), ph = rnd() * TAU, fr = 2 + rnd() * 2;
+        g.beginPath();
+        for (let t = -1.1; t <= 1.1; t += 0.1) {
+          const w = Math.sin(t * fr + ph) * amp;
+          const px = x + ux * t * ri + nx * (off + w), py = y + uy * t * ri + ny * (off + w);
+          t <= -1.1 ? g.moveTo(px, py) : g.lineTo(px, py);
+        }
+        g.strokeStyle = M.grain + ((0.05 + rnd() * 0.08) * GP.grainContrast).toFixed(3) + ')'; g.lineWidth = (0.4 + rnd() * 0.45) / Math.sqrt(GP.grainFineness); g.stroke();
+      }
+      for (let k = 0; k < 2; k++) {
+        const t = (rnd() - 0.5) * 1.4, o = (rnd() - 0.5) * 1.4 * ri, L = ri * (0.1 + rnd() * 0.12);
+        const px = x + ux * t * ri + nx * o, py = y + uy * t * ri + ny * o;
+        g.beginPath(); g.moveTo(px, py); g.lineTo(px + ux * L, py + uy * L);
+        g.strokeStyle = M.fleck + (0.10 * GP.grainContrast).toFixed(3) + ')'; g.lineWidth = 0.9; g.stroke();
+      }
+    } else {
+      // sand-cast skin: a fine stipple, light and dark
+      for (let k = 0; k < 260; k++) {
+        const px = x + (rnd() - 0.5) * 2 * ri, py = y + (rnd() - 0.5) * 2 * ri;
+        g.fillStyle = (k & 1 ? M.fleck : M.grain) + ((0.08 + rnd() * 0.14) * GP.grainContrast).toFixed(3) + ')';
+        g.fillRect(px, py, 0.6 + rnd() * 0.9, 0.6 + rnd() * 0.9);
+      }
+    }
+    // satin oil / wax: a broad soft sheen from the lamp
+    const sh = g.createRadialGradient(x - ri * 0.45, y - ri * 0.5, 0, x - ri * 0.45, y - ri * 0.5, ri * 1.4);
+    sh.addColorStop(0, 'rgba(255,246,226,0.22)'); sh.addColorStop(1, 'rgba(255,246,226,0)');
+    g.fillStyle = sh; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    g.restore();
+    // the arris where face meets chamfer: lit edge on the lamp side only, a soft crease opposite
+    for (let i = 0; i < 6; i++) {
+      const a = vi[i], b = vi[(i + 1) % 6];
+      const mx = (a[0] + b[0]) / 2 - x, my = (a[1] + b[1]) / 2 - y, n = Math.hypot(mx, my);
+      const lit = (mx / n) * L2[0] + (my / n) * L2[1];
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+      g.strokeStyle = lit > 0 ? `rgba(255,244,220,${(0.55 * lit).toFixed(3)})` : `rgba(30,18,8,${(0.28 * -lit).toFixed(3)})`;
+      g.lineWidth = 0.9; g.stroke();
+    }
+    // a thin, quiet outline round the block
+    poly(g, vo); g.strokeStyle = `rgba(36,26,16,${GP.baseOutline})`; g.lineWidth = 0.8; g.stroke();
+    // three small brass pins hold the bearing plate down
+    const sr = S * 0.05;
+    for (let i = 1; i < 6; i += 2) {
+      const px = x + (vi[i][0] - x) * 0.78, py = y + (vi[i][1] - y) * 0.78;
+      blit(g, pinSprite(S, 0.05), px, py);
+    }
+    // bearing seat: a recess lined with a thin brass ferrule
+    const sr2 = S * 0.36;
+    const rg = g.createRadialGradient(x + sr2 * 0.3, y + sr2 * 0.3, sr2 * 0.2, x, y, sr2);
+    rg.addColorStop(0, mix(M.face, '#000000', 0.35)); rg.addColorStop(1, mix(M.face, '#000000', 0.65));
+    circ(g, x, y, sr2 + S * 0.06);
+    const fr = g.createLinearGradient(x - sr2, y - sr2, x + sr2, y + sr2);
+    fr.addColorStop(0, '#F3DC98'); fr.addColorStop(0.5, '#C29A48'); fr.addColorStop(1, '#6E5016');
+    g.fillStyle = fr; g.fill();
+    circ(g, x, y, sr2); g.fillStyle = rg; g.fill();
+    g.lineWidth = Math.max(0.8, S * 0.02);
+    g.beginPath(); g.arc(x, y, sr2, Math.PI * 0.25, Math.PI * 1.25); g.strokeStyle = 'rgba(20,12,4,0.55)'; g.stroke();
+  }
+
+  // the plate silhouette of a set of cells: each hex inset, bridged to its neighbours,
+  // with the little triangle where three meet filled — one continuous machined part
+  function cellsUnion(g, pts, cellsAx, r) {
+    const key = c => c[0] + ',' + c[1], idx = new Map(cellsAx.map((c, i) => [key(c), i]));
+    const V = pts.map(p => hexVerts(p[0], p[1], r));
+    for (const v of V) { poly(g, v); g.fill(); }
+    cellsAx.forEach((c, i) => {
+      for (let k = 0; k < 6; k++) {
+        const j = idx.get(key(add(c, DIRS[k])));
+        if (j === undefined || j < i) continue;
+        poly(g, [V[i][mod6(k - 1)], V[i][k], V[j][mod6(k + 2)], V[j][mod6(k + 3)]]); g.fill();
+        // a third cell touching both closes the corner between them
+        for (const k2 of [k - 1, k + 1]) {
+          const m = idx.get(key(add(c, DIRS[mod6(k2)])));
+          if (m === undefined) continue;
+          const cx = (pts[i][0] + pts[j][0] + pts[m][0]) / 3, cy = (pts[i][1] + pts[j][1] + pts[m][1]) / 3;
+          const near = vv => vv.reduce((b, p) => Math.hypot(p[0] - cx, p[1] - cy) < Math.hypot(b[0] - cx, b[1] - cy) ? p : b);
+          poly(g, [near(V[i]), near(V[j]), near(V[m])]); g.fill();
+        }
+      }
+    });
+  }
+  function tinted(src, color) {
+    const o = offscreen(src.w, src.h);
+    o.g.setTransform(1, 0, 0, 1, 0, 0); o.g.drawImage(src.c, 0, 0);
+    o.g.globalCompositeOperation = 'source-in'; o.g.fillStyle = color; o.g.fillRect(0, 0, o.c.width, o.c.height);
+    return o;
+  }
+  // an even band just inside a shape's edge, the same weight all round (device px)
+  function innerBand(src, px, color) {
+    const er = offscreen(src.w, src.h);
+    er.g.setTransform(1, 0, 0, 1, 0, 0); er.g.drawImage(src.c, 0, 0);
+    er.g.globalCompositeOperation = 'destination-in';
+    for (let i = 0; i < 12; i++) { const a = i * TAU / 12; er.g.drawImage(src.c, Math.cos(a) * px * DPR, Math.sin(a) * px * DPR); }
+    const o = offscreen(src.w, src.h);
+    o.g.setTransform(1, 0, 0, 1, 0, 0); o.g.drawImage(src.c, 0, 0);
+    o.g.globalCompositeOperation = 'destination-out'; o.g.drawImage(er.c, 0, 0);
+    o.g.globalCompositeOperation = 'source-in'; o.g.fillStyle = color; o.g.fillRect(0, 0, o.c.width, o.c.height);
+    return o;
+  }
+  // mask minus itself shifted: the rim band on one side of a shape (device px)
+  function rimBand(src, dx, dy, color) {
+    const o = offscreen(src.w, src.h);
+    o.g.setTransform(1, 0, 0, 1, 0, 0); o.g.drawImage(src.c, 0, 0);
+    o.g.globalCompositeOperation = 'destination-out'; o.g.drawImage(src.c, dx * DPR, dy * DPR);
+    o.g.globalCompositeOperation = 'source-in'; o.g.fillStyle = color; o.g.fillRect(0, 0, o.c.width, o.c.height);
+    return o;
+  }
+  function outline(src, px, color) {
+    const o = offscreen(src.w, src.h);
+    o.g.setTransform(1, 0, 0, 1, 0, 0);
+    for (let i = 0; i < 12; i++) { const a = i * TAU / 12; o.g.drawImage(src.c, Math.cos(a) * px * DPR, Math.sin(a) * px * DPR); }
+    o.g.globalCompositeOperation = 'destination-out'; o.g.drawImage(src.c, 0, 0);
+    o.g.globalCompositeOperation = 'source-in'; o.g.fillStyle = color; o.g.fillRect(0, 0, o.c.width, o.c.height);
+    return o;
+  }
+  function put(g, o, x, y) { g.drawImage(o.c, x, y, o.w, o.h); }
+
+  // ---------- every visual decision for glyph plates and arm bases, in one place ----------
+  // (the Glyph Tuner page edits a copy of these; the defaults are the approved look)
+  const GLYPH_PARAMS = {
+    // plate — the glyph-study snapshot's finish, sheen halved
+    brassLight: '#E4CC8C', brassMid: '#C9A963', brassDark: '#A88A48', sheen: 0.5, bevelWidth: 0.07, bevelDark: 0.42, bevelLight: 0.7, bevelBalance: 1, edgeWidth: 0.8, edgeOpacity: 0.55, fieldLineWidth: 0.7, fieldLineOpacity: 0.65, enamelLight: '#A9503D', enamelMid: '#8C3B2E', enamelDark: '#6A261C', enamelGloss: 1, engraveStrength: 1,
+    // seats (hold over it)
+    seatRadius: 0.69, seatWidth: 1, seatOpacity: 1, ringStrength: 1, markingsOverSeats: true,
+    // wells (drop it here)
+    wellStyle: 'original', wellRadius: 0.57, wellDepth: 0.52, wellRim: 0.75, wellEdge: 0.67,
+    // outputs (comes out here)
+    openWidth: 1.1, openOpacity: 0.55, openEngrave: 1,
+    // channels and marks
+    channelWidth: 0.11, channelDepth: 1, chevronSize: 1, chevronOpacity: 1, barLength: 0.72, barWidth: 0.13, barOpacity: 1, lozengeSize: 1,
+    // arm bases
+    baseSize: 0.95, woodTone: '#7E6A55', grainContrast: 1.45, grainFineness: 1.05, baseOutline: 0.39, baseChamfer: 1.45,
+  };
+  const GP = GLYPH_PARAMS;
+  const rgbaHex = (hex, a) => { const c = hex2rgb(hex); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+
+  // engraving: a dark groove with its lower-right wall catching the lamp
+  function engrave(g, path, lw, onEnamel, k) {
+    k = (k === undefined ? 1 : k) * GP.engraveStrength;
+    g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+    g.translate(0.7, 0.7); path(); g.strokeStyle = onEnamel ? `rgba(255,214,190,${0.35 * k})` : `rgba(255,248,222,${0.75 * k})`; g.lineWidth = lw; g.stroke();
+    g.translate(-0.7, -0.7); path(); g.strokeStyle = onEnamel ? `rgba(40,10,6,${0.75 * k})` : `rgba(78,56,16,${0.85 * k})`; g.lineWidth = lw; g.stroke();
+    g.restore();
+  }
+  function chevron(g, x, y, ang, s) {
+    const ux = Math.cos(ang), uy = Math.sin(ang), nx = -uy, ny = ux;
+    g.beginPath(); g.moveTo(x - ux * s * 0.5 + nx * s * 0.6, y - uy * s * 0.5 + ny * s * 0.6);
+    g.lineTo(x + ux * s * 0.5, y + uy * s * 0.5); g.lineTo(x - ux * s * 0.5 - nx * s * 0.6, y - uy * s * 0.5 - ny * s * 0.6);
+  }
+
+  // one glyph, inlaid flush in the board: a recessed metal plate with a bevelled lip,
+  // engraved seats where atoms sit, enamelled marks on the cells that receive
+  function paintGlyph(g, V, type, at, rot, label) {
+    if (type === 'calcify' || type === 'disposal') rot = 0;   // these two are never turned
+    const S = V.S, cells = glyphCells(type, at, rot), foot = glyphFootprint(type, at, rot);
+    const P = foot.map(V.P), Pc = cells.map(V.P);
+    const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+    const bx = Math.min(...xs) - S * 1.3, by = Math.min(...ys) - S * 1.3;
+    const w = Math.max(...xs) - bx + S * 1.3, h = Math.max(...ys) - by + S * 1.3;
+    const loc = P.map(p => [p[0] - bx, p[1] - by]), locC = Pc.map(p => [p[0] - bx, p[1] - by]);
+    const ox = FAMILY[type] === 'ox';
+    // masks
+    const M = offscreen(w, h); M.g.fillStyle = '#000'; cellsUnion(M.g, loc, foot, S * 0.93);
+    const F = offscreen(w, h); F.g.fillStyle = '#000';
+    if (type === 'disposal') cellsUnion(F.g, loc.slice(1), foot.slice(1), S * 0.76);
+    else cellsUnion(F.g, loc, foot, S * 0.76);
+    // pieces filled separately leave faint anti-aliased seams where they abut: fold them shut
+    for (const m of [M, F]) { m.g.save(); m.g.setTransform(1, 0, 0, 1, 0, 0); m.g.drawImage(m.c, 0, 0); m.g.drawImage(m.c, 0, 0); m.g.restore(); }
+    // plate
+    const Pl = offscreen(w, h), pg = Pl.g;
+    pg.drawImage(M.c, 0, 0, w, h);
+    pg.globalCompositeOperation = 'source-in';
+    const mg = pg.createLinearGradient(0, 0, w, h);
+    mg.addColorStop(0, GP.brassLight); mg.addColorStop(0.5, GP.brassMid); mg.addColorStop(1, GP.brassDark);
+    pg.fillStyle = mg; pg.fillRect(0, 0, w, h);
+    pg.globalCompositeOperation = 'source-atop';
+    // each seat spot-faced on the lathe: fine concentric rings, alternately catching the lamp
+    pg.save(); pg.lineWidth = 0.7;
+    for (const [x, y] of loc) for (let k = 2; k <= 13; k++) {
+      circ(pg, x, y, S * 0.065 * k);
+      pg.strokeStyle = k % 2 ? `rgba(255,248,222,${0.20 * GP.ringStrength})` : `rgba(96,70,22,${0.10 * GP.ringStrength})`; pg.stroke();
+    }
+    pg.restore();
+    // a broad sheen from the lamp across the whole plate
+    pg.save();
+    const sh = pg.createLinearGradient(0, 0, w * 0.6, h * 0.6);
+    sh.addColorStop(0, `rgba(255,250,230,${Math.min(1, 0.22 * GP.sheen)})`); sh.addColorStop(0.5, 'rgba(255,250,230,0)'); sh.addColorStop(1, `rgba(70,48,12,${Math.min(1, 0.12 * GP.sheen)})`);
+    pg.fillStyle = sh; pg.fillRect(0, 0, w, h);
+    pg.restore();
+    // the bevelled edges: OLD_PLATE (?plate=old, for comparison only) shades them from the
+    // lamp, dark on one side and light on the other; normally each edge carries the same
+    // balanced pair all round — a shade band with a lit lip — so no side reads darker
+    // every seat, well and marked cell masks the bevel and the field line out of itself, so
+    // where a cell comes near the plate's edge its face stays clean and the bevel stops at its rim
+    const KINDS = { bond: ['s', 's'], unbond: ['s', 's'], calcify: ['s'], duplicate: ['s', 'h'], project: ['s', 'w'],
+      purify: ['w', 'w', 'h'], animismus: ['w', 'w', 'h', 'h'], disposal: [] };
+    const Hm = offscreen(w, h); Hm.g.fillStyle = '#000';
+    (KINDS[type] || []).forEach((k, i) => {
+      const [x, y] = locC[i];
+      if (k === 's') circ(Hm.g, x, y, S * GP.seatRadius);
+      else if (k === 'w') circ(Hm.g, x, y, S * (GP.wellStyle === 'original' ? GP.wellRadius * 0.69 / 0.68 : GP.wellRadius));
+      else hexPath(Hm.g, x, y, S * 0.47);
+      Hm.g.fill();
+    });
+    const putCut = o => { o.g.save(); o.g.setTransform(1, 0, 0, 1, 0, 0); o.g.globalCompositeOperation = 'destination-out'; o.g.drawImage(Hm.c, 0, 0); o.g.restore(); put(pg, o, 0, 0); };
+    // bevelBalance: 0 = the same shade and lip all round, 1 = fully lamp-directional
+    const bb = GP.bevelBalance, eb = 1 - bb;
+    if (ox) {
+      // oxblood enamel poured into the field, a brass rim left standing around it
+      const E = offscreen(w, h);
+      E.g.drawImage(F.c, 0, 0, w, h); E.g.globalCompositeOperation = 'source-in';
+      const eg = E.g.createLinearGradient(0, 0, w * 0.7, h);
+      eg.addColorStop(0, GP.enamelLight); eg.addColorStop(0.55, GP.enamelMid); eg.addColorStop(1, GP.enamelDark);
+      E.g.fillStyle = eg; E.g.fillRect(0, 0, w, h);
+      E.g.globalCompositeOperation = 'source-atop';
+      const gl = E.g.createRadialGradient(w * 0.3, h * 0.25, 0, w * 0.3, h * 0.25, Math.max(w, h) * 0.6);
+      gl.addColorStop(0, `rgba(255,225,200,${Math.min(1, 0.30 * GP.enamelGloss)})`); gl.addColorStop(1, 'rgba(255,225,200,0)');
+      E.g.fillStyle = gl; E.g.fillRect(0, 0, w, h);
+      put(pg, E, 0, 0);
+      if (bb > 0) {
+        putCut(rimBand(F, 1.4, 1.4, `rgba(40,8,4,${0.55 * bb})`));
+        putCut(rimBand(F, -1.0, -1.0, `rgba(255,236,200,${0.45 * bb})`));
+      }
+      if (eb > 0) {
+        putCut(innerBand(F, 1.3, `rgba(40,8,4,${0.32 * eb})`));
+        putCut(outline(F, 0.6, `rgba(255,236,200,${0.28 * eb})`));
+      }
+    } else {
+      // a border line engraved round the field
+      putCut(outline(F, GP.fieldLineWidth, `rgba(78,56,16,${GP.fieldLineOpacity})`));
+      if (bb > 0) putCut(rimBand(F, -0.9, -0.9, `rgba(255,248,222,${0.55 * bb})`));
+      if (eb > 0) putCut(innerBand(F, 0.8, `rgba(255,248,222,${0.30 * eb})`));
+    }
+    // recess lip
+    if (bb > 0) {
+      putCut(rimBand(M, S * GP.bevelWidth, S * GP.bevelWidth, `rgba(60,40,10,${GP.bevelDark * bb})`));
+      putCut(rimBand(M, -1.2, -1.2, `rgba(255,248,226,${GP.bevelLight * bb})`));
+    }
+    if (eb > 0) {
+      putCut(innerBand(M, S * GP.bevelWidth, `rgba(60,40,10,${GP.bevelDark * 0.52 * eb})`));
+      putCut(innerBand(M, 1.2, `rgba(255,248,226,${GP.bevelLight * 0.54 * eb})`));
+    }
+    // emblems
+    const E = ox, lw = Math.max(1, S * 0.04), marks = GLYPH_MARK[type] || {};
+    // three kinds of cell, told apart by depth:
+    //   seat  — hold over it: a shallow ring flush with the plate
+    //   well  — drop it here (loose, unbonded): a counterbored well the atom settles into
+    //   open  — comes out here (must be empty): an open engraved hexagon, nothing to sit in
+    // seat radius pulled in a few % so the ring stays inside the field's engraved border
+    const SEAT = S * GP.seatRadius, seatQ = [];
+    const drawSeat = (x, y) => engrave(pg, () => circ(pg, x, y, SEAT), lw * GP.seatWidth, E, GP.seatOpacity);
+    // markings over seats: seats go down first; otherwise they're held back and laid on top
+    const seat = (x, y) => GP.markingsOverSeats ? drawSeat(x, y) : seatQ.push([x, y]);
+    const well = (x, y) => {
+      if (GP.wellStyle === 'original') {
+        // the first drop-here well: darker floor, the rim shading the lamp-side wall, the far
+        // wall catching the light, a heavier rim and an inner stepped ring (scaled by wellRadius)
+        const k = GP.wellRadius / 0.68;
+        const fl = pg.createRadialGradient(x + S * 0.14 * k, y + S * 0.16 * k, S * 0.05 * k, x, y, S * 0.7 * k);
+        fl.addColorStop(0, `rgba(70,46,10,${GP.wellDepth * 0.24})`); fl.addColorStop(1, `rgba(48,30,6,${GP.wellDepth})`);
+        circ(pg, x, y, S * 0.68 * k); pg.fillStyle = fl; pg.fill();
+        pg.save(); pg.lineCap = 'round';
+        pg.beginPath(); pg.arc(x, y, S * 0.61 * k, Math.PI * 0.8, Math.PI * 1.7); pg.strokeStyle = 'rgba(40,24,4,0.38)'; pg.lineWidth = S * 0.11 * k; pg.stroke();
+        pg.beginPath(); pg.arc(x, y, S * 0.645 * k, -Math.PI * 0.2, Math.PI * 0.7); pg.strokeStyle = 'rgba(255,244,206,0.55)'; pg.lineWidth = S * 0.04 * k; pg.stroke();
+        pg.restore();
+        engrave(pg, () => circ(pg, x, y, S * 0.69 * k), lw * 1.3, E, GP.wellRim);
+        engrave(pg, () => circ(pg, x, y, S * 0.5 * k), lw * 0.7, E, GP.wellRim);
+        if (GP.wellEdge > 0) { circ(pg, x, y, S * 0.69 * k); pg.strokeStyle = E ? `rgba(30,6,2,${GP.wellEdge})` : `rgba(58,38,8,${GP.wellEdge})`; pg.lineWidth = Math.max(0.8, S * 0.024); pg.stroke(); }
+        return;
+      }
+      const wr = S * GP.wellRadius;
+      const fl = pg.createRadialGradient(x + S * 0.14, y + S * 0.16, S * 0.05, x, y, wr * 1.06);
+      fl.addColorStop(0, `rgba(70,46,10,${GP.wellDepth * 0.28})`); fl.addColorStop(1, `rgba(48,30,6,${GP.wellDepth})`);
+      circ(pg, x, y, wr); pg.fillStyle = fl; pg.fill();
+      if (GP.wellRim > 0) engrave(pg, () => circ(pg, x, y, wr), lw * 1.2, E, GP.wellRim);
+      // a crisp, quiet edge so the well reads as cut, not stained
+      if (GP.wellEdge > 0) { circ(pg, x, y, wr); pg.strokeStyle = E ? `rgba(30,6,2,${GP.wellEdge})` : `rgba(58,38,8,${GP.wellEdge})`; pg.lineWidth = Math.max(0.8, S * 0.024); pg.stroke(); }
+    };
+    const open = (x, y, dot) => {
+      engrave(pg, () => hexPath(pg, x, y, S * 0.47), lw * GP.openWidth, E, GP.openEngrave);
+      hexPath(pg, x, y, S * 0.47); pg.strokeStyle = `rgba(140,59,46,${GP.openOpacity})`; pg.lineWidth = lw * 0.5 * GP.openWidth / 1.1; pg.stroke();
+      if (dot) { circ(pg, x, y, S * 0.085); pg.fillStyle = 'rgba(140,59,46,0.75)'; pg.fill(); pg.strokeStyle = 'rgba(70,48,12,0.8)'; pg.lineWidth = 0.7; pg.stroke(); }
+    };
+    const enamelMark = (x, y, dot) => {
+      hexPath(pg, x, y, S * 0.47); pg.fillStyle = '#7E3226'; pg.fill();
+      const hg = pg.createLinearGradient(x - S * 0.4, y - S * 0.4, x + S * 0.4, y + S * 0.4);
+      hg.addColorStop(0, 'rgba(255,220,196,0.35)'); hg.addColorStop(0.5, 'rgba(255,220,196,0)'); hg.addColorStop(1, 'rgba(30,6,2,0.3)');
+      pg.fillStyle = hg; pg.fill();
+      pg.strokeStyle = 'rgba(70,48,12,0.9)'; pg.lineWidth = lw; pg.stroke();
+      pg.save(); pg.translate(0.7, 0.7); hexPath(pg, x, y, S * 0.47 + lw * 0.5); pg.strokeStyle = 'rgba(255,246,214,0.6)'; pg.lineWidth = 0.8; pg.stroke(); pg.restore();
+      if (dot) { circ(pg, x, y, S * 0.1); pg.fillStyle = '#D9BC72'; pg.fill(); pg.strokeStyle = '#5E4614'; pg.lineWidth = 0.8; pg.stroke(); }
+    };
+    const channel = (a, b, gap) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+      const s0 = SEAT, s1 = L - SEAT, hw = S * GP.channelWidth;
+      const seg = (u0, u1) => engrave(pg, () => {
+        pg.beginPath();
+        for (const sg of [-1, 1]) { pg.moveTo(a[0] + ux * u0 + nx * hw * sg, a[1] + uy * u0 + ny * hw * sg); pg.lineTo(a[0] + ux * u1 + nx * hw * sg, a[1] + uy * u1 + ny * hw * sg); }
+      }, lw, E, GP.channelDepth);
+      if (gap) { seg(s0, L / 2 - S * 0.16); seg(L / 2 + S * 0.16, s1); } else seg(s0, s1);
+      return { ux, uy, nx, ny, L, ang: Math.atan2(dy, dx) };
+    };
+    const chev = (a, b, f, sz) => { const ang = Math.atan2(b[1] - a[1], b[0] - a[0]); engrave(pg, () => chevron(pg, lerp(a[0], b[0], f), lerp(a[1], b[1], f), ang, S * (sz || 0.2) * GP.chevronSize), lw * 1.1, E, GP.chevronOpacity); };
+    const C = locC;
+    if (type === 'bond') {
+      C.forEach(p => seat(p[0], p[1]));
+      channel(C[0], C[1]);
+      const m = [(C[0][0] + C[1][0]) / 2, (C[0][1] + C[1][1]) / 2];
+      pg.save(); pg.translate(m[0], m[1]); pg.rotate(Math.atan2(C[1][1] - C[0][1], C[1][0] - C[0][0]));
+      const lz = GP.lozengeSize;
+      pg.beginPath(); pg.moveTo(-S * 0.2 * lz, 0); pg.lineTo(0, -S * 0.17 * lz); pg.lineTo(S * 0.2 * lz, 0); pg.lineTo(0, S * 0.17 * lz); pg.closePath();
+      pg.fillStyle = '#E9D59A'; pg.fill(); pg.strokeStyle = 'rgba(78,56,16,0.85)'; pg.lineWidth = lw; pg.stroke();
+      pg.restore();
+    } else if (type === 'unbond') {
+      C.forEach(p => seat(p[0], p[1]));
+      channel(C[0], C[1], true);
+      // the break: a brass bar laid square across the cut link
+      const m = [(C[0][0] + C[1][0]) / 2, (C[0][1] + C[1][1]) / 2];
+      const BL = S * GP.barLength, BW = S * GP.barWidth;
+      pg.save(); pg.globalAlpha = GP.barOpacity; pg.translate(m[0], m[1]); pg.rotate(Math.atan2(C[1][1] - C[0][1], C[1][0] - C[0][0]) + Math.PI / 2);
+      pg.beginPath(); pg.roundRect(-BL / 2, -BW / 2, BL, BW, Math.min(BW / 2, S * 0.03));
+      pg.fillStyle = '#D9BC72'; pg.fill(); pg.strokeStyle = 'rgba(50,20,8,0.9)'; pg.lineWidth = lw; pg.stroke();
+      pg.translate(-0.5, -0.5);
+      pg.beginPath(); pg.moveTo(-BL / 2 + S * 0.06, -BW * 0.15); pg.lineTo(BL / 2 - S * 0.06, -BW * 0.15); pg.strokeStyle = 'rgba(255,246,214,0.75)'; pg.lineWidth = 0.8; pg.stroke();
+      pg.restore();
+    } else if (type === 'calcify') {
+      const [x, y] = C[0];
+      seat(x, y);
+      for (let i = 0; i < 6; i++) {
+        const a = i * D60 + Math.PI / 6;
+        engrave(pg, () => { pg.beginPath(); pg.moveTo(x + Math.cos(a) * S * 0.74, y + Math.sin(a) * S * 0.74); pg.lineTo(x + Math.cos(a) * S * 0.86, y + Math.sin(a) * S * 0.86); }, lw, E);
+      }
+      // the salt sign: a circle struck through
+      const ra = (rot || 0) * D60, bx = Math.cos(ra) * S * 0.24, by = Math.sin(ra) * S * 0.24;
+      engrave(pg, () => { circ(pg, x, y, S * 0.24); pg.moveTo(x - bx, y - by); pg.lineTo(x + bx, y + by); }, lw, E);
+    } else if (type === 'duplicate' || type === 'project') {
+      // the pair differ only in finish: projection feeds from a polished-steel inlay down one
+      // deep groove; duplication receives on pale salt enamel along a twin fine groove.
+      // A small chevron in the channel points the way the work flows.
+      const proj = type === 'project', [mx, my] = C[1];
+      seat(C[0][0], C[0][1]);
+      const wr = S * GP.wellRadius;
+      if (proj && GP.wellStyle === 'original') {
+        // as in the first well: a polished-steel hexagon inlay seated in the well
+        well(mx, my);
+        const ir = S * 0.38 * GP.wellRadius / 0.68;
+        hexPath(pg, mx, my, ir);
+        const ig = pg.createRadialGradient(mx - ir * 0.34, my - ir * 0.38, S * 0.02, mx, my, ir * 1.1);
+        ig.addColorStop(0, '#FBFAF5'); ig.addColorStop(0.4, '#C4C2BB'); ig.addColorStop(1, '#6A6862');
+        pg.fillStyle = ig; pg.fill();
+        pg.strokeStyle = 'rgba(40,38,32,0.9)'; pg.lineWidth = lw; pg.stroke();
+        pg.save(); pg.translate(0.7, 0.7); hexPath(pg, mx, my, ir + lw * 0.5); pg.strokeStyle = 'rgba(255,246,214,0.6)'; pg.lineWidth = 0.8; pg.stroke(); pg.restore();
+      } else if (proj) {
+        // quicksilver waits at the bottom of the well on a small polished-steel disc, concentric
+        // with the well and well inside its edge, so it reads as the well's floor, not a second part
+        well(mx, my);
+        const ir = wr * 0.6;
+        const ig = pg.createRadialGradient(mx - ir * 0.35, my - ir * 0.4, ir * 0.05, mx, my, ir);
+        ig.addColorStop(0, '#F4F3EE'); ig.addColorStop(0.5, '#B9B7B0'); ig.addColorStop(1, '#77756E');
+        circ(pg, mx, my, ir); pg.fillStyle = ig; pg.fill();
+        pg.strokeStyle = 'rgba(40,38,32,0.45)'; pg.lineWidth = Math.max(0.6, S * 0.018); pg.stroke();
+      } else {
+        // duplication's receiver: pale salt enamel, flush with the plate
+        const ir = S * 0.47;
+        hexPath(pg, mx, my, ir);
+        const ig = pg.createRadialGradient(mx - ir * 0.34, my - ir * 0.38, S * 0.02, mx, my, ir * 1.1);
+        ig.addColorStop(0, '#FFFCF2'); ig.addColorStop(0.55, '#EDE3CB'); ig.addColorStop(1, '#C9B98F');
+        pg.fillStyle = ig; pg.fill();
+        pg.strokeStyle = 'rgba(70,48,12,0.9)'; pg.lineWidth = lw; pg.stroke();
+        pg.save(); pg.translate(0.7, 0.7); hexPath(pg, mx, my, ir + lw * 0.5); pg.strokeStyle = 'rgba(255,246,214,0.6)'; pg.lineWidth = 0.8; pg.stroke(); pg.restore();
+      }
+      const dx = C[1][0] - C[0][0], dy = C[1][1] - C[0][1], L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+      const u0 = SEAT, u1 = L - (proj ? (GP.wellStyle === 'original' ? S * 0.69 * GP.wellRadius / 0.68 : wr) : S * 0.47);
+      if (proj) {
+        engrave(pg, () => { pg.beginPath(); pg.moveTo(C[0][0] + ux * u0, C[0][1] + uy * u0); pg.lineTo(C[0][0] + ux * u1, C[0][1] + uy * u1); }, lw * 2.4, E);
+        chev(C[1], C[0], 0.5, 0.2);
+      } else {
+        for (const sg of [-1, 1]) engrave(pg, () => { const o = S * 0.07 * sg; pg.beginPath(); pg.moveTo(C[0][0] + ux * u0 + nx * o, C[0][1] + uy * u0 + ny * o); pg.lineTo(C[0][0] + ux * u1 + nx * o, C[0][1] + uy * u1 + ny * o); }, lw * 0.75, E);
+        chev(C[0], C[1], 0.5, 0.2);
+      }
+    } else if (type === 'purify') {
+      well(C[0][0], C[0][1]); well(C[1][0], C[1][1]);
+      open(C[2][0], C[2][1], false);
+      channel(C[0], C[2]); channel(C[1], C[2]);
+      chev(C[0], C[2], 0.5, 0.17); chev(C[1], C[2], 0.5, 0.17);
+    } else if (type === 'animismus') {
+      well(C[0][0], C[0][1]); well(C[1][0], C[1][1]);
+      open(C[2][0], C[2][1], marks[2] === 2); open(C[3][0], C[3][1], marks[3] === 2);
+      channel(C[0], C[1]);
+      const m = [(C[0][0] + C[1][0]) / 2, (C[0][1] + C[1][1]) / 2];
+      chev(m, C[2], 0.55, 0.17); chev(m, C[3], 0.55, 0.17);
+    } else if (type === 'disposal') {
+      // the drain: a dark iron grate in a brass bezel; the ring of enamel all slopes inward
+      const [x, y] = locC[0];
+      loc.slice(1).forEach(p => chev(p, [x, y], 0.2, 0.2));
+      const gr = pg.createRadialGradient(x + S * 0.15, y + S * 0.15, S * 0.1, x, y, S * 0.7);
+      gr.addColorStop(0, '#3E3A33'); gr.addColorStop(1, '#16140F');
+      circ(pg, x, y, S * 0.7); pg.fillStyle = gr; pg.fill();
+      pg.strokeStyle = '#C9A963'; pg.lineWidth = S * 0.09; pg.stroke();
+      pg.strokeStyle = 'rgba(60,40,10,0.9)'; pg.lineWidth = 1; circ(pg, x, y, S * 0.745); pg.stroke();
+      pg.beginPath(); pg.arc(x, y, S * 0.7, Math.PI * 1.0, Math.PI * 1.5); pg.strokeStyle = 'rgba(255,246,206,0.7)'; pg.lineWidth = 1; pg.stroke();
+      pg.save(); pg.lineCap = 'round';
+      for (let i = 0; i < 6; i++) {
+        const a = i * D60 + 0.35 + (rot || 0) * D60;
+        pg.beginPath(); pg.arc(x, y, S * 0.44, a, a + 0.62);
+        pg.strokeStyle = '#000'; pg.lineWidth = S * 0.1; pg.stroke();
+        pg.beginPath(); pg.arc(x, y, S * 0.44, a + 0.04, a + 0.58); pg.strokeStyle = 'rgba(255,240,210,0.18)'; pg.lineWidth = 0.8;
+        pg.save(); pg.translate(0.6, 0.6); pg.stroke(); pg.restore();
+      }
+      pg.restore();
+      circ(pg, x, y, S * 0.13); pg.fillStyle = '#5A564D'; pg.fill(); pg.strokeStyle = '#000'; pg.lineWidth = 0.8; pg.stroke();
+    }
+    for (const [x, y] of seatQ) drawSeat(x, y);
+    pg.globalCompositeOperation = 'source-over';
+    // lay it into the board: a hairline of shadow round the recess, then the plate
+    put(g, outline(M, GP.edgeWidth, `rgba(70,50,18,${GP.edgeOpacity})`), bx, by);
+    put(g, Pl, bx, by);
+    if (label) {
+      const top = P.reduce((b, p) => p[1] < b[1] ? p : b);
+      monoText(g, GLYPH_LABEL_MK[type], top[0], top[1] - S * 1.12, 9, 'rgba(107,95,73,0.9)');
+    }
+  }
+  function monoText(g, txt, x, y, size, col, align) {
+    g.save(); g.font = `700 ${size}px 'Courier Prime', monospace`; g.fillStyle = col; g.textAlign = align || 'center'; g.textBaseline = 'middle';
+    if ('letterSpacing' in g) g.letterSpacing = (size * 0.12).toFixed(1) + 'px';
+    g.fillText(txt, x, y); g.restore();
+  }
+  // reagent input: an engraved dashed ring cut into the board, its element struck faintly inside
+  function paintInput(g, V, inp, label) {
+    const S = V.S, cells = inp.shape.cells.map(c => add(inp.at, c)), P = cells.map(V.P);
+    g.save(); g.lineCap = 'butt';
+    for (const [i, j] of inp.shape.bonds || []) {
+      for (const [off, col] of [[0.7, 'rgba(255,250,232,0.8)'], [0, 'rgba(42,35,24,0.38)']]) {
+        g.setLineDash([S * 0.1, S * 0.1]); g.strokeStyle = col; g.lineWidth = S * 0.1;
+        g.beginPath(); g.moveTo(P[i][0] + off, P[i][1] + off); g.lineTo(P[j][0] + off, P[j][1] + off); g.stroke();
+      }
+    }
+    P.forEach(([x, y], i) => {
+      // a shallow turned dish
+      const dg = g.createRadialGradient(x - S * 0.2, y - S * 0.2, S * 0.1, x, y, S * 0.7);
+      dg.addColorStop(0, 'rgba(90,70,36,0.10)'); dg.addColorStop(1, 'rgba(255,250,232,0.0)');
+      circ(g, x, y, S * 0.7); g.fillStyle = dg; g.fill();
+      g.setLineDash([S * 0.13, S * 0.09]);
+      g.lineWidth = Math.max(1.2, S * 0.045);
+      g.strokeStyle = 'rgba(255,250,232,0.9)'; circ(g, x + 0.7, y + 0.7, S * 0.66); g.stroke();
+      g.strokeStyle = 'rgba(70,56,34,0.62)'; circ(g, x, y, S * 0.66); g.stroke();
+      g.setLineDash([]);
+      g.font = `600 ${Math.round(S * 0.46)}px 'EB Garamond', serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = 'rgba(255,250,232,0.8)'; g.fillText(inp.shape.elems[i], x + 0.7, y + 0.7 + S * 0.02);
+      g.fillStyle = 'rgba(42,35,24,0.36)'; g.fillText(inp.shape.elems[i], x, y + S * 0.02);
+    });
+    g.restore();
+    if (label) monoText(g, 'IN · ' + inp.shape.elems[0], P[0][0], P[0][1] + S * 1.0, 9, 'rgba(107,95,73,0.95)');
+  }
+  // product output: a verdigris socket the exact shape of the target molecule
+  function paintOutput(g, V, out, label) {
+    const S = V.S, cells = out.shape.cells.map(c => add(out.at, c)), P = cells.map(V.P);
+    const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+    const bx = Math.min(...xs) - S * 1.4, by = Math.min(...ys) - S * 1.4;
+    const w = Math.max(...xs) - bx + S * 1.4, h = Math.max(...ys) - by + S * 1.4;
+    const loc = P.map(p => [p[0] - bx, p[1] - by]);
+    const M = offscreen(w, h); M.g.fillStyle = '#000';
+    loc.forEach(p => { circ(M.g, p[0], p[1], S * 0.84); M.g.fill(); });
+    for (const [i, j] of out.shape.bonds || []) {
+      M.g.save(); M.g.lineCap = 'round'; M.g.strokeStyle = '#000'; M.g.lineWidth = S * 0.9;
+      M.g.beginPath(); M.g.moveTo(loc[i][0], loc[i][1]); M.g.lineTo(loc[j][0], loc[j][1]); M.g.stroke(); M.g.restore();
+    }
+    put(g, tinted(M, 'rgba(51,112,94,0.10)'), bx, by);
+    put(g, rimBand(M, S * 0.06, S * 0.06, 'rgba(30,70,58,0.22)'), bx, by);
+    put(g, outline(M, 1.5, 'rgba(51,112,94,0.85)'), bx, by);
+    g.save();
+    for (const [i, j] of out.shape.bonds || []) {
+      g.setLineDash([S * 0.1, S * 0.1]); g.strokeStyle = 'rgba(51,112,94,0.6)'; g.lineWidth = S * 0.11;
+      const dx = P[j][0] - P[i][0], dy = P[j][1] - P[i][1], L = Math.hypot(dx, dy), k = S * 0.62 / L;
+      g.beginPath(); g.moveTo(P[i][0] + dx * k, P[i][1] + dy * k); g.lineTo(P[j][0] - dx * k, P[j][1] - dy * k); g.stroke();
+    }
+    P.forEach(([x, y], i) => {
+      g.setLineDash([S * 0.12, S * 0.08]); g.strokeStyle = 'rgba(51,112,94,0.75)'; g.lineWidth = Math.max(1.1, S * 0.035);
+      circ(g, x, y, S * 0.6); g.stroke(); g.setLineDash([]);
+      g.font = `600 ${Math.round(S * 0.46)}px 'EB Garamond', serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = 'rgba(51,112,94,0.62)'; g.fillText(out.shape.elems[i], x, y + S * 0.02);
+    });
+    g.restore();
+    if (label) { const top = P.reduce((b, p) => p[1] < b[1] ? p : b); monoText(g, 'OUT', top[0], top[1] - S * 1.12, 9, 'rgba(51,112,94,1)'); }
+  }
+
+  // ---------- arms (dynamic, no blur, no fresh gradients) ----------
+  function fingerPts(hx, hy, theta, grip, S) {
+    const Rr = S * RING_R;
+    const hxp = hx + Rr * Math.cos(theta), hyp = hy + Rr * Math.sin(theta);
+    const a1 = theta + Math.PI + 2.12 - 1.7 * grip;
+    const L1 = S * 0.25, L2 = S * 0.16;
+    const p1 = [hxp + L1 * Math.cos(a1), hyp + L1 * Math.sin(a1)];
+    const a2 = a1 - 0.05 - 0.85 * grip;
+    return [[hxp, hyp], p1, [p1[0] + L2 * Math.cos(a2), p1[1] + L2 * Math.sin(a2)]];
+  }
+  function fingerOutline(f, S) {
+    const w = [S * 0.075, S * 0.06, S * 0.028];
+    const n = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return [-dy / L, dx / L]; };
+    const n0 = n(f[0], f[1]), n2 = n(f[1], f[2]);
+    let n1 = [n0[0] + n2[0], n0[1] + n2[1]]; const l1 = Math.hypot(n1[0], n1[1]) || 1; n1 = [n1[0] / l1, n1[1] / l1];
+    const N = [n0, n1, n2];
+    return { L: f.map((p, i) => [p[0] + N[i][0] * w[i], p[1] + N[i][1] * w[i]]), R: f.map((p, i) => [p[0] - N[i][0] * w[i], p[1] - N[i][1] * w[i]]) };
+  }
+  function fingerPath(g, f, o, S) {
+    const { L, R } = o;
+    g.beginPath();
+    g.moveTo(L[0][0], L[0][1]); g.lineTo(L[1][0], L[1][1]); g.lineTo(L[2][0], L[2][1]);
+    g.arc(f[2][0], f[2][1], S * 0.03, Math.atan2(L[2][1] - f[2][1], L[2][0] - f[2][0]), Math.atan2(R[2][1] - f[2][1], R[2][0] - f[2][0]), false);
+    g.lineTo(R[1][0], R[1][1]); g.lineTo(R[0][0], R[0][1]); g.closePath();
+  }
+  function handsOf(a, pose, V) {
+    const [bx, by] = V.P(a.base), d = a.len * PITCH * V.S;
+    return GRIPOFF[a.grippers].map((o, i) => {
+      const th = pose.th + o * D60;
+      return { i, th, x: bx + Math.cos(th) * d, y: by + Math.sin(th) * d, grip: pose.grips[i], spin: pose.spins[i] };
+    });
+  }
+  function armShadow(g, a, pose, V) {
+    const S = V.S, [bx, by] = V.P(a.base), w = S * 0.2, Rr = S * RING_R;
+    for (const h of handsOf(a, pose, V)) {
+      g.save(); g.translate(bx, by); g.rotate(h.th); g.fillRect(0, -w / 2, a.len * PITCH * S - Rr * 0.8, w); g.restore();
+      g.lineWidth = S * RING_W * 1.2; circ(g, h.x, h.y, Rr); g.stroke();
+      for (let k = 0; k < 3; k++) {
+        const f = fingerPts(h.x, h.y, h.th + h.spin + k * TAU / 3, h.grip, S), o = fingerOutline(f, S);
+        poly(g, [...o.L, ...o.R.slice().reverse()]); g.fill();
+      }
+    }
+    circ(g, bx, by, S * 0.31); g.fill();
+  }
+  function drawShaft(g, x0, y0, ang, len, w, S, grooves) {
+    g.save(); g.translate(x0, y0); g.rotate(ang);
+    g.fillStyle = tubeGrad(g, w, ang, BRASS_ALB, 'brass'); g.fillRect(0, -w / 2, len, w);
+    const hl = Math.max(0.6, S * 0.018);
+    g.fillStyle = 'rgba(60,42,10,0.6)'; g.fillRect(0, -w / 2, len, hl); g.fillRect(0, w / 2 - hl, len, hl);
+    const ax = Math.cos(ang) * L2[0] + Math.sin(ang) * L2[1], up = clamp01(0.5 - ax * 0.7), dn = 1 - up;
+    for (const d of grooves) {
+      g.fillStyle = 'rgba(70,50,14,0.75)'; g.fillRect(d - S * 0.017, -w / 2, S * 0.035, w);
+      g.fillStyle = `rgba(255,244,200,${(0.75 * up).toFixed(3)})`; g.fillRect(d + S * 0.02, -w / 2, S * 0.02, w);
+      g.fillStyle = `rgba(255,244,200,${(0.75 * dn).toFixed(3)})`; g.fillRect(d - S * 0.04, -w / 2, S * 0.02, w);
+    }
+    g.restore();
+  }
+  function drawClaw(g, h, S) {
+    blit(g, ringSprite(S), h.x, h.y);
+    const rot = h.th + h.spin;
+    const pin = pinSprite(S, 0.06);
+    // rotation index: a small gold tab riding the collet between two jaws; a pivot carries it round
+    {
+      const a = rot + D60, c = Math.cos(a), sn = Math.sin(a), P = (r, t) => [h.x + (c * r - sn * t) * S, h.y + (sn * r + c * t) * S];
+      poly(g, [P(0.6, -0.065), P(0.69, -0.065), P(0.765, 0), P(0.69, 0.065), P(0.6, 0.065)]);
+      g.fillStyle = '#CFAE5A'; g.fill(); g.strokeStyle = '#4A360C'; g.lineWidth = Math.max(0.7, S * 0.018); g.lineJoin = 'round'; g.stroke();
+      const hp = P(0.67, 0); g.fillStyle = 'rgba(255,246,206,0.8)'; g.beginPath(); g.arc(hp[0] - S * 0.012, hp[1] - S * 0.014, S * 0.018, 0, TAU); g.fill();
+    }
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    for (let k = 0; k < 3; k++) {
+      const f = fingerPts(h.x, h.y, rot + k * TAU / 3, h.grip, S), o = fingerOutline(f, S);
+      fingerPath(g, f, o, S);
+      g.fillStyle = '#A7A296'; g.fill();
+      g.lineWidth = Math.max(0.9, S * 0.024); g.strokeStyle = '#17150F'; g.stroke();
+      // edge light by how squarely each side faces the lamp: it fades from one edge to the
+      // other as the claw turns, never jumps
+      const nd = (o.L[0][0] - f[0][0]) * L2[0] + (o.L[0][1] - f[0][1]) * L2[1] + (o.L[1][0] - f[1][0]) * L2[0] + (o.L[1][1] - f[1][1]) * L2[1];
+      const dl = clamp01(0.5 + nd / (S * 0.135) * 0.5);
+      const ix = (p, i) => [p[0] + (f[i][0] - p[0]) * 0.35, p[1] + (f[i][1] - p[1]) * 0.35];
+      for (const [side, k] of [[o.L, dl], [o.R, 1 - dl]]) {
+        const p0 = ix(side[0], 0), p1 = ix(side[1], 1), p2 = ix(side[2], 2);
+        const hi = clamp01((k - 0.25) / 0.75), lo = clamp01((0.75 - k) / 0.75);
+        if (hi > 0.01) { g.strokeStyle = `rgba(255,253,246,${(0.95 * hi).toFixed(3)})`; g.lineWidth = Math.max(0.6, S * 0.02); g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]); g.stroke(); }
+        if (lo > 0.01) { g.strokeStyle = `rgba(40,38,32,${(0.55 * lo).toFixed(3)})`; g.lineWidth = Math.max(0.6, S * 0.025); g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.stroke(); }
+      }
+      circ(g, f[1][0], f[1][1], S * 0.028); g.fillStyle = '#1E1C18'; g.fill();
+      blit(g, pin, f[0][0], f[0][1]);
+    }
+  }
+  function drawClevis(g, h, S, w) {
+    const Rr = S * RING_R, cx = h.x - Math.cos(h.th) * Rr, cy = h.y - Math.sin(h.th) * Rr;
+    g.save(); g.translate(cx, cy); g.rotate(h.th);
+    const L = S * 0.30, W = w * 1.35;
+    g.beginPath(); g.roundRect(-L * 0.75, -W / 2, L, W, S * 0.04);
+    g.fillStyle = tubeGrad(g, W, h.th, STEEL_ALB, 'steel'); g.fill();
+    g.strokeStyle = '#1E1C18'; g.lineWidth = Math.max(0.8, S * 0.025); g.stroke();
+    g.restore();
+    blit(g, pinSprite(S, 0.05), cx, cy);
+  }
+  function drawHub(g, x, y, ang, S) {
+    blit(g, hubBodySprite(S), x, y);
+    const R = S * 0.31, r = S * 0.2, br = (R + r) / 2;
+    g.fillStyle = '#1E1C18';
+    g.beginPath();
+    for (let i = 0; i < 6; i++) { const a = ang + i * D60 + D60 / 2, bx = x + Math.cos(a) * br, by = y + Math.sin(a) * br; g.moveTo(bx + S * 0.03, by); g.arc(bx, by, S * 0.03, 0, TAU); }
+    g.fill();
+    g.fillStyle = 'rgba(230,226,214,0.8)';
+    g.beginPath();
+    for (let i = 0; i < 6; i++) { const a = ang + i * D60 + D60 / 2, bx = x + Math.cos(a) * br - S * 0.008, by = y + Math.sin(a) * br - S * 0.01; g.moveTo(bx + S * 0.015, by); g.arc(bx, by, S * 0.015, 0, TAU); }
+    g.fill();
+    blit(g, domeSprite(S), x, y);
+    g.strokeStyle = '#2A1F08'; g.lineWidth = Math.max(1, S * 0.04); g.lineCap = 'round';
+    g.beginPath(); g.moveTo(x + Math.cos(ang) * r * 0.25, y + Math.sin(ang) * r * 0.25); g.lineTo(x + Math.cos(ang) * r * 0.82, y + Math.sin(ang) * r * 0.82); g.stroke();
+  }
+  function drawArms(g, list, V) {
+    const S = V.S, w = S * 0.2;
+    const all = list.map(({ a, pose }) => ({ a, pose, hands: handsOf(a, pose, V), b: V.P(a.base) }));
+    for (const { a, hands, b } of all) {
+      const grooves = []; for (let k = 1; k < a.len; k++) grooves.push(k * PITCH * S);
+      for (const h of hands) drawShaft(g, b[0], b[1], h.th, a.len * PITCH * S - S * RING_R, w, S, grooves);
+    }
+    for (const { hands } of all) for (const h of hands) { drawClaw(g, h, S); drawClevis(g, h, S, w); }
+    for (const { pose, b } of all) drawHub(g, b[0], b[1], pose.th, S);
+  }
+
+  // ---------- atoms, bonds ----------
+  // the path of a turn or a pivot, engraved in oxblood as it happens: a dashed arc that
+  // grows with the sweep, an arrowhead leading it, fading once the motion lands
+  function drawArc(g, cx, cy, r, a0, a1, cur, alpha, S) {
+    if (alpha <= 0.01) return;
+    const dir = Math.sign(a1 - a0) || 1;
+    g.save(); g.globalAlpha = alpha;
+    g.setLineDash([S * 0.1, S * 0.1]); g.strokeStyle = '#8C3B2E'; g.lineWidth = Math.max(1.3, S * 0.038); g.lineCap = 'butt';
+    g.beginPath(); g.arc(cx, cy, r, a0, cur, dir < 0); g.stroke(); g.setLineDash([]);
+    const hx = cx + Math.cos(cur) * r, hy = cy + Math.sin(cur) * r, tx = -Math.sin(cur) * dir, ty = Math.cos(cur) * dir, k = S * 0.13;
+    g.beginPath(); g.moveTo(hx + tx * k * 1.4, hy + ty * k * 1.4);
+    g.lineTo(hx - tx * k * 0.4 + Math.cos(cur) * k, hy - ty * k * 0.4 + Math.sin(cur) * k);
+    g.lineTo(hx - tx * k * 0.4 - Math.cos(cur) * k, hy - ty * k * 0.4 - Math.sin(cur) * k);
+    g.closePath(); g.fillStyle = '#8C3B2E'; g.fill();
+    g.restore();
+  }
+
+  // ---------- the shadow of moving machinery: drawn small, upscaled soft, one blit ----------
+  const SHK = 1 / 3.5;
+  function makeShadow(W, H) { return offscreen(W, H, SHK); }
+
+  // ---------- glue for the editor ----------
+  const GT = { bonders: 'bond', debonders: 'unbond', calcifiers: 'calcify', duplicators: 'duplicate',
+    projectors: 'project', purifiers: 'purify', animismus: 'animismus', disposals: 'disposal' };
+  const GSPR = new Map();
+  const trim = (m) => { if (m.size > 96) m.clear(); };
+  // one glyph's inlaid plate as a sprite, anchored on its first cell. Translation-invariant,
+  // so a board of glyphs is a handful of blits; calcify and disposal never turn.
+  function glyphSprite(gameType, rot, S) {
+    const type = GT[gameType] || 'bond';
+    if (type === 'calcify' || type === 'disposal') rot = 0;
+    rot = mod6(rot || 0);
+    const key = type + ':' + rot + ':' + S.toFixed(3) + '@' + DPR;
+    let s = GSPR.get(key);
+    if (s) return s;
+    trim(GSPR);
+    const u = glyphFootprint(type, [0, 0], rot).map(c => [PITCH * (c[0] + c[1] / 2), 1.5 * c[1]]);
+    const pad = 1.5;
+    const minX = Math.min(...u.map(p => p[0])) - pad, maxX = Math.max(...u.map(p => p[0])) + pad;
+    const minY = Math.min(...u.map(p => p[1])) - pad, maxY = Math.max(...u.map(p => p[1])) + pad;
+    const w = (maxX - minX) * S, h = (maxY - minY) * S;
+    const o = offscreen(w, h);
+    const V = makeView(S, -minX * S, -minY * S);
+    paintGlyph(o.g, V, type, [0, 0], rot, false);
+    s = { c: o.c, w, h, ax: -minX * S, ay: -minY * S };
+    GSPR.set(key, s);
+    return s;
+  }
+  function blitGlyph(g, gameType, rot, x, y, S) {
+    const s = glyphSprite(gameType, rot, S);
+    g.drawImage(s.c, x - s.ax, y - s.ay, s.w, s.h);
+  }
+  function glyphLabel(g, gameType, rot, at, V) {
+    const type = GT[gameType] || 'bond';
+    if (type === 'calcify' || type === 'disposal') rot = 0;
+    const P = glyphFootprint(type, at, rot).map(V.P);
+    const top = P.reduce((b, p) => p[1] < b[1] ? p : b);
+    monoText(g, GLYPH_LABEL_MK[type], top[0], top[1] - V.S * 1.12, 9, 'rgba(107,95,73,0.9)');
+  }
+  const BSPR = new Map();
+  function baseSprite(S, seed) {
+    seed = ((seed % 8) + 8) % 8;
+    const key = BASE_STYLE + ':' + seed + ':' + S.toFixed(3) + '@' + DPR;
+    let s = BSPR.get(key);
+    if (s) return s;
+    trim(BSPR);
+    const R = S * GP.baseSize + S * 0.55;
+    s = spr('base:' + key, R * 2, R * 2, g => paintBasePlate(g, 0, 0, S, seed + 7));
+    BSPR.set(key, s);
+    return s;
+  }
+  // an elbow pin: a steel hex collar clamped where the child arm rides, grid-aligned
+  function drawElbow(g, x, y, S) {
+    const R = S * 0.36, v = hexVerts(x, y, R);
+    poly(g, v); g.fillStyle = '#4A4740'; g.fill();
+    for (let i = 0; i < 6; i++) {
+      const a = v[i], b = v[(i + 1) % 6];
+      const mx = (a[0] + b[0]) / 2 - x, my = (a[1] + b[1]) / 2 - y, n = Math.hypot(mx, my);
+      const lit = (mx / n) * L2[0] + (my / n) * L2[1];
+      const c = [(a[0] + x) / 2 + (a[0] - x) * 0.25, (a[1] + y) / 2 + (a[1] - y) * 0.25];
+      const d = [(b[0] + x) / 2 + (b[0] - x) * 0.25, (b[1] + y) / 2 + (b[1] - y) * 0.25];
+      poly(g, [a, b, d, c]);
+      g.fillStyle = lit > 0 ? mix('#6A675F', '#E2DED2', lit) : mix('#6A675F', '#22201C', -lit); g.fill();
+    }
+    poly(g, v); g.strokeStyle = 'rgba(28,26,22,0.8)'; g.lineWidth = Math.max(0.8, S * 0.022); g.stroke();
+  }
+  // arms as the editor knows them: { b:[x,y], hands:[{x,y,ang,grip,spin,hide}], len, thick, ghost }
+  function armShadows(g, list, S, W, H, key) {
+    let sh = SHADOWS.get(key);
+    if (!sh || sh.w !== W || sh.h !== H) { sh = offscreen(W, H, SHK); SHADOWS.set(key, sh); }
+    const sg = sh.g, dx = S * 0.07, dy = S * 0.11;
+    sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, sh.c.width, sh.c.height);
+    sg.setTransform(SHK, 0, 0, SHK, dx * SHK, dy * SHK);
+    sg.fillStyle = '#2E200C'; sg.strokeStyle = '#2E200C';
+    const TS = 28, cols = Math.ceil(W / TS), rows = Math.ceil(H / TS), mark = new Uint8Array(cols * rows);
+    const hit = (x, y, r) => {
+      x += dx; y += dy;
+      const c0 = Math.max(0, Math.floor((x - r) / TS)), c1 = Math.min(cols - 1, Math.floor((x + r) / TS));
+      const r0 = Math.max(0, Math.floor((y - r) / TS)), r1 = Math.min(rows - 1, Math.floor((y + r) / TS));
+      for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) mark[rr * cols + cc] = 1;
+    };
+    const w = S * 0.2, Rr = S * RING_R;
+    for (const a of list) {
+      if (a.ghost) continue;
+      const [bx, by] = a.b;
+      hit(bx, by, S * 0.5);
+      for (const h of a.hands) {
+        const L = Math.hypot(h.x - bx, h.y - by);
+        sg.save(); sg.translate(bx, by); sg.rotate(h.ang); sg.fillRect(0, -w * (a.thick || 1) / 2, h.hide ? L : L - Rr * 0.8, w * (a.thick || 1)); sg.restore();
+        const n = Math.ceil(L / 20);
+        for (let k = 1; k < n; k++) hit(lerp(bx, h.x, k / n), lerp(by, h.y, k / n), S * 0.3);
+        if (h.hide) continue;
+        sg.lineWidth = S * RING_W * 1.2; circ(sg, h.x, h.y, Rr); sg.stroke();
+        for (let k = 0; k < 3; k++) {
+          const f = fingerPts(h.x, h.y, h.ang + (h.spin || 0) + k * TAU / 3, h.grip, S), o = fingerOutline(f, S);
+          poly(sg, [...o.L, ...o.R.slice().reverse()]); sg.fill();
+        }
+        hit(h.x, h.y, S * 1.15);
+      }
+      circ(sg, bx, by, S * 0.31); sg.fill();
+    }
+    g.save(); g.beginPath();
+    let any = false;
+    for (let i = 0; i < mark.length; i++) if (mark[i]) {
+      let j = i; while (j + 1 < mark.length && mark[j + 1] && (j + 1) % cols) j++;
+      g.rect((i % cols) * TS, Math.floor(i / cols) * TS, (j - i + 1) * TS, TS); i = j; any = true;
+    }
+    if (any) { g.clip(); g.globalAlpha = 0.42; g.drawImage(sh.c, 0, 0, W, H); }
+    g.restore();
+  }
+  const SHADOWS = new WeakMap();
+  function drawArmsGame(g, list, S) {
+    const w0 = S * 0.2;
+    for (const a of list) {
+      if (a.ghost) g.globalAlpha = 0.45;
+      const [bx, by] = a.b, w = w0 * (a.thick || 1);
+      for (const h of a.hands) {
+        const L = Math.hypot(h.x - bx, h.y - by), cells = Math.round(L / (PITCH * S));
+        const grooves = []; for (let k = 1; k < cells; k++) grooves.push(k * PITCH * S);
+        drawShaft(g, bx, by, h.ang, h.hide ? L : L - S * RING_R, w, S, grooves);
+      }
+      g.globalAlpha = 1;
+    }
+    for (const a of list) {
+      if (a.ghost) g.globalAlpha = 0.45;
+      const w = w0 * (a.thick || 1);
+      for (const h of a.hands) {
+        if (h.hide) continue;
+        const hh = { x: h.x, y: h.y, th: h.ang, spin: h.spin || 0, grip: h.grip };
+        drawClaw(g, hh, S); drawClevis(g, hh, S, w);
+      }
+      g.globalAlpha = 1;
+    }
+    for (const a of list) {
+      if (a.ghost) g.globalAlpha = 0.45;
+      if (a.elbow) drawElbow(g, a.b[0], a.b[1], S);
+      drawHub(g, a.b[0], a.b[1], a.hands[0] ? a.hands[0].ang : 0, S * (a.elbow ? 0.8 : 1));
+      g.globalAlpha = 1;
+    }
+  }
+  return {
+    setDpr: (d) => { DPR = d; },
+    GLYPH_PARAMS: GP, makeView, paintBoard, paintInput, paintOutput, monoText, hexVerts, poly, circ,
+    blitGlyph, glyphLabel, baseSprite, blit, drawArmsGame, armShadows, drawArc, drawElbow,
+  };
+  })();
+
+
+  // ---------- drawing ----------
+  // The board, every glyph plate, the inputs, the output and the ground plates are
+  // painted once per layout+view into a static layer and blitted each frame — one layer
+  // per surface, so the GIF recorder keeps its own. Arms, atoms and effects go on top.
+  const STATIC = new WeakMap(), GRIDS = new WeakMap();
+  const mkView = () => MK.makeView(view.s, view.ox, view.oy);
+  const baseSeed = (c) => c[0] * 7 + c[1] * 13;
+  function staticLayer() {
+    const ground = layout.arms.filter(a => a.mount && a.mount.ground).map(a => a.mount.ground);
+    const vk = [CW, CH, dpr, view.s, view.ox, view.oy].join(',');
+    const key = vk + '|' + pIdx + '|' + JSON.stringify([layout.glyphs, layout.inputs, layout.output, ground]);
+    const surf = ctx.canvas;
+    const e = STATIC.get(surf);
+    if (e && e.key === key) return e.c;
+    MK.setDpr(dpr);
+    let grid = GRIDS.get(surf);
+    if (!grid || grid.key !== vk) {
+      const c = document.createElement('canvas');
+      c.width = Math.round(CW * dpr); c.height = Math.round(CH * dpr);
+      const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      MK.paintBoard(g, CW, CH, mkView());
+      grid = { key: vk, c }; GRIDS.set(surf, grid);
+    }
+    const c = (e && e.c) || document.createElement('canvas');
+    c.width = grid.c.width; c.height = grid.c.height;      // (also clears it)
+    const g = c.getContext('2d');
+    g.drawImage(grid.c, 0, 0);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const V = mkView();
+    for (const gl of layout.glyphs) { const [x, y] = Pc(gl.at); MK.blitGlyph(g, gl.type, gl.rot || 0, x, y, view.s); }
+    for (const gl of layout.glyphs) if (gl.type !== 'bonders') MK.glyphLabel(g, gl.type, gl.rot || 0, gl.at, V);
+    for (const inp of layout.inputs) {
+      const sh = base().reagentShapes[inp.ri];
+      MK.paintInput(g, V, { at: [0, 0], shape: { cells: inputCells(inp), elems: sh.elems, bonds: sh.bonds } }, true);
+    }
+    const ps = base().productShape;
+    MK.paintOutput(g, V, { at: [0, 0], shape: { cells: outputCells(), elems: ps.elems, bonds: ps.bonds } }, true);
+    for (const c0 of ground) { const [x, y] = Pc(c0); MK.blit(g, MK.baseSprite(view.s, baseSeed(c0)), x, y); }
+    STATIC.set(surf, { key, c });
+    return c;
+  }
+  function drawGrid() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(staticLayer(), 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    MK.setDpr(dpr);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   }
-
-  function drawGlyph(g, selected) {
-    const cells = glyphCells(g);
-    const bond = g.type === 'bonders';
-    const col = bond ? '160,118,43' : '140,59,46';
-    if (g.type === 'disposals') {
-      // the whole seven-hex plate is the glyph; only the center does anything
-      for (const c of glyphFootprint(g).slice(1)) {
-        const [x, y] = Pc(c);
-        hexPath(x, y, view.s * PITCH / 2 * 1.08);
-        ctx.fillStyle = `rgba(${col},0.07)`; ctx.fill();
-        ctx.strokeStyle = `rgba(${col},${selected ? 0.55 : 0.3})`; ctx.lineWidth = 1.2; ctx.stroke();
+  // selection: a brass outline round the outer edge of a set of cells
+  function outlineCells(cells, color, w) {
+    const keyOf = (c) => c[0] + ',' + c[1], has = new Set(cells.map(keyOf));
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const c of cells) {
+      const [x, y] = Pc(c), v = MK.hexVerts(x, y, view.s * 0.99);
+      for (let k = 0; k < 6; k++) {
+        if (has.has(keyOf(addc(c, GW.DIRS[k])))) continue;
+        const a = v[mod6(k - 1)], b = v[k];
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
       }
     }
-    const marks = GLYPH_MARK[g.type] || {};
-    cells.forEach((c, i) => {
-      const [x, y] = Pc(c);
-      hexPath(x, y, view.s * PITCH / 2 * 1.08);
-      ctx.fillStyle = `rgba(${col},${bond ? 0.16 : 0.12})`; ctx.fill();
-      ctx.strokeStyle = `rgba(${col},${selected ? 1 : 0.65})`; ctx.lineWidth = selected ? 2.2 : 1.4; ctx.stroke();
-      if (marks[i]) {
-        // the receiving cell wears an inner hexagon; a second kind of output, a dot as well
-        hexPath(x, y, view.s * PITCH / 2 * 0.58);
-        ctx.strokeStyle = `rgba(${col},${selected ? 0.9 : 0.6})`; ctx.lineWidth = 1.2; ctx.stroke();
-        if (marks[i] === 2) { ctx.beginPath(); ctx.arc(x, y, view.s * 0.09, 0, Math.PI * 2); ctx.fillStyle = `rgba(${col},0.7)`; ctx.fill(); }
-      }
-    });
-    for (let i = 1; i < cells.length; i++) {
-      const [x1, y1] = Pc(cells[i - 1]), [x2, y2] = Pc(cells[i]);
-      ctx.strokeStyle = `rgba(${col},${bond ? 0.85 : 0.55})`; ctx.lineWidth = bond ? 3 : 2;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    }
-    if (!bond) {
-      const [lx, ly] = Pc(cells[0]);
-      ctx.font = `700 9px 'Courier Prime', monospace`;
-      ctx.fillStyle = `rgba(${col},0.8)`;
-      ctx.fillText(GLYPH_LABEL[g.type], lx, ly - view.s * 1.0);
-    }
+    ctx.stroke(); ctx.restore();
   }
-
-  function drawInput(g, selected) {
-    const cells = inputCells(g);
-    const sh = base().reagentShapes[g.ri];
-    ctx.setLineDash([3, 3]);
-    for (const [i, j] of sh.bonds) {
-      const [x1, y1] = Pc(cells[i]), [x2, y2] = Pc(cells[j]);
-      ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = view.s * 0.12;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    }
-    cells.forEach((c, i) => {
-      const [x, y] = Pc(c);
-      ctx.beginPath(); ctx.arc(x, y, view.s * 0.62, 0, Math.PI * 2);
-      ctx.strokeStyle = selected ? 'rgba(42,35,24,0.95)' : 'rgba(42,35,24,0.5)';
-      ctx.lineWidth = selected ? 2 : 1.2; ctx.stroke();
-      // every reagent atom names its element, a lone one included
-      ctx.globalAlpha = 0.45; ctx.fillStyle = '#2A2318';
-      ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
-      ctx.fillText(sh.elems[i], x, y);
-      ctx.globalAlpha = 1;
-    });
-    ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(42,35,24,0.55)';
-    ctx.font = `700 10px 'Courier Prime', monospace`;
-    const [lx, ly] = Pc(cells[0]);
-    ctx.fillText('IN·' + sh.elems[0], lx, ly + view.s * 0.95);
+  function selectRing(cells, color) {
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2;
+    for (const c of cells) { const [x, y] = Pc(c); ctx.beginPath(); ctx.arc(x, y, view.s * 0.74, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.restore();
   }
-
-  function drawOutput(selected) {
-    const cells = outputCells();
-    const sh = base().productShape;
-    ctx.setLineDash([4, 4]);
-    for (const [i, j] of sh.bonds) {
-      const [x1, y1] = Pc(cells[i]), [x2, y2] = Pc(cells[j]);
-      ctx.strokeStyle = '#33705E'; ctx.globalAlpha = 0.5; ctx.lineWidth = view.s * 0.14;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.globalAlpha = 1;
-    }
-    cells.forEach((c, i) => {
-      const [x, y] = Pc(c);
-      ctx.beginPath(); ctx.arc(x, y, view.s * 0.55, 0, Math.PI * 2);
-      ctx.strokeStyle = '#33705E'; ctx.lineWidth = selected ? 2.2 : 1.3; ctx.stroke();
-      ctx.globalAlpha = 0.55; ctx.fillStyle = '#33705E';
-      ctx.font = `600 ${Math.round(view.s * 0.42)}px 'EB Garamond', serif`;
-      ctx.fillText(sh.elems[i], x, y);
-      ctx.globalAlpha = 1;
-    });
-    ctx.setLineDash([]);
-    const [x, y] = Pc(cells[0]);
-    ctx.font = `700 10px 'Courier Prime', monospace`;
-    ctx.fillStyle = '#33705E'; ctx.fillText('OUT', x, y - view.s * 1.0);
+  function selectBase(b, elbow) {
+    ctx.save(); ctx.strokeStyle = '#A0762B'; ctx.lineWidth = 2.4;
+    if (elbow) { ctx.beginPath(); ctx.arc(b[0], b[1], view.s * 0.48, 0, Math.PI * 2); ctx.stroke(); }
+    else { MK.poly(ctx, MK.hexVerts(b[0], b[1], view.s * 1.0)); ctx.stroke(); }
+    ctx.restore();
   }
-
-  function drawClaw(x, y, ang, grip, color, thick) {
-    // three-fold symmetric grabber head, like the game it honors: the claw's pose
-    // is the arm's own direction, so 60-degree turns alternate its two states.
-    // `grip` is 0..1 so a grab can snap shut instead of teleporting between states.
-    const k = thick || 1;
-    ctx.strokeStyle = color; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.arc(x, y, view.s * 0.13, 0, Math.PI * 2);
-    ctx.lineWidth = view.s * 0.1 * k; ctx.stroke();
-    const r1 = view.s * 0.17, r2 = view.s * (0.5 - 0.12 * grip);
-    ctx.lineWidth = view.s * 0.11 * k;
-    for (let kk = 0; kk < 3; kk++) {
-      const a = ang + Math.PI / 3 + kk * (Math.PI * 2 / 3);
-      const bend = 0.35 * grip;
-      ctx.beginPath();
-      ctx.moveTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1);
-      ctx.lineTo(x + Math.cos(a + bend) * r2, y + Math.sin(a + bend) * r2);
-      ctx.stroke();
-    }
+  // the arm's name on its plate (or beside its pin), so the board and the tape rows read as one
+  function armLabel(b, elbow, label) {
+    ctx.save();
+    ctx.font = `700 ${Math.max(8, Math.round(view.s * 0.24))}px 'Courier Prime', monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = elbow ? '#2A2318' : 'rgba(241,233,214,0.92)';
+    ctx.fillText(label, b[0] + (elbow ? view.s * 0.5 : 0), b[1] + view.s * (elbow ? 0.36 : 0.62));
+    ctx.restore();
   }
-
-  // arms are painted in two passes so one arm's reach never disappears beneath a
-  // neighbour's plate: every base first (board furniture, under the cargo), then every
-  // shaft and claw (moving machinery, over everything). A selected base keeps its own
-  // highlight on the base pass; the rotation handle stays above both.
-  function drawArmBase(basePx, elbow, selected, ghost, label) {
-    const [bx, by] = basePx;
-    ctx.globalAlpha = ghost ? 0.45 : 1;
-    // the arm's name on its plate (or beside its pin), so the board and the tape
-    // rows read as one
-    const name = () => {
-      if (!label) return;
-      ctx.save();
-      ctx.font = `700 ${Math.max(8, Math.round(view.s * 0.24))}px 'Courier Prime', monospace`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#2A2318';
-      ctx.fillText(label, bx + (elbow ? view.s * 0.30 : 0), by + view.s * (elbow ? 0.20 : 0.30) * PITCH);
-      ctx.restore();
-    };
-    // ground bases are solid, collidable plates; elbows are pins. Both are grid-aligned
-    // hexagons — the plate never turns with the arm it carries.
-    if (elbow) {
-      hexPath(bx, by, view.s * PITCH * PIN_R);
-      ctx.fillStyle = '#C9B57E'; ctx.fill();
-      ctx.lineWidth = 1.4; ctx.strokeStyle = '#8A6A1E'; ctx.stroke();
-    } else {
-      hexPath(bx, by, view.s * PITCH * BASE_R);
-      ctx.fillStyle = '#C9B57E'; ctx.fill();
-      ctx.lineWidth = selected ? 2.6 : 1.8;
-      ctx.strokeStyle = selected ? '#A0762B' : '#8A6A1E'; ctx.stroke();
-      ctx.beginPath(); ctx.arc(bx, by, view.s * 0.1, 0, Math.PI * 2);
-      ctx.fillStyle = '#2A2318'; ctx.fill();
-    }
-    name();
-    ctx.globalAlpha = 1;
-  }
-
-  // an arm that carries an elbow-mounted child is doing double duty: draw its
-  // machinery heavier so the load-bearing shaft reads as the sturdier part.
-  const PARENT_THICK = 1.15;
-
-  // `opts.thick` scales every stroke of the limb; `opts.hideTip` drops the head at
-  // offset 0 — the one where the arm's own facing ends. A child mounted at the tip
-  // has replaced that grabber outright (the engine refunds it and forbids G/D/P/Q),
-  // and its elbow pin already stands there from the base pass.
-  function drawArmLimbs(basePx, hands, selected, ghost, gkey, opts) {
-    const [bx, by] = basePx;
-    const o = opts || {}, k = o.thick || 1;
-    const col = selected ? '#A0762B' : '#8A6A1E';
-    ctx.globalAlpha = ghost ? 0.45 : 1;
-    // claws first, shafts after: the shaft lies OVER the head it carries
-    hands.forEach((h, gi) => {
-      if (o.hideTip && gi === 0) return;
-      const grip = gkey ? FX.grip(gkey + ':' + gi, h.holding ? 1 : 0, frameDt) : (h.holding ? 1 : 0);
-      drawClaw(h.x, h.y, h.ang, grip, col, k);
-    });
-    ctx.strokeStyle = col; ctx.lineWidth = view.s * 0.16 * k; ctx.lineCap = 'round';
-    for (const h of hands) {
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(h.x, h.y); ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-  }
-
+  // an arm that carries an elbow-mounted child is doing double duty: its tube is heavier
+  const PARENT_THICK = 1.3;
   // which arms carry a child, and which had their grabber replaced by one at the tip
+  // (the engine refunds that grabber and forbids G/D/P/Q; its elbow pin stands there)
   function armFlags(arms) {
     const parents = new Set();
     for (const a of arms) if (a.mount && a.mount.elbow) parents.add(a.mount.elbow.parent);
@@ -1188,6 +2063,17 @@
   }
   const limbOpts = (flags, id) =>
     ({ thick: flags.parents.has(id) ? PARENT_THICK : 1, hideTip: flags.tips.has(id) });
+  // one arm in the form the material renderer draws: claw closure smoothed through FX
+  function armItem(b, hands, gkey, opts, elbow, ghost, spin) {
+    const o = opts || {};
+    return {
+      b, elbow, ghost, thick: o.thick || 1,
+      hands: hands.map((h, gi) => ({
+        x: h.x, y: h.y, ang: h.ang, spin: spin || 0, hide: !!(o.hideTip && gi === 0),
+        grip: gkey ? FX.grip(gkey + ':' + gi, h.holding ? 1 : 0, frameDt) : (h.holding ? 1 : 0),
+      })),
+    };
+  }
 
   function handsFor(posePos, poseRot, arm) {
     const [bx, by] = Pc(posePos);
@@ -1235,25 +2121,37 @@
 
   function drawEdit() {
     drawGrid();
-    for (let i = 0; i < layout.glyphs.length; i++) {
-      drawGlyph(layout.glyphs[i], sel && sel.kind === 'glyph' && sel.i === i);
-    }
-    for (let i = 0; i < layout.inputs.length; i++) {
-      drawInput(layout.inputs[i], sel && sel.kind === 'input' && sel.i === i);
-    }
-    drawOutput(sel && sel.kind === 'output');
+    if (sel && sel.kind === 'glyph' && layout.glyphs[sel.i]) outlineCells(glyphFootprint(layout.glyphs[sel.i]), '#A0762B', 2.2);
+    if (sel && sel.kind === 'input' && layout.inputs[sel.i]) selectRing(inputCells(layout.inputs[sel.i]), 'rgba(42,35,24,0.9)');
+    if (sel && sel.kind === 'output') selectRing(outputCells(), '#33705E');
     const poses = initPoses();
     const isSel = (arm) => !!(sel && sel.kind === 'arm' && sel.id === arm.id);
-    // pass 1 — all base plates and elbow pins
-    for (const arm of layout.arms) {
-      drawArmBase(Pc(poses[arm.id].pos), !!arm.mount.elbow, isSel(arm), false, arm.id);
-    }
-    // pass 2 — all shafts and claws, above every plate
     const flags = armFlags(layout.arms);
+    const list = [];
     for (const arm of layout.arms) {
-      const p = poses[arm.id];
-      drawArmLimbs(Pc(p.pos), handsFor(p.pos, p.rot, arm), isSel(arm), false, null, limbOpts(flags, arm.id));
+      const p = poses[arm.id], b = Pc(p.pos);
+      if (isSel(arm)) selectBase(b, !!arm.mount.elbow);
+      list.push(armItem(b, handsFor(p.pos, p.rot, arm), null, limbOpts(flags, arm.id), !!arm.mount.elbow, false));
     }
+    // ghost for a new part being dragged in
+    let ghostGlyph = null;
+    if (drag && drag.kind === 'new' && hoverCell && mousePx && mousePx.overCanvas) {
+      if (drag.part.arm) {
+        const ghost = { grippers: drag.part.arm, len: 1, angle: 0 };
+        const hit = shaftAt(hoverCell, null);
+        const rot = hit && !baseAt(hoverCell) ? hit.rot : 0;
+        const b = Pc(hoverCell);
+        if (!hit) { ctx.globalAlpha = 0.45; MK.blit(ctx, MK.baseSprite(view.s, baseSeed(hoverCell)), b[0], b[1]); ctx.globalAlpha = 1; }
+        list.push(armItem(b, handsFor(hoverCell, rot, ghost), null, {}, !!hit, true));
+      } else if (drag.part.glyph) ghostGlyph = { type: drag.part.glyph, at: hoverCell, rot: 0 };
+    }
+    if (ghostGlyph) {
+      const [x, y] = Pc(ghostGlyph.at);
+      ctx.globalAlpha = 0.55; MK.blitGlyph(ctx, ghostGlyph.type, 0, x, y, view.s); ctx.globalAlpha = 1;
+    }
+    MK.armShadows(ctx, list, view.s, CW, CH, ctx.canvas);
+    MK.drawArmsGame(ctx, list, view.s);
+    for (const arm of layout.arms) armLabel(Pc(poses[arm.id].pos), !!arm.mount.elbow, arm.id);
     // rotation handle for the selected rotatable piece
     if (sel && rotatable(sel) && (!drag || drag.kind === 'handle')) {
       const h = handlePx(sel);
@@ -1267,27 +2165,25 @@
         ctx.strokeStyle = '#A0762B'; ctx.lineWidth = 2; ctx.stroke();
       }
     }
-    // ghost for a new part being dragged in
-    if (drag && drag.kind === 'new' && hoverCell && mousePx && mousePx.overCanvas) {
-      if (drag.part.arm) {
-        const ghost = { grippers: drag.part.arm, len: 1, angle: 0 };
-        const hit = shaftAt(hoverCell, null);
-        const rot = hit && !baseAt(hoverCell) ? hit.rot : 0;
-        drawArmBase(Pc(hoverCell), !!hit, false, true);
-        drawArmLimbs(Pc(hoverCell), handsFor(hoverCell, rot, ghost), false, true);
-      } else if (drag.part.glyph) {
-        ctx.globalAlpha = 0.55;
-        drawGlyph({ type: drag.part.glyph, at: hoverCell, rot: 0 }, false);
-        ctx.globalAlpha = 1;
-      }
+  }
+
+  // a pivot turns the collet in its fork; the engine keeps no claw orientation, so the
+  // renderer adds up the pivots it has watched go by (per sim, so a recording has its own)
+  const SPINS = new WeakMap();
+  function spinsOf(s) {
+    let st = SPINS.get(s);
+    if (!st) { st = { tick: s.state.tick, acc: {}, piv: {} }; SPINS.set(s, st); }
+    if (s.state.tick !== st.tick) {
+      for (const id in st.piv) st.acc[id] = (st.acc[id] || 0) + st.piv[id];
+      st.tick = s.state.tick;
     }
+    const M = s.state.motion;
+    st.piv = M ? Object.assign({}, M.pivot) : {};
+    return st;
   }
 
   function drawRun(f) {
     drawGrid();
-    for (const g of layout.glyphs) drawGlyph(g, false);
-    for (const g of layout.inputs) drawInput(g, false);
-    drawOutput(false);
     const rs = sim.renderState(f);
     const atomPx = {}, armPx = {};
     for (const a of rs.atoms) atomPx[a.id] = P(a.x, a.y);
@@ -1296,8 +2192,6 @@
     // materialisations, colour eases and ghosts
     FX.noteAtoms(rs.atoms);
     FX.draw('under', atomPx, armPx);
-    // pass 1 — every base plate and elbow pin, beneath the cargo
-    for (const arm of rs.arms) drawArmBase(armPx[arm.id], arm.elbow, false, false, arm.id);
     ctx.strokeStyle = '#2A2318'; ctx.lineWidth = view.s * 0.2; ctx.lineCap = 'round';
     for (const [i, j] of rs.bonds) {
       if (!atomPx[i] || !atomPx[j]) continue;
@@ -1320,13 +2214,52 @@
       }
     }
     FX.draw('over', atomPx, armPx);
-    // pass 3 — every shaft and claw, on top of all plates, atoms and neighbours
+    // every shaft, claw and hub, on top of all plates, atoms and neighbours
     const flags = armFlags(sim.state.arms);
-    for (const arm of rs.arms) {
-      drawArmLimbs(armPx[arm.id],
+    const M = sim.state.motion, spins = spinsOf(sim);
+    const list = rs.arms.map(arm => {
+      const spin = ((spins.acc[arm.id] || 0) + (M && M.pivot[arm.id] ? M.pivot[arm.id] * f : 0)) * Math.PI / 3;
+      return armItem(armPx[arm.id],
         arm.hands.map(h => { const [x, y] = P(h.x, h.y); return { x, y, ang: h.ang, holding: h.holding }; }),
-        false, false, 'r' + arm.id, limbOpts(flags, arm.id));
+        'r' + arm.id, limbOpts(flags, arm.id), arm.elbow, false, spin);
+    });
+    MK.armShadows(ctx, list, view.s, CW, CH, ctx.canvas);
+    MK.drawArmsGame(ctx, list, view.s);
+    for (const arm of rs.arms) armLabel(armPx[arm.id], arm.elbow, arm.id);
+    // the sweep of each turn and pivot, dashed in oxblood as it happens
+    if (M && f > 0 && f < 1) {
+      const alpha = Math.min(1, f / 0.08) * (1 - Math.max(0, Math.min(1, (f - 0.75) / 0.25)));
+      const D60 = Math.PI / 3;
+      rs.arms.forEach((arm, ai) => {
+        const turn = M.delta[arm.id] || 0, piv = M.pivot[arm.id] || 0;
+        if (!turn && !piv) return;
+        const held = M.atoms.filter(m => m.holder && m.holder.armId === arm.id);
+        const item = list[ai], b = item.b, loaded = held.length > 0;
+        if (turn) {
+          const h0 = item.hands[0]; if (!h0) return;
+          let r = Math.hypot(h0.x - b[0], h0.y - b[1]) + view.s;
+          if (loaded) r = Math.max(...held.map(m => atomPx[m.id] ? Math.hypot(atomPx[m.id][0] - b[0], atomPx[m.id][1] - b[1]) : 0)) + view.s * 0.95;
+          const a0 = h0.ang - turn * f * D60;
+          MK.drawArc(ctx, b[0], b[1], r, a0, a0 + turn * D60, h0.ang, alpha * (loaded ? 1 : 0.38), view.s);
+        } else {
+          item.hands.forEach((h, gi) => {
+            if (h.hide) return;
+            const mine = held.filter(m => m.holder.grip === gi && atomPx[m.id]);
+            let r = view.s * 1.2, cur = h.ang + item.hands[gi].spin;
+            if (mine.length) {
+              let far = null, d = -1;
+              for (const m of mine) { const p = atomPx[m.id], dd = Math.hypot(p[0] - h.x, p[1] - h.y); if (dd > d) { d = dd; far = p; } }
+              if (d > view.s * 0.2) { r = d + view.s * 0.95; cur = Math.atan2(far[1] - h.y, far[0] - h.x); }
+            } else if (loaded) return;
+            const a0 = cur - piv * f * D60;
+            MK.drawArc(ctx, h.x, h.y, r, a0, a0 + piv * D60, cur, alpha * (mine.length ? 1 : 0.38), view.s);
+          });
+        }
+      });
     }
+    // the effects overlay's top layer, above all machinery (the GIF recorder draws through
+    // here too, via renderPlaymat, with its own FX)
+    FX.draw('top', atomPx, armPx);
   }
 
   // Draw one run frame onto a surface that is NOT the page's canvas. The draw* family
@@ -1442,7 +2375,7 @@
     if (!sel) return;
     withUndo(() => {
       if (sel.kind === 'arm') { const a = armById(sel.id); if (a) a.angle = mod6(a.angle + dk); }
-      else if (sel.kind === 'glyph') layout.glyphs[sel.i].rot = mod6((layout.glyphs[sel.i].rot || 0) + dk);
+      else if (sel.kind === 'glyph') { if (!SINGLE_CELL[layout.glyphs[sel.i].type]) layout.glyphs[sel.i].rot = mod6((layout.glyphs[sel.i].rot || 0) + dk); }
       else if (sel.kind === 'input') layout.inputs[sel.i].rot = mod6((layout.inputs[sel.i].rot || 0) + dk);
       else if (sel.kind === 'output') layout.output.rot = mod6((layout.output.rot || 0) + dk);
     });
