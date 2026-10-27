@@ -269,7 +269,7 @@
           case 'calcify':
             sigil('calcify', e, cells, at);
             sweepOn(e.a, { style: 'frost', T: 0.3, delay: 0, len: 0.3 }, at);
-            push({ kind: 'glint', born: at, dur: dur(LIFE.glint), T: 0.6, ids: [e.a], cells: cells });
+            push({ kind: 'glint', born: at, dur: dur(LIFE.glint), T: 0.6, cells: cells });
             break;
           case 'duplicate':
             sigil('duplicate', e, cells, at);
@@ -744,11 +744,13 @@
     }
 
     // The signs each glyph writes, in light (the Sigil · Light study). t: seconds at 1x.
-    // Positions follow the atoms that survive the firing; consumed ones stay on their cells.
+    // Bond and unbond signs ride with their atoms (the bond is a thing between two atoms);
+    // every other glyph's signs stay on its own cells, where the transmutation happened.
     function paintSigil(c, s, fx, t, atomPx) {
       const k = s / 28, R = s * ATOM_R, soft = SIGIL_SOFT[fx.glyph] || 1;
       const pc = (i) => env.Pc(fx.cells[i]);
-      const ap = (id, i) => (id != null && atomPx && atomPx[id]) || pc(i);
+      const follows = fx.glyph === 'bond' || fx.glyph === 'debond';
+      const ap = (id, i) => (follows && id != null && atomPx && atomPx[id]) || pc(i);
       const pen = (st, fr, al, opt) => lightPen(c, st, fr, al * soft, opt, k);
       const fade = (a, b) => 1 - clamp01((t - a) / b);
       switch (fx.glyph) {
