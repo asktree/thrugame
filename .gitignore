@@ -8,3 +8,6 @@ gifsvc/node_modules/
 gifsvc/.vercel/
 .vercel
 .env*
+
+# Grant paperwork stays local
+docs/
