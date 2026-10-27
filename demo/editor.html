@@ -75,7 +75,8 @@
     font-size: 18px; padding: 10px 22px; transform: rotate(-7deg); text-align: center;
   }
   .stamp-inner.bad { border-color: var(--oxblood); color: var(--oxblood); }
-  .stamp-inner small { display: block; font-family: var(--mono); font-weight: 400; font-size: 10.5px; letter-spacing: .08em; margin-top: 4px; color: var(--ink-dim); text-transform: none; }
+  .stamp-inner small { display: block; font-family: var(--mono); font-weight: 400; font-size: 12px; letter-spacing: .08em; margin-top: 6px; color: var(--ink-dim); text-transform: none; }
+  .stamp-inner small b { font-weight: 700; font-size: 17px; letter-spacing: .06em; color: var(--ink); margin-left: 2px; }
 
   .bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--line); border-top: 0; background: var(--parch-2); }
   .speed { display: flex; border: 1px solid var(--ink-dim); }
@@ -5034,7 +5035,7 @@
     } else if (st.cycles !== null) {
       const m = sim.metrics();
       inner.className = 'stamp-inner';
-      inner.innerHTML = `Great Work! · ${st.products} of ${st.caps.goal}<small>${m.cost}g + ${m.cycles}c + ${m.area}a = SUM ${m.sum}</small>`;
+      inner.innerHTML = `Great Work! · ${st.products} of ${st.caps.goal}<small>${m.cost}g + ${m.cycles}c + ${m.area}a = <b>SUM ${m.sum}</b></small>`;
       if (!done) {
         const opened = watching ? false : markSolved();
         if (/^testing/.test($('status').textContent))
