@@ -116,7 +116,11 @@
   <p>I'm quite excited to see some contests play out and I think it could be a lot of fun.</p>
 
   <h2>Development</h2>
-  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. Opus Magnum already has multiple implementations of solution verifiers people have made in (for example) Python, for the purpose of maintaining automated solution</p>
+  <p>The part of the game that would have been the most difficult two years ago -- the on-chain solution verifier -- is now basically trivial to do. Opus Magnum already has multiple implementations of solution verifiers people have made in (for example) Python, for the purpose of maintaining automated solution leaderboards. It was very easy to simply tell Claude to implement this in C -- he could even port over the same test cases. Implementing my changes -- the recursive arms -- was also one-shottable by Claude.</p>
+
+  <p>I decided that the solution verifier and the contest escrow should be different contracts.</p>
+
+  <p>Where Claude is weakest is tutorializing the game. And this is something I feel conflicted about myself. I think making an Opus Magnum experience with lots of handholding would be a lot of work, and not have very much to do with what I find interesting about this project. I also think it eliminates some of the mystique, you know? You can always load solutions from the leaderboard to reverse engineer how the game works.</p>
 
   <p class="tbc">[to be continued]</p>
 
