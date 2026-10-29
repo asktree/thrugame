@@ -403,7 +403,7 @@
         <tr><td class="k">drag a tray part</td><td>place it on the board. Each puzzle's tray offers only the glyphs its reagents can use.</td></tr>
         <tr><td class="k">drag a piece to the tray</td><td>remove it. Reagents and the product are the puzzle's fixed pool: they move, they never vanish.</td></tr>
         <tr><td class="k">click a piece</td><td>select it. Click the same spot again to cycle through everything stacked under the cursor.</td></tr>
-        <tr><td class="k">the handle</td><td>aims a selected arm, lengthens it (drag the handle out to 1, 2 or 3 cells), and rotates a glyph, reagent or product.</td></tr>
+        <tr><td class="k">the handle</td><td>aims a selected arm, lengthens it (drag the handle out to 1, 2 or 3 cells), and rotates a glyph, reagent or product. A two-cell glyph has a handle past each end.</td></tr>
         <tr><td class="k"><kbd>[</kbd> <kbd>]</kbd></td><td>rotate the selection a sixth-turn either way.</td></tr>
         <tr><td class="k"><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>remove the selection (or the box-selected tape cells).</td></tr>
         <tr><td class="k"><kbd>Esc</kbd></td><td>clear the selection.</td></tr>
@@ -424,7 +424,7 @@
       </table>
       <h3>Run and share</h3>
       <table>
-        <tr><td class="k">▶ Test</td><td>run the machine under the verifier's eye; ✎ Edit returns to the board.</td></tr>
+        <tr><td class="k">▶ Test / <kbd>Space</kbd></td><td>run the machine under the verifier's eye; ✎ Edit (or <kbd>Space</kbd> again) returns to the board.</td></tr>
         <tr><td class="k">Pause · Step · speed</td><td>hold the run, advance one cycle, or change the pace (MAX skips the animation).</td></tr>
         <tr><td class="k">Copy code · Import</td><td>a solution is a short code, <span style="font-family:var(--mono);font-size:11px">puzzle.data</span>: copy yours, or paste one to load it.</td></tr>
         <tr><td class="k">GIF link</td><td>after a test, a link that plays the run as an animated GIF.</td></tr>
@@ -2021,30 +2021,46 @@
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   }
   // selection: a brass outline round the outer edge of a set of cells
-  function outlineCells(cells, color, w) {
+  // the outline of a set of cells as closed loops, so a pen can trace it in one go
+  function outlineLoops(cells, r) {
     const keyOf = (c) => c[0] + ',' + c[1], has = new Set(cells.map(keyOf));
-    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round';
-    ctx.beginPath();
+    const ptKey = (p) => Math.round(p[0] * 4) + ',' + Math.round(p[1] * 4);
+    const next = new Map();
     for (const c of cells) {
-      const [x, y] = Pc(c), v = MK.hexVerts(x, y, view.s * 0.99);
+      const [x, y] = Pc(c), v = MK.hexVerts(x, y, r);
       for (let k = 0; k < 6; k++) {
         if (has.has(keyOf(addc(c, GW.DIRS[k])))) continue;
-        const a = v[mod6(k - 1)], b = v[k];
-        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+        next.set(ptKey(v[mod6(k - 1)]), [v[mod6(k - 1)], v[k]]);
       }
     }
-    ctx.stroke(); ctx.restore();
+    const loops = [];
+    while (next.size) {
+      const [k0, e0] = next.entries().next().value;
+      next.delete(k0);
+      const loop = [e0[0], e0[1]];
+      for (let e; (e = next.get(ptKey(loop[loop.length - 1]))); ) { next.delete(ptKey(e[0])); loop.push(e[1]); }
+      loops.push(loop);
+    }
+    return loops;
   }
-  function selectRing(cells, color) {
-    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2;
-    for (const c of cells) { const [x, y] = Pc(c); ctx.beginPath(); ctx.arc(x, y, view.s * 0.74, 0, Math.PI * 2); ctx.stroke(); }
-    ctx.restore();
+  // the selection is written in light, like a glyph's signs: the pen traces it once when
+  // it is picked, then the line breathes softly for as long as it stays selected
+  let selLit = { key: '', born: 0 };
+  function selectLight(strokes) {
+    const key = JSON.stringify(sel), now = performance.now();
+    if (key !== selLit.key) selLit = { key, born: now };
+    const t = (now - selLit.born) / 1000;
+    const frac = reduceMotion ? 1 : Math.min(1, t / 0.32);
+    const alpha = reduceMotion ? 1 : 0.8 + 0.2 * Math.cos(Math.max(0, t - 0.32) * 2.6);
+    GWFX.lightPen(ctx, strokes, frac, alpha, { w: 0.9 }, view.s / 28);
   }
+  function selectCells(cells) { selectLight(outlineLoops(cells, view.s * 0.99)); }
   function selectBase(b, elbow) {
-    ctx.save(); ctx.strokeStyle = '#A0762B'; ctx.lineWidth = 2.4;
-    if (elbow) { ctx.beginPath(); ctx.arc(b[0], b[1], view.s * 0.48, 0, Math.PI * 2); ctx.stroke(); }
-    else { MK.poly(ctx, MK.hexVerts(b[0], b[1], view.s * 1.0)); ctx.stroke(); }
-    ctx.restore();
+    if (elbow) {
+      const r = view.s * 0.48, pts = [];
+      for (let i = 0; i <= 32; i++) { const a = -Math.PI / 2 + i / 32 * Math.PI * 2; pts.push([b[0] + r * Math.cos(a), b[1] + r * Math.sin(a)]); }
+      selectLight([pts]);
+    } else { const v = MK.hexVerts(b[0], b[1], view.s * 1.0); selectLight([[...v, v[0]]]); }
   }
   // the arm's name on its plate (or beside its pin), so the board and the tape rows read as one
   function armLabel(b, elbow, label) {
@@ -2104,22 +2120,26 @@
     if (s.kind === 'output') return base().productShape.rel.length > 1;
     return false;
   }
-  function handlePx(s) {
-    const a = anchorOf(s); if (!a) return null;
-    const [ax, ay] = Pc(a);
-    let th, r;
+  // the selection's rotation handles: { x, y } in pixels and the cell it turns about.
+  // A two-cell glyph has one past each end; each swings its own end round the other.
+  function handlesOf(s) {
+    const a = anchorOf(s); if (!a) return [];
+    const at = (pivot, d, r) => {
+      const [px, py] = Pc(pivot), th = d * Math.PI / 3;
+      return { x: px + r * Math.cos(th), y: py + r * Math.sin(th), pivot, end: 0 };
+    };
     if (s.kind === 'arm') {
       const arm = armById(s.id);
       const p = initPoses()[arm.id];
-      th = mod6(p.rot + arm.angle) * Math.PI / 3;
-      r = view.s * PITCH * arm.len + view.s * PITCH * 0.35;
-    } else {
-      const rot = s.kind === 'glyph' ? (layout.glyphs[s.i].rot || 0)
-        : s.kind === 'input' ? (layout.inputs[s.i].rot || 0) : (layout.output.rot || 0);
-      th = rot * Math.PI / 3;
-      r = view.s * PITCH * 1.45;
+      return [at(a, mod6(p.rot + arm.angle), view.s * PITCH * (arm.len + 0.35))];
     }
-    return [ax + r * Math.cos(th), ay + r * Math.sin(th), ax, ay];
+    const rot = s.kind === 'glyph' ? (layout.glyphs[s.i].rot || 0)
+      : s.kind === 'input' ? (layout.inputs[s.i].rot || 0) : (layout.output.rot || 0);
+    const hs = [at(a, rot, view.s * PITCH * 1.45)];
+    if (s.kind === 'glyph' && glyphCells(layout.glyphs[s.i]).length === 2) {
+      hs.push(Object.assign(at(addc(a, GW.DIRS[rot]), mod6(rot + 3), view.s * PITCH * 1.45), { end: 1 }));
+    }
+    return hs;
   }
 
   // while editing, each reagent and the product show the atoms they stand for, half-faded
@@ -2143,16 +2163,12 @@
     drawGrid(false);
     for (const inp of layout.inputs) { const sh = base().reagentShapes[inp.ri]; ghostMolecule(inputCells(inp), sh.elems, sh.bonds); }
     { const ps = base().productShape; ghostMolecule(outputCells(), ps.elems, ps.bonds); }
-    if (sel && sel.kind === 'glyph' && layout.glyphs[sel.i]) outlineCells(glyphFootprint(layout.glyphs[sel.i]), '#A0762B', 2.2);
-    if (sel && sel.kind === 'input' && layout.inputs[sel.i]) selectRing(inputCells(layout.inputs[sel.i]), 'rgba(42,35,24,0.9)');
-    if (sel && sel.kind === 'output') selectRing(outputCells(), '#33705E');
     const poses = initPoses();
     const isSel = (arm) => !!(sel && sel.kind === 'arm' && sel.id === arm.id);
     const flags = armFlags(layout.arms);
     const list = [];
     for (const arm of layout.arms) {
       const p = poses[arm.id], b = Pc(p.pos);
-      if (isSel(arm)) selectBase(b, !!arm.mount.elbow);
       list.push(armItem(b, handsFor(p.pos, p.rot, arm), null, limbOpts(flags, arm.id), !!arm.mount.elbow, false));
     }
     // ghost for a new part being dragged in
@@ -2174,15 +2190,20 @@
     MK.armShadows(ctx, list, view.s, CW, CH, ctx.canvas);
     MK.drawArmsGame(ctx, list, view.s);
     for (const arm of layout.arms) armLabel(Pc(poses[arm.id].pos), !!arm.mount.elbow, arm.id);
-    // rotation handle for the selected rotatable piece
+    // the selection, in light over everything
+    if (sel && sel.kind === 'glyph' && layout.glyphs[sel.i]) selectCells(glyphFootprint(layout.glyphs[sel.i]));
+    if (sel && sel.kind === 'input' && layout.inputs[sel.i]) selectCells(inputCells(layout.inputs[sel.i]));
+    if (sel && sel.kind === 'output') selectCells(outputCells());
+    if (sel && sel.kind === 'arm') { const a = armById(sel.id); if (a) selectBase(Pc(poses[a.id].pos), !!a.mount.elbow); }
+    // rotation handles for the selected rotatable piece
     if (sel && rotatable(sel) && (!drag || drag.kind === 'handle')) {
-      const h = handlePx(sel);
-      if (h) {
+      for (const h of handlesOf(sel)) {
+        const [px, py] = Pc(h.pivot);
         ctx.strokeStyle = 'rgba(160,118,43,0.5)'; ctx.lineWidth = 1.2;
         ctx.setLineDash([2, 3]);
-        ctx.beginPath(); ctx.moveTo(h[2], h[3]); ctx.lineTo(h[0], h[1]); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(h.x, h.y); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.beginPath(); ctx.arc(h[0], h[1], view.s * 0.24, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(h.x, h.y, view.s * 0.24, 0, Math.PI * 2);
         ctx.fillStyle = '#F1E9D6'; ctx.fill();
         ctx.strokeStyle = '#A0762B'; ctx.lineWidth = 2; ctx.stroke();
       }
@@ -2471,6 +2492,15 @@
 
   // ---------- tape editing ----------
   function tapeOf(id) { return armById(id).tape; }
+  // selecting an arm puts the cursor on its next unwritten cell: just past its last op
+  // that isn't a wait (trailing waits are blanks), or the append slot if the tape is full
+  function armCursor(id) {
+    if (cursor && cursor.armId === id) return cursor;
+    const ops = tapeOf(id).ops;
+    let pos = ops.length;
+    while (pos > 0 && ops[pos - 1] === 'W') pos--;
+    return { armId: id, pos };
+  }
   function setOp(op) {
     if (!cursor) { setStatus('select a tape cell first — click one below', 'bad'); return; }
     withUndo(() => {
@@ -2479,6 +2509,7 @@
       else t.ops[cursor.pos] = op;
       cursor.pos = Math.min(cursor.pos + 1, t.ops.length);
     });
+    refreshAll();   // writing the op a cell already holds changes nothing, but the cursor still moves on
     // a grabberless arm still takes the op — the engine's validate() is the hard
     // stop at Test time — but say why it will be refused
     if ('GDPQ'.indexOf(op) >= 0 && isTipParent(cursor.armId)) setStatus(TIP_NOTE, 'bad');
@@ -2599,7 +2630,7 @@
       row.className = 'tape-row' + (mode === 'edit' && sel && sel.kind === 'arm' && sel.id === arm.id ? ' sel' : '');
       if (mode === 'edit') row.dataset.arm = arm.id;
       const lab = document.createElement('span'); lab.className = 'tape-label'; lab.textContent = 'ARM ' + arm.id;
-      lab.addEventListener('click', () => { if (mode === 'edit') { sel = { kind: 'arm', id: arm.id }; refreshAll(); } });
+      lab.addEventListener('click', () => { if (mode === 'edit') { sel = { kind: 'arm', id: arm.id }; cursor = armCursor(arm.id); refreshAll(); } });
       // in run mode the sim holds the expanded tape; the markers live on the layout's copy
       const src = ((mode === 'run' ? armById(arm.id) : null) || arm).tape.ops;
       const ex = expandTape(src);
@@ -2654,6 +2685,7 @@
       if (mode === 'edit') {
         const add = document.createElement('span'); add.textContent = '+'; add.className = 'ghostcell';
         add.title = 'append a cell';
+        if (cursor && cursor.armId === arm.id && cursor.pos >= arm.tape.ops.length) add.classList.add('cursor');
         add.addEventListener('click', () => {
           sel = { kind: 'arm', id: arm.id };
           cursor = { armId: arm.id, pos: arm.tape.ops.length };
@@ -2870,11 +2902,11 @@
     mousePx = { x: mx, y: my, overCanvas: true };   // touch has no hover, so seed it here
     hoverCell = cell;
 
-    // 1) rotation handle of the current selection
+    // 1) a rotation handle of the current selection
     if (sel && rotatable(sel)) {
-      const h = handlePx(sel);
-      if (h && Math.hypot(mx - h[0], my - h[1]) < view.s * 0.45) {
-        drag = { kind: 'handle', snap: snapshot() };
+      const h = handlesOf(sel).find(h => Math.hypot(mx - h.x, my - h.y) < view.s * 0.45);
+      if (h) {
+        drag = { kind: 'handle', pivot: h.pivot, end: h.end, snap: snapshot() };
         return;
       }
     }
@@ -2886,7 +2918,7 @@
       sel = { kind: pick.kind, id: pick.id, i: pick.i };
       const common = { snap: snapshot(), moved: false, stack, wasSelected: idx >= 0 };
       if (pick.kind === 'arm') {
-        cursor = { armId: pick.id, pos: 0 };
+        cursor = armCursor(pick.id);
         drag = Object.assign({ kind: 'base', armId: pick.id }, common);
       } else {
         drag = Object.assign({ kind: pick.kind, i: pick.i, grab: subc(anchorOf(pick), cell) }, common);
@@ -2920,8 +2952,8 @@
         : drag.kind === 'input' ? layout.inputs[drag.i] : layout.output;
       if (obj && !eq(obj.at, target)) { obj.at = target; drag.moved = true; }
     } else if (drag.kind === 'handle') {
-      const a = anchorOf(sel); if (!a) return;
-      const k = bearing6(Pc(a), mx, my);
+      if (!anchorOf(sel)) return;
+      const k = bearing6(Pc(drag.pivot), mx, my);
       if (sel.kind === 'arm') {
         const arm = armById(sel.id);
         if (arm) {
@@ -2933,7 +2965,11 @@
             if (c.mount.elbow && c.mount.elbow.parent === arm.id && c.mount.elbow.at > arm.len) c.mount.elbow.at = arm.len;
           }
         }
-      } else if (sel.kind === 'glyph') layout.glyphs[sel.i].rot = k;
+      } else if (sel.kind === 'glyph') {
+        const g = layout.glyphs[sel.i];
+        if (drag.end === 1) { g.at = addc(drag.pivot, GW.DIRS[k]); g.rot = mod6(k + 3); }   // swing the anchor end round the far one
+        else g.rot = k;
+      }
       else if (sel.kind === 'input') layout.inputs[sel.i].rot = k;
       else if (sel.kind === 'output') layout.output.rot = k;
     }
@@ -2983,7 +3019,7 @@
       const idx = d.stack.findIndex(c => sameSel(c, sel));
       const nxt = d.stack[(idx + 1) % d.stack.length];
       sel = { kind: nxt.kind, id: nxt.id, i: nxt.i };
-      cursor = nxt.kind === 'arm' ? { armId: nxt.id, pos: 0 } : cursor;
+      cursor = nxt.kind === 'arm' ? armCursor(nxt.id) : cursor;
       refreshAll();
     }
   }
@@ -3072,7 +3108,7 @@
       if (ev.button !== undefined && ev.button > 0) return;
       const t = ev.target;
       if (!t || !t.closest) return;
-      if (t.closest('.oppal') || t.closest('.tape-label')) return;    // palette and labels keep their clicks
+      if (t.closest('.oppal') || t.closest('.tape-label') || t.closest('.ghostcell')) return;   // palette, labels and + keep their clicks
       const cell = cellOf(t);
       capture(host, ev);
       tapeDrag = { id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, moved: false,
@@ -3153,6 +3189,13 @@
       ev.preventDefault(); ev.shiftKey ? redo() : undo(); return;
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
+    // space flips between editing and testing (and never presses whatever button has focus)
+    if (ev.key === ' ' && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+      if (ev.target.closest && ev.target.closest('textarea, select, [contenteditable], dialog')) return;
+      ev.preventDefault();
+      if (!ev.repeat) $('btnMode').click();
+      return;
+    }
     if (mode !== 'edit') return;
     const KEY_OPS = { g: 'G', d: 'D', q: '+', w: '-', e: 'P', r: 'Q', t: 'W', y: 'R' };
     if (!ev.altKey && KEY_OPS[ev.key.toLowerCase()] && cursor) { setOp(KEY_OPS[ev.key.toLowerCase()]); ev.preventDefault(); return; }

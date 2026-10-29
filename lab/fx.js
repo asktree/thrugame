@@ -880,7 +880,7 @@
     };
   }
 
-  const GWFX = { create: createFX, phaseEase: phaseEase, COL: COL, rgba: rgba, mixHex: mixHex };
+  const GWFX = { create: createFX, phaseEase: phaseEase, lightPen: lightPen, COL: COL, rgba: rgba, mixHex: mixHex };
   if (typeof module !== 'undefined' && module.exports) module.exports = GWFX;
   else root.GWFX = GWFX;
 })(typeof self !== 'undefined' ? self : this);
