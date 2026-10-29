@@ -3165,8 +3165,6 @@
   const Pc = (cell) => { const p = GW.toPx(cell); return P(p[0], p[1]); };
   const cellAt = (mx, my) => GW.fromPx((mx - view.ox) / view.s, (my - view.oy) / view.s);
 
-  const dirIndex = (v) => GW.DIRS.findIndex(d => eq(d, v));
-  const TWO_CELL = { bonders: 1, debonders: 1, duplicators: 1, projectors: 1 };
   function glyphCells(g) {
     const a = g.at, k = g.rot || 0;
     if (SINGLE_CELL[g.type]) return [a];
@@ -4658,8 +4656,7 @@
     if (arm) out.push({ kind: 'arm', id: arm.id });
     for (let i = layout.glyphs.length - 1; i >= 0; i--) {
       const g = layout.glyphs[i];
-      const idx = glyphFootprint(g).findIndex(c => eq(c, cell));
-      if (idx >= 0) out.push({ kind: 'glyph', i, end: TWO_CELL[g.type] ? idx : undefined });
+      if (glyphFootprint(g).some(c => eq(c, cell))) out.push({ kind: 'glyph', i });
     }
     for (let i = layout.inputs.length - 1; i >= 0; i--) {
       if (inputCells(layout.inputs[i]).some(c => eq(c, cell))) out.push({ kind: 'input', i });
@@ -5207,7 +5204,7 @@
         cursor = { armId: pick.id, pos: 0 };
         drag = Object.assign({ kind: 'base', armId: pick.id }, common);
       } else {
-        drag = Object.assign({ kind: pick.kind, i: pick.i, end: pick.end, grab: subc(anchorOf(pick), cell) }, common);
+        drag = Object.assign({ kind: pick.kind, i: pick.i, grab: subc(anchorOf(pick), cell) }, common);
       }
       refreshAll(); return;
     }
@@ -5232,21 +5229,6 @@
       const a = armById(drag.armId); if (!a) return;
       const m = mountFor(hoverCell, drag.armId);
       if (m && remount(a, m)) drag.moved = true;
-    } else if (drag.kind === 'glyph' && drag.end !== undefined) {
-      // two-cell glyphs move by whichever end you grabbed; near the other end they pivot around it
-      const g = layout.glyphs[drag.i]; if (!g) return;
-      const other = drag.end === 0 ? addc(g.at, GW.DIRS[g.rot || 0]) : g.at;
-      if (eq(hoverCell, other)) return;
-      const d = subc(other, hoverCell), dToOther = dirIndex(d);
-      if (drag.end === 0) {
-        if (dToOther >= 0) { g.at = hoverCell.slice(); g.rot = dToOther; }       // pivot around the far end
-        else g.at = hoverCell.slice();                                          // translate, keep orientation
-      } else {
-        const dFrom = dirIndex(subc(hoverCell, other));
-        if (dFrom >= 0) g.rot = dFrom;                                          // pivot around the anchor
-        else g.at = subc(hoverCell, GW.DIRS[g.rot || 0]);                       // translate, dragged end on cursor
-      }
-      drag.moved = true;
     } else if (drag.kind === 'glyph' || drag.kind === 'input' || drag.kind === 'output') {
       const target = addc(hoverCell, drag.grab);
       const obj = drag.kind === 'glyph' ? layout.glyphs[drag.i]
