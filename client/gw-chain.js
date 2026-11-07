@@ -150,7 +150,45 @@ export function parseScoreEvent(payload) {
 }
 
 export function createClient(network = NETWORKS.alphanet) {
-  return createThruClient({ baseUrl: network.rpc });
+  return paceRpc(createThruClient({ baseUrl: network.rpc }));
+}
+
+// The public alphanet RPC limits bursts per caller: about a dozen calls inside a
+// second gets `[resource_exhausted] rate limit exceeded` (gRPC code 8) on every
+// call that follows, reads and sends alike. One decompress makes ~15 calls in a
+// row, so it never got through. Space the unary calls out and retry a code-8
+// refusal with backoff (a refused call never reached the node, so a retry is safe).
+export const RPC_GAP_MS = 110, RPC_RETRIES = 6;
+const RESOURCE_EXHAUSTED = 8;
+export function paceRpc(client) {
+  const ctx = client && client.ctx;
+  if (!ctx || ctx.__paced) return client;
+  ctx.__paced = true;
+  let next = 0;
+  const slot = async () => {
+    const now = Date.now(), at = Math.max(now, next);
+    next = at + RPC_GAP_MS;
+    if (at > now) await new Promise(r => setTimeout(r, at - now));
+  };
+  for (const svc of ['query', 'command']) {
+    const o = ctx[svc];
+    if (!o) continue;
+    for (const k of Object.keys(o)) {
+      if (typeof o[k] !== 'function') continue;
+      const f = o[k].bind(o);
+      o[k] = async (...args) => {
+        for (let i = 0; ; i++) {
+          await slot();
+          try { return await f(...args); }
+          catch (e) {
+            if (!e || e.code !== RESOURCE_EXHAUSTED || i >= RPC_RETRIES) throw e;
+            await new Promise(r => setTimeout(r, 400 * 2 ** i + Math.random() * 200));
+          }
+        }
+      };
+    }
+  }
+  return client;
 }
 
 // ---- payer: a raw Ed25519 keypair. Submitting with it directly makes it the solver. ----
