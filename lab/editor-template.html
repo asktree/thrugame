@@ -586,9 +586,24 @@
   let CW = 980, CH = 560;
   const canvas = document.getElementById('field');
   let ctx = canvas.getContext('2d');
-  let dpr = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = CW * dpr; canvas.height = CH * dpr;
+  // backing pixels = the pixels the canvas really covers on screen (capped at 2x). On a
+  // phone the 980px board shows ~350px wide, so a fixed 2x painted ~5x more pixels than
+  // the screen can show, and every frame paid for them.
+  const fitDpr = () => {
+    const css = canvas.clientWidth || CW;
+    return Math.max(1, Math.min(2, Math.ceil(4 * (window.devicePixelRatio || 1) * css / CW) / 4));
+  };
+  let dpr = fitDpr();
+  canvas.width = Math.round(CW * dpr); canvas.height = Math.round(CH * dpr);
   canvas.style.aspectRatio = `${CW} / ${CH}`;
+  let redrawAll = 1;                                   // edit view: draw again only on change
+  const refitCanvas = () => {
+    const d = fitDpr();
+    if (Math.abs(d - dpr) < 0.05 * dpr) return;
+    dpr = d; canvas.width = Math.round(CW * dpr); canvas.height = Math.round(CH * dpr); redrawAll++;
+  };
+  if (window.ResizeObserver) new ResizeObserver(refitCanvas).observe(canvas);
+  window.addEventListener('resize', refitCanvas);
   const $ = (id) => document.getElementById(id);
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const mod6 = (n) => ((n % 6) + 6) % 6;
@@ -1127,7 +1142,7 @@
     });
   }
   // a soft round light: white-hot core into a colour, into nothing. Scale-free, blitted at any size.
-  function paintBoard(g, W, H, V) {
+  function paintBoard(g, W, H, V, vignette = true) {
     const S = V.S;
     g.fillStyle = '#EAE0C9'; g.fillRect(0, 0, W, H);
     const dx = S * PITCH, dy = S * 1.5;
@@ -1142,6 +1157,9 @@
         g.strokeStyle = 'rgba(150,128,84,0.13)'; g.lineWidth = 1; g.stroke();
       }
     }
+    if (vignette) paintVignette(g, W, H);
+  }
+  function paintVignette(g, W, H) {
     const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
     vg.addColorStop(0, 'rgba(60,44,20,0)'); vg.addColorStop(1, 'rgba(60,44,20,0.13)');
     g.fillStyle = vg; g.fillRect(0, 0, W, H);
@@ -1964,7 +1982,7 @@
   }
   return {
     setDpr: (d) => { DPR = d; },
-    GLYPH_PARAMS: GP, makeView, paintBoard, paintInput, paintOutput, monoText, hexVerts, poly, circ,
+    GLYPH_PARAMS: GP, makeView, paintBoard, paintVignette, paintInput, paintOutput, monoText, hexVerts, poly, circ,
     blitGlyph, glyphLabel, baseSprite, blit, drawArmsGame, armShadows, drawArc, drawElbow,
   };
   })();
@@ -1972,50 +1990,73 @@
 
   // ---------- drawing ----------
   // The board, every glyph plate, the inputs, the output and the ground plates are
-  // painted once per layout+view into a static layer and blitted each frame — one layer
-  // per surface, so the GIF recorder keeps its own. Arms, atoms and effects go on top.
-  const STATIC = new WeakMap(), GRIDS = new WeakMap();
+  // painted once per layout+view into static layers and blitted each frame — one set of
+  // layers per surface, so the GIF recorder keeps its own. Arms, atoms and effects go on top.
+  // The board and the parts on it are painted with a margin round the view, so a pan only
+  // slides the layers it already has; they are painted again, exact, once the pan stops.
+  // The vignette sits on the screen, not the board, so it is its own layer between them.
+  const STATIC = new WeakMap(), GRIDS = new WeakMap(), VIGNETTES = new WeakMap();
+  const PAN_MARGIN = 160;                                 // css px of board painted past each edge
   const mkView = () => MK.makeView(view.s, view.ox, view.oy);
   const baseSeed = (c) => c[0] * 7 + c[1] * 13;
-  function staticLayer(letters) {
-    const ground = layout.arms.filter(a => a.mount && a.mount.ground).map(a => a.mount.ground);
-    const vk = [CW, CH, dpr, view.s, view.ox, view.oy].join(',');
-    const key = vk + '|' + pIdx + '|' + letters + '|' + JSON.stringify([layout.glyphs, layout.inputs, layout.output, ground]);
-    const surf = ctx.canvas;
-    const e = STATIC.get(surf);
-    if (e && e.key === key) return e.c;
+  function drawStatic(letters) {
+    const surf = ctx.canvas, panning = !!(drag && drag.kind === 'pan');
+    const m = Math.round(PAN_MARGIN * dpr), md = m / dpr;  // margin in device px / css px
+    const pw = Math.round(CW * dpr), ph = Math.round(CH * dpr);
+    const sk = [CW, CH, dpr, view.s].join(',');
+    // a layer painted at view (ox, oy) serves this frame if the view is the same, or, in a
+    // pan, if it has moved less than the margin (then it is blitted at a whole-pixel shift)
+    const serves = (e, k) => e && e.k === k && (
+      (e.ox === view.ox && e.oy === view.oy) ||
+      (panning && Math.abs((view.ox - e.ox) * dpr) < m && Math.abs((view.oy - e.oy) * dpr) < m));
+    const layer = (e) => (e && e.c) || document.createElement('canvas');
+    const blitLayer = (e) => ctx.drawImage(e.c, Math.round((view.ox - e.ox) * dpr) - m, Math.round((view.oy - e.oy) * dpr) - m);
     MK.setDpr(dpr);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     let grid = GRIDS.get(surf);
-    if (!grid || grid.key !== vk) {
-      const c = document.createElement('canvas');
-      c.width = Math.round(CW * dpr); c.height = Math.round(CH * dpr);
+    if (!serves(grid, sk)) {
+      const c = layer(grid);
+      c.width = pw + 2 * m; c.height = ph + 2 * m;            // (also clears it)
       const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      MK.paintBoard(g, CW, CH, mkView());
-      grid = { key: vk, c }; GRIDS.set(surf, grid);
+      MK.paintBoard(g, CW + 2 * md, CH + 2 * md, MK.makeView(view.s, view.ox + md, view.oy + md), false);
+      grid = { k: sk, ox: view.ox, oy: view.oy, c }; GRIDS.set(surf, grid);
     }
-    const c = (e && e.c) || document.createElement('canvas');
-    c.width = grid.c.width; c.height = grid.c.height;      // (also clears it)
-    const g = c.getContext('2d');
-    g.drawImage(grid.c, 0, 0);
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const V = mkView();
-    for (const gl of layout.glyphs) { const [x, y] = Pc(gl.at); MK.blitGlyph(g, gl.type, gl.rot || 0, x, y, view.s); }
-    for (const gl of layout.glyphs) if (gl.type !== 'bonders') MK.glyphLabel(g, gl.type, gl.rot || 0, gl.at, V);
-    for (const inp of layout.inputs) {
-      const sh = base().reagentShapes[inp.ri];
-      MK.paintInput(g, V, { at: [0, 0], shape: { cells: inputCells(inp), elems: sh.elems, bonds: sh.bonds } }, true, letters);
+    blitLayer(grid);
+    let vig = VIGNETTES.get(surf);
+    const vk = [CW, CH, dpr].join(',');
+    if (!vig || vig.k !== vk) {
+      const c = layer(vig); c.width = pw; c.height = ph;
+      const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      MK.paintVignette(g, CW, CH);
+      vig = { k: vk, c }; VIGNETTES.set(surf, vig);
     }
-    const ps = base().productShape;
-    MK.paintOutput(g, V, { at: [0, 0], shape: { cells: outputCells(), elems: ps.elems, bonds: ps.bonds } }, true, letters);
-    for (const c0 of ground) { const [x, y] = Pc(c0); MK.blit(g, MK.baseSprite(view.s, baseSeed(c0)), x, y); }
-    STATIC.set(surf, { key, c });
-    return c;
+    ctx.drawImage(vig.c, 0, 0);
+    const ground = layout.arms.filter(a => a.mount && a.mount.ground).map(a => a.mount.ground);
+    const key = sk + '|' + pIdx + '|' + letters + '|' + JSON.stringify([layout.glyphs, layout.inputs, layout.output, ground]);
+    let e = STATIC.get(surf);
+    if (!serves(e, key)) {
+      const c = layer(e);
+      c.width = pw + 2 * m; c.height = ph + 2 * m;            // (also clears it)
+      const g = c.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, m, m);
+      const V = mkView();
+      for (const gl of layout.glyphs) { const [x, y] = Pc(gl.at); MK.blitGlyph(g, gl.type, gl.rot || 0, x, y, view.s); }
+      for (const gl of layout.glyphs) if (gl.type !== 'bonders') MK.glyphLabel(g, gl.type, gl.rot || 0, gl.at, V);
+      for (const inp of layout.inputs) {
+        const sh = base().reagentShapes[inp.ri];
+        MK.paintInput(g, V, { at: [0, 0], shape: { cells: inputCells(inp), elems: sh.elems, bonds: sh.bonds } }, true, letters);
+      }
+      const ps = base().productShape;
+      MK.paintOutput(g, V, { at: [0, 0], shape: { cells: outputCells(), elems: ps.elems, bonds: ps.bonds } }, true, letters);
+      for (const c0 of ground) { const [x, y] = Pc(c0); MK.blit(g, MK.baseSprite(view.s, baseSeed(c0)), x, y); }
+      e = { k: key, ox: view.ox, oy: view.oy, c }; STATIC.set(surf, e);
+    }
+    blitLayer(e);
   }
   // letters: the reagent and product cells name their elements (edit mode shows
   // half-faded atoms there instead)
   function drawGrid(letters = true) {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(staticLayer(letters), 0, 0);
+    drawStatic(letters);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     MK.setDpr(dpr);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -2855,6 +2896,7 @@
   const TIP_NOTE = 'this arm\'s grabber was replaced by a mounted arm — turns only';
 
   function refreshAll() {
+    redrawAll++;
     buildTapes(); hud(); syncGlyphHelp();
     if (mode === 'edit') {
       const bad = validate();
@@ -4256,6 +4298,18 @@
 
   // ---------- frame loop ----------
   let last = performance.now();
+  // The edit view only changes when something happens: input, a refresh, a resize, a font
+  // load, a selection (its light breathes). Otherwise the last frame still stands, so the
+  // loop skips the draw and the phone can rest. A slow backstop repaints anyway.
+  for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'keydown', 'keyup', 'wheel', 'click', 'input', 'change', 'visibilitychange'])
+    window.addEventListener(t, () => { redrawAll++; }, { capture: true, passive: true });
+  if (document.fonts) document.fonts.addEventListener('loadingdone', () => { redrawAll++; });
+  let drawnSig = '', drawnAt = 0;
+  function editNeedsDraw(now) {
+    const sig = [redrawAll, mode, dpr, view.s, view.ox, view.oy, pIdx].join(',');
+    if (sel || drag || sig !== drawnSig || now - drawnAt > 500) { drawnSig = sig; drawnAt = now; return true; }
+    return false;
+  }
   function frame(now) {
     const dt = Math.min(120, now - last); last = now; frameDt = dt;
     if (mode === 'run' && sim) {
@@ -4285,7 +4339,7 @@
       const frozen = FX.freezeF();
       const p = Math.min(phase, 1);
       drawRun(frozen !== null ? frozen : (reduceMotion ? p : GWFX.phaseEase(p)));
-    } else {
+    } else if (editNeedsDraw(now)) {
       drawEdit();
     }
     requestAnimationFrame(frame);
