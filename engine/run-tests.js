@@ -302,6 +302,72 @@ for (const ex of EXAMPLES) {
     ] }));
 }
 
+// ---- multi-gripper parents: an elbow may ride ANY shaft (PEB-31) ----
+{
+  // P is a tri-arm (shafts at dir 0, 2, 4). A child on shaft k sits at
+  // at * DIRS[parentDir + OFFSETS[3][k]] and points along that shaft.
+  const atom = (cell) => ({ inputs: [{ cell, elem: 'Pb' }] });
+  const tri = (hand, ptape) => ({ arms: [
+    { id: 'P', grippers: 3, len: 2, mount: { ground: [0, 0] }, angle: 0, tape: { ops: ptape } },
+    { id: 'C', grippers: 1, len: 1, mount: { elbow: { parent: 'P', at: 1, hand } }, angle: 0,
+      tape: { ops: ['G', 'W'] } },
+  ] });
+  // shaft 1 -> child at (-1,1) facing dir 2 -> its gripper over (-2,2)
+  // shaft 2 -> child at (0,-1) facing dir 4 -> its gripper over (0,-2)
+  const grabsAt = (hand, cell) => {
+    const sim = GW.createSim(atom(cell), tri(hand, ['W', '+']));
+    sim.step();
+    const held = sim.state.arms[1].holds[0];
+    return !sim.state.fault && held && held.kind === 'atom';
+  };
+  check('tri-arm: a child on shaft 1 grips from that shaft', grabsAt(1, [-2, 2]) && !grabsAt(0, [-2, 2]));
+  check('tri-arm: a child on shaft 2 grips from that shaft', grabsAt(2, [0, -2]) && !grabsAt(0, [0, -2]));
+  check('tri-arm: shaft 0 is the old mount', grabsAt(0, [2, 0]) && grabsAt(undefined, [2, 0]));
+  {
+    // the child turns with its shaft when the parent turns
+    const sim = GW.createSim(atom([-2, 2]), tri(1, ['W', '+']));
+    sim.step(); sim.step();
+    const a = sim.state.atoms[0], want = GW.rotK([-2, 2], 1);
+    check('tri-arm: a parent turn carries the shaft-1 child and its atom',
+      !sim.state.fault && a.cell[0] === want[0] && a.cell[1] === want[1], `atom@${a.cell} want ${want}`);
+  }
+  const rejects = (m, re) => { try { GW.createSim({}, m); return false; } catch (e) { return re.test(e.message); } };
+  check('tri-arm: a shaft the parent does not have is refused',
+    rejects(tri(3, ['W']), /shaft the parent does not have/) && rejects(tri(-1, ['W']), /shaft/)
+    && rejects(tri(1.5, ['W']), /shaft/));
+  check('elbow: a single-gripper parent has only shaft 0', rejects({ arms: [
+    { id: 'P', grippers: 1, len: 2, mount: { ground: [0, 0] }, angle: 0, tape: { ops: ['W'] } },
+    { id: 'C', grippers: 1, len: 1, mount: { elbow: { parent: 'P', at: 1, hand: 1 } }, angle: 0, tape: { ops: ['W'] } },
+  ] }, /shaft/));
+  // three tip children, one per shaft: the parent loses its grabbers once (20+10-5 + 3*(20+10))
+  const three = { arms: [
+    { id: 'P', grippers: 3, len: 1, mount: { ground: [0, 0] }, angle: 0, tape: { ops: ['+'] } },
+    ...[0, 1, 2].map(k => ({ id: 'C' + k, grippers: 1, len: 1, mount: { elbow: { parent: 'P', at: 1, hand: k } },
+      angle: 0, tape: { ops: ['W'] } })),
+  ] };
+  const triCost = GW.PRICE[3] - GW.GRABBER_COST + 3 * (GW.PRICE[1] + GW.ELBOW_COST);
+  check(`tri-arm: three tip children price once (${triCost})`,
+    GW.createSim({}, three).metrics().cost === triCost && GW.armsCost(three.arms) === triCost,
+    'got ' + GW.createSim({}, three).metrics().cost);
+  check('tri-arm: a tip child on any shaft makes the parent grabberless',
+    rejects({ arms: [three.arms[0], three.arms[2]].map((a, i) => i ? a : Object.assign({}, a, { tape: { ops: ['G'] } })) },
+      /no grabber/));
+  // codec: v3 only when a hand is off shaft 0; v2/v1 strings unchanged
+  const enc = CODEC.encodeString(three);
+  const back = CODEC.decodeString(enc);
+  check('codec v3: elbow shafts round-trip', CODEC.fromString(enc)[0] === 3
+    && back.arms.map(a => a.mount.elbow ? a.mount.elbow.hand || 0 : -1).join() === '-1,0,1,2'
+    && CODEC.encodeString(back) === enc, enc);
+  const zero = { arms: three.arms.map(a => a.mount.elbow ? Object.assign({}, a, { mount: { elbow: { parent: 'P', at: 1 } } }) : a) };
+  check('codec v3: all-shaft-0 machines still encode as v1', CODEC.fromString(CODEC.encodeString(zero))[0] === 1);
+  const bad = (fn) => { try { fn(); return false; } catch (e) { return /codec/.test(String(e)); } };
+  const v3 = Array.from(CODEC.fromString(enc));
+  check('codec v3: refuses flag bits 6-7', bad(() => { const b = v3.slice(); b[2] |= 64; CODEC.decodeMachine(Uint8Array.from(b)); }));
+  check('codec v3: refuses a shaft without an elbow', bad(() => { const b = v3.slice(); b[2] |= 32; CODEC.decodeMachine(Uint8Array.from(b)); }));
+  check('codec: refuses shaft 6', bad(() => CODEC.encodeMachine({ arms: [three.arms[0],
+    Object.assign({}, three.arms[1], { mount: { elbow: { parent: 'P', at: 1, hand: 6 } } })] })));
+}
+
 // ==========================================================================
 // The blocks below pin the deterministic core. A C port of this engine has to
 // reproduce every literal and every bound stated here bit-for-bit; the numbers

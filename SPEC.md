@@ -99,7 +99,9 @@ simulation begins.
 ## 5. Machines and articulation
 
 A machine is a set of parts. Arms form **kinematic trees**: an arm's base sits either
-on the board or — via an elbow — at an integer position (1..len) along a parent arm.
+on the board or — via an elbow — at an integer position (1..len) along one shaft of a
+parent arm. A multi-gripper parent has one shaft per gripper, and an elbow may ride any
+of them.
 When any joint turns, everything downstream — child arms, grippers, held cargo — moves
 rigidly with it.
 
@@ -108,8 +110,8 @@ Tracks are deliberately omitted: base-grabbing covers relocation.
 Two roads to articulation, deliberately priced apart:
 
 - **Elbow** (+10g): permanent weld; the joint doesn't collide. A child mounted
-  **mid-shaft** leaves the parent whole. A child mounted at the parent's **tip**
-  replaces the parent's grabber head outright: the parent can no longer grab,
+  **mid-shaft** leaves the parent whole. A child mounted at the **tip** of any of the
+  parent's shafts replaces the parent's grabber head outright: the parent can no longer grab,
   release, or pivot — turns only — and the grabber's 5g comes off the price.
   Replacing the grabber with an arm is the only way to remove it.
 - **Grab a base** (no surcharge): any gripper may grab any arm's base (§8); the carried

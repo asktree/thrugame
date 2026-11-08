@@ -107,13 +107,14 @@ typedef struct {
   gw_caps_t caps;                         /* fully resolved (defaults merged) */
 } gw_puzzle_t;
 
-/* ---- decoded machine (codec v1/v2) ---- */
+/* ---- decoded machine (codec v1/v2/v3) ---- */
 typedef struct {
   uint8_t  grippers;                      /* 1, 2, 3, 6 */
   uint8_t  len;                           /* 1..3 */
   uint8_t  is_elbow;
   uint8_t  parent;                        /* arm index, < own index */
   uint8_t  at;                            /* 1..parent len */
+  uint8_t  hand;                          /* parent gripper whose shaft (0..grippers-1; v3) */
   int32_t  gq, gr;                        /* ground mount */
   uint8_t  angle;                         /* 0..5 */
   uint32_t delay;
@@ -154,7 +155,7 @@ typedef struct {
 
 typedef struct {
   /* definition */
-  uint8_t  grippers, ngrips, len, is_elbow, parent, at;
+  uint8_t  grippers, ngrips, len, is_elbow, parent, at, hand;
   uint8_t  angle;
   uint32_t delay;
   uint8_t  ntape;

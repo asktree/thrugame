@@ -79,6 +79,26 @@ index, in puzzle order) — a solution chooses where they sit and how they're
 turned, never what they are. Version 1 payloads (arms only) still decode; a
 consumer supplies the puzzle's default board for them.
 
+## Version 3: elbows on any shaft
+
+A multi-gripper parent (2, 3 or 6 grippers) has one shaft per gripper. An elbow
+may sit on any of them, not only on shaft 0. Version 3 is version 2 with one more
+flags bit:
+
+```
+  u8     flags           bit  5    hand follows (only with bit 4)
+                         bits 6–7  must be 0
+  mount  if elbow:       varint parent index, varint at,
+                         varint hand (1..5) if bit 5 is set
+```
+
+The hand is the parent's gripper index (the shaft runs along parent direction +
+the gripper's offset: 2 grippers at 0,3; 3 at 0,2,4; 6 at 0..5) and must be below
+the parent's gripper count. A missing hand means shaft 0, so bit 5 is never set
+for hand 0. An encoder writes version 3 only when some elbow has a nonzero hand;
+otherwise it writes version 1 or 2 as before, so old strings stay byte-identical.
+Versions 1 and 2 ignore bits 5–7.
+
 ## Share strings
 
 base64url (RFC 4648 §5 alphabet, no padding) of the bytes above. The editor
@@ -101,6 +121,10 @@ u8   username length      (<= 24 bytes)
      username             UTF-8, no control bytes
      machine bytes        a version-2 payload, exactly as above
 ```
+
+The deployed verifier accepts version-1 and version-2 machine payloads. It
+refuses a version-3 payload (an elbow on shaft 1 or higher) as malformed until
+the program is upgraded; it never misreads one.
 
 Version 3 has version 2's layout; what changed is that the transaction must
 list the puzzle's **escrow account** (see *Prize escrow*), read-write, whether or
