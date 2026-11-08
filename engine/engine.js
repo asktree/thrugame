@@ -165,6 +165,10 @@
   const OFFSETS = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 6: [0, 1, 2, 3, 4, 5] };
   const PRICE = { 1: 20, 2: 24, 3: 26, 6: 30 };
   const ELBOW_COST = 10;   // mounting an arm on an arm
+  // An elbow rides one shaft of its parent: mount.elbow.hand indexes the parent's
+  // grippers (0 = the primary shaft, the default; a tri-arm has shafts 0, 1, 2).
+  // The shaft's direction is the parent's direction plus that gripper's offset.
+  const shaftOff = (parent, child) => OFFSETS[parent.grippers || 1][child.mount.elbow.hand || 0];
   const GRABBER_COST = 5;  // the grabber head's share of an arm's price
 
   // Arm pricing. Mounting on an arm costs ELBOW_COST. A child mounted at the
@@ -257,7 +261,7 @@
       const srcOps = (a.tape && a.tape.ops) || ['W'];
       const arm = {
         id: a.id, grippers: a.grippers || 1, len: a.len || 1,
-        mount: a.mount,                       // {ground:[q,r]} | {elbow:{parent,at}}
+        mount: a.mount,                       // {ground:[q,r]} | {elbow:{parent,at,hand?}}
         angle: a.angle || 0,                  // relative angle, 0..5
         // src is as authored (repeat markers intact); ops is what runs
         tape: { delay: (a.tape && a.tape.delay) || 0, src: srcOps, ops: expandTape(srcOps).ops },
@@ -288,6 +292,8 @@
         const p = byId[arm.mount.elbow.parent];
         if (!p) reject('elbow parent missing');
         if (arm.mount.elbow.at < 1 || arm.mount.elbow.at > p.len) reject('elbow position off shaft');
+        const hand = arm.mount.elbow.hand || 0;
+        if (!Number.isInteger(hand) || hand < 0 || hand >= p.grippers) reject('elbow on a shaft the parent does not have');
         let d = 0, cur = arm;
         while (cur.mount.elbow) { cur = byId[cur.mount.elbow.parent]; if (++d > caps.elbowDepth) reject('elbow too deep'); }
       } else {
@@ -395,7 +401,7 @@
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
         const pp = pose(p, guard);
-        const pd = mod6(pp.rot + p.angle);
+        const pd = mod6(pp.rot + p.angle + shaftOff(p, arm));
         return { pos: add(pp.pos, scale(DIRS[pd], arm.mount.elbow.at)), rot: pd };
       }
       if (arm.carriers.length) {
@@ -438,7 +444,7 @@
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
         const pp = poseQ(p, u, M);
-        const dU = pp.rotU + ANG_DIR * M.angle0[p.id] + M.delta[p.id] * u;
+        const dU = pp.rotU + ANG_DIR * (M.angle0[p.id] + shaftOff(p, arm)) + M.delta[p.id] * u;
         const v = stepQ(arm.mount.elbow.at, dU);
         return { x: pp.x + v[0], y: pp.y + v[1], rotU: dU };
       }
@@ -470,7 +476,7 @@
       if (arm.mount.elbow) {
         const p = byId[arm.mount.elbow.parent];
         const pp = poseF(p, f, M);
-        const pdF = pp.rotF + (M.angle0[p.id] + M.delta[p.id] * f);
+        const pdF = pp.rotF + (M.angle0[p.id] + shaftOff(p, arm) + M.delta[p.id] * f);
         const dir = dirRadF(pdF);
         return { x: pp.x + arm.mount.elbow.at * SQ3 * Math.cos(dir), y: pp.y + arm.mount.elbow.at * SQ3 * Math.sin(dir), rotF: pdF };
       }
@@ -867,7 +873,7 @@
 
   const GW = {
     createSim, expandTape, DIRS, rotK, PRICE, GLYPH_PRICE, ELBOW_COST, GRABBER_COST,
-    armsCost, tipParentIds, RADIUS, BASE_RADIUS, K_SAMPLES, DEFAULT_CAPS,
+    armsCost, tipParentIds, OFFSETS, RADIUS, BASE_RADIUS, K_SAMPLES, DEFAULT_CAPS,
     toPx, fromPx: axialRound,   // float, render/editor-pointer use only (see note above)
     // the deterministic core, exported so a C reimplementation can be conformance-tested
     // primitive by primitive against this oracle.

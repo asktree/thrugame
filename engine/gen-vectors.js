@@ -176,6 +176,18 @@ const CASES = EXAMPLES.concat([{
     tape: { delay: 0, ops: ['G', '+', 'R', '-', 'R'] } }] },
   // the carried atom sweeps back through the respawned reagent on the wrap
   expect: { fault: 'collision' },
+}, {
+  // PEB-31: a tri-arm carries children on shafts 1 and 2 (codec v3 hands);
+  // each child grips from its own shaft and swings with the parent
+  key: 'triarm',
+  puzzle: { caps: { cycles: 12 }, inputs: [{ cell: [-2, 2], elem: 'Sa' }, { cell: [0, -2], elem: 'Sa' }] },
+  machine: { arms: [
+    { id: 'P', grippers: 3, len: 2, mount: { ground: [0, 0] }, angle: 0, tape: { delay: 0, ops: ['W', '+'] } },
+    { id: 'B', grippers: 1, len: 1, mount: { elbow: { parent: 'P', at: 1, hand: 1 } }, angle: 0,
+      tape: { delay: 0, ops: ['G', 'W'] } },
+    { id: 'C', grippers: 1, len: 1, mount: { elbow: { parent: 'P', at: 1, hand: 2 } }, angle: 0,
+      tape: { delay: 0, ops: ['G', 'W'] } },
+  ] },
 }]);
 
 const exNames = [];

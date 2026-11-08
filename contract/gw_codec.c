@@ -28,7 +28,7 @@ int gw_decode_machine(const uint8_t *bytes, uint32_t len, gw_machine_t *out) {
   for (uint32_t i = 0; i < sizeof(*out); i++) ((uint8_t *)out)[i] = 0;
 
   uint8_t version = rd_u8(&r);
-  if (r.err || (version != 1 && version != 2)) return GW_ERR_DECODE;
+  if (r.err || (version != 1 && version != 2 && version != 3)) return GW_ERR_DECODE;
   out->version = version;
 
   uint32_t count = rd_varint(&r);
@@ -43,12 +43,21 @@ int gw_decode_machine(const uint8_t *bytes, uint32_t len, gw_machine_t *out) {
     a->grippers = GRIPS[flags & 3];
     a->len = (uint8_t)(((flags >> 2) & 3) + 1);
     if (a->len > 3) return GW_ERR_DECODE;
+    /* v1/v2 ignore bits 5-7 (as the deployed verifier does); v3 reads bit 5
+       (elbow shaft follows `at`) and refuses the rest */
+    if (version == 3 && ((flags & 0xC0) || ((flags & 32) && !(flags & 16))))
+      return GW_ERR_DECODE;
     if (flags & 16) {
       uint32_t parent = rd_varint(&r), at = rd_varint(&r);
       if (r.err || parent >= i) return GW_ERR_DECODE;
       a->is_elbow = 1; a->parent = (uint8_t)parent;
       if (at > 255) return GW_ERR_DECODE;
       a->at = (uint8_t)at;
+      if (version == 3 && (flags & 32)) {
+        uint32_t hand = rd_varint(&r);
+        if (r.err || hand < 1 || hand > 5) return GW_ERR_DECODE;
+        a->hand = (uint8_t)hand;
+      }
     } else {
       a->gq = unzigzag(rd_varint(&r));
       a->gr = unzigzag(rd_varint(&r));
@@ -139,10 +148,13 @@ int32_t gw_encode_machine(const gw_machine_t *m, uint8_t *buf, uint32_t cap) {
     int grip = -1;
     for (int g = 0; g < 4; g++) if (GRIPS[g] == a->grippers) grip = g;
     if (grip < 0 || a->len < 1 || a->len > 3) return -1;
-    wr_u8(&w, (uint8_t)(grip | ((a->len - 1) << 2) | (a->is_elbow ? 16 : 0)));
+    uint8_t hand = a->is_elbow ? a->hand : 0;
+    if (hand > 5 || (hand && m->version != 3)) return -1;
+    wr_u8(&w, (uint8_t)(grip | ((a->len - 1) << 2) | (a->is_elbow ? 16 : 0) | (hand ? 32 : 0)));
     if (a->is_elbow) {
       if (a->parent >= i) return -1;
       wr_varint(&w, a->parent); wr_varint(&w, a->at);
+      if (hand) wr_varint(&w, hand);
     } else {
       wr_varint(&w, zigzag(a->gq)); wr_varint(&w, zigzag(a->gr));
     }

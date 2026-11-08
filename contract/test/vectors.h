@@ -623,6 +623,28 @@ static const uint64_t DIGESTS_repeat[] = {
 };
 static const gw_expect_t EXPECT_repeat = { .ticks = 6, .status = 2, .fault_kind = 1, .fault_tick = 6, .cost = 20, .cycles = -1, .area = 4, .sum = -1 };
 
+/* ---- triarm ---- */
+static const uint8_t MACHINE_triarm[] = {3,3,6,0,0,0,0,2,22,48,0,1,1,0,0,2,48,48,0,1,2,0,0,2,48,0,0,0};
+static const gw_puzzle_t PUZZLE_triarm = {
+  .ninputs = 2, .inputs = {{1,{{-2,2}},{0},0,{{0,0}}},
+    {1,{{0,-2}},{0},0,{{0,0}}}},
+  .has_output = 0, .output = {0},
+  .natoms = 0, .atom_cells = {{0,0}}, .atom_elems = {0},
+  .nbonders = 0, .bonders = {{{0,0},{0,0}}},
+  .ndebonders = 0, .debonders = {{{0,0},{0,0}}},
+  .ncalcifiers = 0, .calcifiers = {{0,0}},
+  .nduplicators = 0, .duplicators = {{{0,0},{0,0}}},
+  .nprojectors = 0, .projectors = {{{0,0},{0,0}}},
+  .npurifiers = 0, .purifiers = {{{0,0},{0,0},{0,0}}},
+  .nanimismus = 0, .animismus = {{{0,0},{0,0},{0,0},{0,0}}},
+  .ndisposals = 0, .disposals = {{0,0}},
+  .caps = {24,4,64,64,12,9},
+};
+static const uint64_t DIGESTS_triarm[] = {
+  0xfbccc24116707a1dULL,0x8c372e6f04ba3731ULL,0xb0b04abf43dc43a7ULL,0xed3f6fb6e74c818ULL
+};
+static const gw_expect_t EXPECT_triarm = { .ticks = 4, .status = 2, .fault_kind = 1, .fault_tick = 4, .cost = 86, .cycles = -1, .area = 13, .sum = -1 };
+
 static const gw_vector_case_t VEC_CASES[] = {
   { "courier", &PUZZLE_courier, MACHINE_courier, sizeof(MACHINE_courier), DIGESTS_courier, &EXPECT_courier },
   { "ferris", &PUZZLE_ferris, MACHINE_ferris, sizeof(MACHINE_ferris), DIGESTS_ferris, &EXPECT_ferris },
@@ -637,6 +659,7 @@ static const gw_vector_case_t VEC_CASES[] = {
   { "tugofwar", &PUZZLE_tugofwar, MACHINE_tugofwar, sizeof(MACHINE_tugofwar), DIGESTS_tugofwar, &EXPECT_tugofwar },
   { "collide", &PUZZLE_collide, MACHINE_collide, sizeof(MACHINE_collide), DIGESTS_collide, &EXPECT_collide },
   { "repeat", &PUZZLE_repeat, MACHINE_repeat, sizeof(MACHINE_repeat), DIGESTS_repeat, &EXPECT_repeat },
+  { "triarm", &PUZZLE_triarm, MACHINE_triarm, sizeof(MACHINE_triarm), DIGESTS_triarm, &EXPECT_triarm },
 };
 
 static const uint8_t SUBMIT_0[] = {2,1,0,0,0,5,0,16,88,36,72,10,182,108,1,0,1,0,5,2,0,2,1,0,1,2,0,0,1,0,2,0};

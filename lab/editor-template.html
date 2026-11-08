@@ -910,7 +910,8 @@
         if (!par) p = { pos: [0, 0], rot: 0 };
         else {
           const pp = pose(par);
-          const d = mod6(pp.rot + par.angle);
+          // the shaft it rides: parent facing + that gripper's offset (PEB-31)
+          const d = mod6(pp.rot + par.angle + (GRIPOFF[par.grippers] || [0])[arm.mount.elbow.hand || 0]);
           p = { pos: addc(pp.pos, [GW.DIRS[d][0] * arm.mount.elbow.at, GW.DIRS[d][1] * arm.mount.elbow.at]), rot: d };
         }
       } else p = { pos: arm.mount.ground.slice(), rot: 0 };
@@ -2119,17 +2120,26 @@
   function armFlags(arms) {
     const parents = new Set();
     for (const a of arms) if (a.mount && a.mount.elbow) parents.add(a.mount.elbow.parent);
-    return { parents, tips: GW.tipParentIds(arms) };
+    // the grabber is drawn off the shaft whose tip carries the child (any shaft, PEB-31)
+    const tipHands = new Map();
+    const byId = new Map(arms.map(a => [a.id, a]));
+    for (const a of arms) {
+      const e = a.mount && a.mount.elbow, p = e && byId.get(e.parent);
+      if (!p || e.at !== (p.len || 1)) continue;
+      if (!tipHands.has(p.id)) tipHands.set(p.id, new Set());
+      tipHands.get(p.id).add(e.hand || 0);
+    }
+    return { parents, tips: GW.tipParentIds(arms), tipHands };
   }
   const limbOpts = (flags, id) =>
-    ({ thick: flags.parents.has(id) ? PARENT_THICK : 1, hideTip: flags.tips.has(id) });
+    ({ thick: flags.parents.has(id) ? PARENT_THICK : 1, hideHands: flags.tipHands.get(id) });
   // one arm in the form the material renderer draws: claw closure smoothed through FX
   function armItem(b, hands, gkey, opts, elbow, ghost, spin) {
     const o = opts || {};
     return {
       b, elbow, ghost, thick: o.thick || 1,
       hands: hands.map((h, gi) => ({
-        x: h.x, y: h.y, ang: h.ang, spin: spin || 0, hide: !!(o.hideTip && gi === 0),
+        x: h.x, y: h.y, ang: h.ang, spin: spin || 0, hide: !!(o.hideHands && o.hideHands.has(gi)),
         grip: gkey ? FX.grip(gkey + ':' + gi, h.holding ? 1 : 0, frameDt) : (h.holding ? 1 : 0),
       })),
     };
@@ -2388,10 +2398,14 @@
     for (const arm of layout.arms) {
       if (skip.has(arm.id)) continue;
       const p = poses[arm.id];
-      const d = mod6(p.rot + arm.angle);
-      for (let i = 1; i <= arm.len; i++) {
-        const c = addc(p.pos, [GW.DIRS[d][0] * i, GW.DIRS[d][1] * i]);
-        if (eq(c, cell)) return { arm, at: i, rot: d };
+      // every gripper has its own shaft, and a child may ride any of them
+      const offs = GRIPOFF[arm.grippers] || [0];
+      for (let hand = 0; hand < offs.length; hand++) {
+        const d = mod6(p.rot + arm.angle + offs[hand]);
+        for (let i = 1; i <= arm.len; i++) {
+          const c = addc(p.pos, [GW.DIRS[d][0] * i, GW.DIRS[d][1] * i]);
+          if (eq(c, cell)) return { arm, at: i, hand, rot: d };
+        }
       }
     }
     return null;
@@ -2425,11 +2439,14 @@
   function mountFor(cell, excludeId) {
     if (baseAt(cell)) return null;
     const hit = shaftAt(cell, excludeId);
-    return hit ? { mount: { elbow: { parent: hit.arm.id, at: hit.at } }, rot: hit.rot }
+    // hand 0 stays implicit so all-shaft-0 machines keep their old share strings
+    return hit ? { mount: { elbow: hit.hand ? { parent: hit.arm.id, at: hit.at, hand: hit.hand }
+      : { parent: hit.arm.id, at: hit.at } }, rot: hit.rot }
       : { mount: { ground: [cell[0], cell[1]] }, rot: 0 };
   }
   const sameMount = (a, b) => (a.ground && b.ground && eq(a.ground, b.ground))
-    || (!!a.elbow && !!b.elbow && a.elbow.parent === b.elbow.parent && a.elbow.at === b.elbow.at);
+    || (!!a.elbow && !!b.elbow && a.elbow.parent === b.elbow.parent && a.elbow.at === b.elbow.at
+      && (a.elbow.hand || 0) === (b.elbow.hand || 0));
   // re-mounting keeps the arm pointing where it pointed: `angle` is relative to the
   // frame it hangs in, so moving between frames has to rebase it against the new one.
   function remount(arm, m) {
@@ -4019,6 +4036,11 @@
     let machineBytes;
     try { machineBytes = CODEC.encodeMachine(asMachine()); }
     catch (e) { setStatus('not submitted: ' + errText(e), 'bad'); return; }
+    // the deployed verifier reads machine versions 1 and 2; an elbow on a second or
+    // third shaft needs version 3, which the chain refuses until the program upgrade
+    if (machineBytes[0] > 2) {
+      setStatus('not submitted: the chain does not take an arm on a second shaft yet', 'bad'); return;
+    }
     pending = { puzzleId: pIdx, machineBytes };
     const note = $('sdNote');
     if (note) note.textContent = base().name + ' · sum ' + $('hSum').textContent;

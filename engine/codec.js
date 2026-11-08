@@ -11,6 +11,7 @@
  *     u8     flags: bits 0-1 gripper code (0,1,2,3 -> 1,2,3,6 grippers)
  *                   bits 2-3 length-1 (0..2)
  *                   bit  4   mounted on an elbow
+ *                   bit  5   (v3) elbow on a shaft other than 0: varint hand follows `at`
  *     mount: elbow -> varint parent index (must precede this arm), varint at (1..len of parent)
  *            ground -> zigzag varint q, zigzag varint r
  *     u8     initial angle (0..5)
@@ -31,6 +32,14 @@
  * by its anchor cell and rotation. Reagent/product placements reference the
  * puzzle's molecule shapes by index — the shapes themselves are the puzzle's,
  * so a solution can never alter what is being asked for.
+ *
+ * Version 3 is version 2 plus elbow shafts: flags bit 5 says a varint `hand`
+ * follows the elbow's `at` — the index of the parent's gripper whose shaft the
+ * child rides (1..grippers-1; 0, the primary shaft, is never written). The
+ * encoder writes version 3 only when some elbow sits off shaft 0, so every older
+ * string encodes exactly as before, and an older decoder refuses a v3 string
+ * instead of misreading it. v1/v2 decoders ignore bits 5-7 (as they always have);
+ * v3 refuses bits 6-7 and bit 5 without bit 4.
  */
 (function (root) {
   'use strict';
@@ -39,7 +48,8 @@
   const GRIPS = [1, 2, 3, 6];
   const GLYPH_TYPES = ['bonders', 'debonders', 'calcifiers', 'duplicators',
     'projectors', 'purifiers', 'animismus', 'disposals'];
-  const VERSION = 2;
+  const VERSION = 2;      // the layout version; HANDS_VERSION adds elbow shafts
+  const HANDS_VERSION = 3;
 
   function zigzag(n) { return n < 0 ? -2 * n - 1 : 2 * n; }
   function unzigzag(n) { return n & 1 ? -(n + 1) / 2 : n / 2; }
@@ -52,7 +62,8 @@
     const index = new Map(arms.map((a, i) => [a.id, i]));
     const hasLayout = machine.glyphs || machine.inputs || machine.output;
 
-    push(hasLayout ? VERSION : 1);
+    const hands = arms.some(a => a.mount.elbow && (a.mount.elbow.hand || 0) !== 0);
+    push(hands ? HANDS_VERSION : hasLayout ? VERSION : 1);
     varint(arms.length);
     arms.forEach((a, i) => {
       const grip = GRIPS.indexOf(a.grippers || 1);
@@ -60,11 +71,14 @@
       if (grip < 0) throw new Error('codec: bad gripper count');
       if (len < 0 || len > 2) throw new Error('codec: bad length');
       const elbow = a.mount.elbow;
-      push(grip | (len << 2) | (elbow ? 16 : 0));
+      const hand = elbow ? (elbow.hand || 0) : 0;
+      if (!Number.isInteger(hand) || hand < 0 || hand > 5) throw new Error('codec: bad elbow shaft');
+      push(grip | (len << 2) | (elbow ? 16 : 0) | (hand ? 32 : 0));
       if (elbow) {
         const p = index.get(elbow.parent);
         if (p === undefined || p >= i) throw new Error('codec: elbow parent must precede its child');
         varint(p); varint(elbow.at);
+        if (hand) varint(hand);
       } else {
         varint(zigzag(a.mount.ground[0])); varint(zigzag(a.mount.ground[1]));
       }
@@ -82,7 +96,7 @@
       }
       if (bits) push(acc);
     });
-    if (hasLayout) {
+    if (hasLayout || hands) {
       const glyphs = machine.glyphs || [];
       varint(glyphs.length);
       for (const g of glyphs) {
@@ -112,7 +126,7 @@
       return n >>> 0;
     };
     const version = u8();
-    if (version !== 1 && version !== VERSION) throw new Error('codec: unknown version');
+    if (version !== 1 && version !== VERSION && version !== HANDS_VERSION) throw new Error('codec: unknown version');
     const count = varint();
     const arms = [];
     for (let i = 0; i < count; i++) {
@@ -120,11 +134,20 @@
       const grippers = GRIPS[flags & 3];
       const len = ((flags >> 2) & 3) + 1;
       if (len > 3) throw new Error('codec: bad length');
+      // v1/v2 ignore bits 5-7, exactly as the deployed verifier does; v3 reads bit 5
+      // and refuses the rest
+      const v3 = version === HANDS_VERSION;
+      if (v3 && ((flags & 0xc0) || ((flags & 32) && !(flags & 16)))) throw new Error('codec: bad flags');
       let mount;
       if (flags & 16) {
         const parent = varint(), at = varint();
         if (parent >= i) throw new Error('codec: elbow parent must precede its child');
         mount = { elbow: { parent: 'a' + parent, at } };
+        if (v3 && (flags & 32)) {
+          const hand = varint();
+          if (hand < 1 || hand > 5) throw new Error('codec: bad elbow shaft');
+          mount.elbow.hand = hand;
+        }
       } else {
         const q = unzigzag(varint()), r = unzigzag(varint());
         mount = { ground: [q, r] };

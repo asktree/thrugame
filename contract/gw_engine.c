@@ -123,7 +123,7 @@ static pose_t pose_guarded(gw_sim_t *S, int ai, uint32_t *guard) {
   if (arm->is_elbow) {
     pose_t pp = pose_guarded(S, arm->parent, guard);
     gw_arm_t *p = &S->arms[arm->parent];
-    int32_t pd = mod6(pp.rot + p->angle);
+    int32_t pd = mod6(pp.rot + p->angle + offsets_of(p->grippers)[arm->hand]);
     out.q = pp.q + GW_DIRS[pd][0] * arm->at;
     out.r = pp.r + GW_DIRS[pd][1] * arm->at;
     out.rot = (uint8_t)pd;
@@ -219,7 +219,8 @@ static poseq_t pose_q(gw_sim_t *S, int ai, int32_t u, const motion_t *M) {
   poseq_t out;
   if (arm->is_elbow) {
     poseq_t pp = pose_q(S, arm->parent, u, M);
-    int32_t du = pp.rot_u + GW_ANG_DIR * M->angle0[arm->parent] + M->delta[arm->parent] * u;
+    int32_t du = pp.rot_u + GW_ANG_DIR * (M->angle0[arm->parent]
+                 + offsets_of(S->arms[arm->parent].grippers)[arm->hand]) + M->delta[arm->parent] * u;
     int64_t vx, vy;
     gw_step_q(arm->at, du, &vx, &vy);
     out.x = pp.x + vx; out.y = pp.y + vy; out.rot_u = du;
@@ -330,7 +331,8 @@ int gw_sim_init(gw_sim_t *S, const gw_puzzle_t *puzzle, const gw_machine_t *m) {
       if (d->parent >= i) return GW_ERR_ELBOW_PARENT;
       const gw_arm_def_t *p = &m->arms[d->parent];
       if (d->at < 1 || d->at > p->len) return GW_ERR_ELBOW_AT;
-      a->parent = d->parent; a->at = d->at;
+      if (d->hand >= p->grippers) return GW_ERR_ELBOW_AT;   /* no such shaft */
+      a->parent = d->parent; a->at = d->at; a->hand = d->hand;
       int depth = 0, cur = i;
       while (m->arms[cur].is_elbow) {
         cur = m->arms[cur].parent;
