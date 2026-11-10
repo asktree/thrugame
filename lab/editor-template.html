@@ -4036,11 +4036,6 @@
     let machineBytes;
     try { machineBytes = CODEC.encodeMachine(asMachine()); }
     catch (e) { setStatus('not submitted: ' + errText(e), 'bad'); return; }
-    // the deployed verifier reads machine versions 1 and 2; an elbow on a second or
-    // third shaft needs version 3, which the chain refuses until the program upgrade
-    if (machineBytes[0] > 2) {
-      setStatus('not submitted: the chain does not take an arm on a second shaft yet', 'bad'); return;
-    }
     pending = { puzzleId: pIdx, machineBytes };
     const note = $('sdNote');
     if (note) note.textContent = base().name + ' · sum ' + $('hSum').textContent;
