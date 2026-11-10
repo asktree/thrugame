@@ -160,6 +160,7 @@ export function createClient(network = NETWORKS.alphanet) {
 // refusal with backoff (a refused call never reached the node, so a retry is safe).
 export const RPC_GAP_MS = 110, RPC_RETRIES = 6;
 const RESOURCE_EXHAUSTED = 8;
+const STREAMING_RPCS = new Set(['sendAndTrackTxn']);
 export function paceRpc(client) {
   const ctx = client && client.ctx;
   if (!ctx || ctx.__paced) return client;
@@ -174,7 +175,9 @@ export function paceRpc(client) {
     const o = ctx[svc];
     if (!o) continue;
     for (const k of Object.keys(o)) {
-      if (typeof o[k] !== 'function') continue;
+      // sendAndTrackTxn is a server stream: it must stay a sync call that returns
+      // an async iterable, so it is not wrapped.
+      if (typeof o[k] !== 'function' || STREAMING_RPCS.has(k)) continue;
       const f = o[k].bind(o);
       o[k] = async (...args) => {
         for (let i = 0; ; i++) {
@@ -675,7 +678,9 @@ export async function isCompressed(client, address) {
 // puzzle, or a champion's account before its CLAIM. Returns the SDK's per-account outcome.
 export async function decompressAccounts(client, { wallet, accounts }) {
   if (!client.compression || !client.compression.decompressAccounts) throw new Error('this SDK has no decompression');
-  const r = await client.compression.decompressAccounts({ accounts, feePayer: { publicKey: wallet.publicKey, privateKey: wallet.privateKey } });
+  // The SDK's default fee for a raw-key payer is 1, and a fresh alphanet key has
+  // no balance (fees are 0 there), so that default fails with -509.
+  const r = await client.compression.decompressAccounts({ accounts, fee: 0n, feePayer: { publicKey: wallet.publicKey, privateKey: wallet.privateKey } });
   return r.accounts;
 }
 

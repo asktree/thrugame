@@ -122,9 +122,10 @@ u8   username length      (<= 24 bytes)
      machine bytes        a version-2 payload, exactly as above
 ```
 
-The deployed verifier accepts version-1 and version-2 machine payloads. It
-refuses a version-3 payload (an elbow on shaft 1 or higher) as malformed until
-the program is upgraded; it never misreads one.
+The deployed verifier accepts version-1, version-2 and version-3 machine
+payloads (version 3: an elbow on shaft 1 or higher). Both alphanet programs were
+upgraded to read version 3 on 2026-11-10; before that they refused it as
+malformed and never misread it.
 
 Version 3 has version 2's layout; what changed is that the transaction must
 list the puzzle's **escrow account** (see *Prize escrow*), read-write, whether or
