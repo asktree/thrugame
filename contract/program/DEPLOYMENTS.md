@@ -15,10 +15,15 @@ addresses against their seeds.
 Alphanet was reset again after 2026-10-02 and both programs below were gone. On 2026-10-26 they were redeployed
 from the same seeds (so the addresses and the client did not change), with a binary byte-identical to the 2026-10-02 build.
 
+On 2026-11-10 both programs were upgraded in place (`node client/deploy.js <seed> <bin> --upgrade`) to version 1:
+54,152 bytes, sha256 `b4982a72…0eda65`, built from eb1268c (PR #21). The only change: the verifier now reads
+machine codec v3, an elbow on shaft 1 or higher of a multi-gripper arm. Records, escrows and addresses did not change.
+Smoke test on `greatwork-test` after its upgrade: a v3 courier (`amalgam.AwEAAAAF…`) sealed with SUM 179.
+
 | Network | Seed | Program account | Notes |
 |---|---|---|---|
-| alphanet | `greatwork-v3` | `taWilrUWWu-_nAzyv3koRVoQQOnIepAGVe1tkzbnu3XNdZ` | **live** since 2026-10-26 (version 0, 52,736 bytes, sha256 `868d4293…3d17`). All 7 escrows initialised. The 10 saved pre-reset records were re-sealed on it before the amalgam demo escrow opened (30-day fuse, bar = the record, SUM 101). The solver on these rows is the new deployer key, not the original player. This is the public record. |
-| alphanet | `greatwork-test` | `tar_NQqeiWnJEIhya2UBpcEpxV4UKBpbnRGf6cMpay0EiS` | **live** since 2026-10-26, same binary. For automated tests only. Smoke test passed: INIT ×7, seal 179, OPEN (10m), seal 163 + crown. |
+| alphanet | `greatwork-v3` | `taWilrUWWu-_nAzyv3koRVoQQOnIepAGVe1tkzbnu3XNdZ` | **live**: version 1 since 2026-11-10 (codec v3). Before that, since 2026-10-26, version 0, 52,736 bytes, sha256 `868d4293…3d17`). All 7 escrows initialised. The 10 saved pre-reset records were re-sealed on it before the amalgam demo escrow opened (30-day fuse, bar = the record, SUM 101). The solver on these rows is the new deployer key, not the original player. This is the public record. |
+| alphanet | `greatwork-test` | `tar_NQqeiWnJEIhya2UBpcEpxV4UKBpbnRGf6cMpay0EiS` | **live**: version 1 since 2026-11-10, same binary as v3. Version 0 from 2026-10-26. For automated tests only. Smoke test passed: INIT ×7, seal 179, OPEN (10m), seal 163 + crown. |
 
 ### Records re-sealed on 2026-10-26
 
@@ -40,6 +45,17 @@ Only these 10 records were saved from before the resets (source: the leaderboard
 
 Seal them worst first per puzzle, with `node client/submit.js <machine> --name <name>`, and only then run `escrow.js amalgam open`.
 `escrow.js init --all` sometimes fails with `error 0` on one puzzle; run it again until every line says `exists`.
+
+### Upgrading when accounts are compressed (2026-11-10)
+
+After a quiet spell the runtime compresses the deployer account, both program meta accounts and the escrows.
+`upgradeProgram` and every SUBMIT then fail. Decompress them first with `decompressAccounts` in
+`client/gw-chain.js` (any fresh key can pay; it passes `fee: 0n`, because the SDK's default fee of 1 fails
+with vm error -509 on an unfunded alphanet key): the deployer, then the meta account of the program
+(test `taF3mwDvjmmlPDVvD__4Q4E8YZajDTT3XI5V1d8vhx_eup`, public `ta5C1Z2ARKrY9eSoyZA392jBHZQiEqXrjz0k6c2QGlfeo_`),
+then the escrows with `node client/escrow.js <puzzle> decompress [--test]`.
+The 2026-11-10 build rebuilt the toolchain below again; this time blst was built by compiling `src/server.c`
+by hand into `~/.thru/sdk/toolchain/lib/libblst.a`. As a check, eb1268c~1 rebuilt byte-identical to version 0.
 
 ### Toolchain (built from source in a cloud container, 2026-10-26)
 
